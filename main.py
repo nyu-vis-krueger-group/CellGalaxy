@@ -30,7 +30,7 @@ DATA_DIR = "public"
 # remove cache directory
 CACHE_DIR = os.path.join(os.getcwd(), ".cache")
 ZARR_DIR = os.path.join(DATA_DIR, "output.zarr")
-DEFAULT_TILE = 64
+DEFAULT_TILE = 16
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -171,7 +171,8 @@ def tiles_to_atlas(rgba_tiles: np.ndarray, tile: int) -> Image.Image:
 # generate and prewarm helper
 # =========================
 def _generate_single_channel_mask(img, ch: int, slc: slice) -> np.ndarray:
-    data = np.asarray(img[[ch], slc, :, :], dtype=np.float32)
+    # Zarr basic indexing does not support list indexing for axes; use integers/slices
+    data = np.asarray(img[ch, slc, :, :], dtype=np.float32)
     if data.ndim == 3:
         data = data[np.newaxis, ...]
     if data.ndim != 4:
@@ -282,6 +283,84 @@ async def generate_json_files():
     except Exception as e:
         print(f"Generated JSON files failed: {str(e)}")
 
+def _to_native(val):
+    """Convert numpy/pandas scalars to native Python types for JSON serialization."""
+    try:
+        import numpy as _np
+        if isinstance(val, (_np.generic,)):
+            return val.item()
+    except Exception:
+        pass
+    if isinstance(val, (pd.Timestamp,)):
+        return val.isoformat()
+    if isinstance(val, (float, int, str, bool)) or val is None:
+        return val
+    try:
+        return json.loads(json.dumps(val))
+    except Exception:
+        return str(val)
+
+def _parse_col_descriptor(name: str):
+    s = str(name or "").strip()
+    desc = None
+    base = s
+    if "(" in s and ")" in s and s.rfind("(") < s.rfind(")"):
+        l = s.rfind("(")
+        r = s.rfind(")")
+        desc = s[l+1:r].strip()
+        base = s[:l].strip()
+    return base if base else s, (desc or None)
+
+def _is_categorical(desc: str, series: pd.Series) -> bool:
+    if desc and ":" in desc:
+        return True
+    try:
+        from pandas.api import types as ptypes
+        if ptypes.is_numeric_dtype(series):
+            return False
+    except Exception:
+        pass
+    return True
+
+def generate_raw_json(raw_csv_path: str, out_path: str):
+    """Read a raw CSV and write an array JSON to `out_path`.
+
+    Output format: [ {"schema": [{name, rawName, type, description}]}, {"id":.., "raw": {...}}, ... ]
+    """
+    if not os.path.exists(raw_csv_path):
+        return
+    df = pd.read_csv(raw_csv_path)
+    cols = list(df.columns)
+    id_col = 'id' if 'id' in cols else ('ID' if 'ID' in cols else None)
+
+    # Build schema from first row and column names
+    schema = []
+    for c in cols:
+        if c == id_col:
+            continue
+        base, desc = _parse_col_descriptor(c)
+        ctype = 'categorical' if _is_categorical(desc, df[c]) else 'numeric'
+        schema.append({
+            'name': base,
+            'rawName': c,
+            'type': ctype,
+            'description': desc or ''
+        })
+
+    items = []
+    for idx, row in df.iterrows():
+        rid = int(_to_native(row[id_col])) if id_col is not None and not pd.isna(row[id_col]) else int(idx)
+        raw_map = {}
+        for c in cols:
+            if c == id_col:
+                continue
+            raw_map[c] = _to_native(row[c])
+        items.append({"id": rid, "raw": raw_map})
+
+    data = [{"schema": schema}] + items
+    with open(out_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
 # =========================
 # API endpoints
 # =========================
@@ -291,7 +370,7 @@ async def root():
 
 @app.api_route("/upload/{file_type}", methods=["POST", "DELETE"])
 async def upload_or_delete(file_type: str, request: Request, file: UploadFile | None = File(None)):
-    if file_type not in ["zarr", "csv"]:
+    if file_type not in ["zarr", "csv", "raw"]:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 
     if request.method == "DELETE":
@@ -306,10 +385,20 @@ async def upload_or_delete(file_type: str, request: Request, file: UploadFile | 
         remove_path(os.path.join(DATA_DIR, "channel_info.json"))
         return {"message": "CSV data cleared"}
 
+        
+    # DELETE for raw
+    if request.method == "DELETE" and file_type == "raw":
+        remove_path(os.path.join(DATA_DIR, "raw.csv"))
+        remove_path(os.path.join(DATA_DIR, "raw.json"))
+        return {"message": "Raw CSV data cleared"}
+
     if file is None:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    file_path = os.path.join(DATA_DIR, file.filename if file_type == "zarr" else "data.csv")
+    file_path = os.path.join(
+        DATA_DIR,
+        file.filename if file_type == "zarr" else ("raw.csv" if file_type == "raw" else "data.csv")
+    )
     with open(file_path, "wb") as f:
         content = await file.read()
         f.write(content)
@@ -322,6 +411,11 @@ async def upload_or_delete(file_type: str, request: Request, file: UploadFile | 
         clear_cache_dir()
     elif file_type == "csv":
         await generate_json_files()
+    elif file_type == "raw":
+        try:
+            generate_raw_json(os.path.join(DATA_DIR, "raw.csv"), os.path.join(DATA_DIR, "raw.json"))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to generate raw.json: {e}")
     return {"message": f"{file.filename} uploaded successfully"}
 
 
@@ -337,6 +431,7 @@ async def upload_status():
     return {
         "zarr": has_zarr,
         "csv": os.path.exists(csv_path),
+        "raw": os.path.exists(os.path.join(DATA_DIR, "raw.csv")) and os.path.exists(os.path.join(DATA_DIR, "raw.json"))
     }
 
 @app.get("/channels")

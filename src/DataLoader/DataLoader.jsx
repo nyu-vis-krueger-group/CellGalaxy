@@ -10,7 +10,9 @@ const API = (typeof window !== 'undefined' && window.location && window.location
 
 export default function useDataLoader() {
   const [meta, setMeta] = useState(null);
-  const [points, setPoints] = useState([]); // [{id,x,y,z,chunk_id,local_index,label}]
+  const [points, setPoints] = useState([]); // legacy single set (kept for compatibility)
+  const [pointsRaw, setPointsRaw] = useState([]); // raw projection
+  const [pointsUMAP, setPointsUMAP] = useState([]); // UMAP projection (2D/3D depending on is3D)
   const [loading, setLoading] = useState(true);
 
   // Rendering parameters (can be bound to UI)
@@ -20,14 +22,14 @@ export default function useDataLoader() {
   const [colors, setColors] = useState({});
   // New: per-channel window (min/max, unit consistent with backend: 0..65535)
   const [windows, setWindows] = useState({});
-  const [imageSize, setImageSize] = useState(3);
+  const [imageSize, setImageSize] = useState(1.5);
 
   // Rendering mode settings
   const [renderMode, setRenderMode] = useState('sprites'); // 'sprites' | 'points'
   const [is3D, setIs3D] = useState(false); // 2D/3D toggle
   
-  // UMAP mode settings
-  const [useUMAP, setUseUMAP] = useState(false); // false: raw, true: umap
+  // UMAP mode settings (kept for compatibility, side-by-side uses both)
+  const [useUMAP, setUseUMAP] = useState(false);
 
   // UV mapping and atlas URL for each chunk
   const [chunkUV, setChunkUV] = useState({});
@@ -61,6 +63,8 @@ export default function useDataLoader() {
   const [selectionMode, setSelectionMode] = useState('none'); // 'none' | 'box' | 'lasso'
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const clearSelection = () => setSelectedIds(new Set());
+  // —— Filtered ids (dim non-matching) ——
+  const [filteredIds, setFilteredIds] = useState(() => new Set());
 
   // —— Utility: safe normalization, avoid division by 0 ——
   function safeScale(v, minV, maxV) {
@@ -69,39 +73,68 @@ export default function useDataLoader() {
     return 2 * (v - minV) / span - 1;
   }
 
-  // Unified coordinate projection processing function
-  const applyCoordinateProjection = () => {
-    if (!allCoords || allCoords.length === 0) return;
-    
-    // Select coordinate source based on mode
-    const getCoords = (p) => {
-      if (useUMAP) {
-        if (is3D && p.umap3d) return { x: p.umap3d.x, y: p.umap3d.y, z: p.umap3d.z ?? 0 };
-        if (!is3D && p.umap2d) return { x: p.umap2d.x, y: p.umap2d.y, z: 0 };
+  // Build both projections (raw and UMAP) and normalize each set independently
+  const applyAllProjections = () => {
+    if (!allCoords || allCoords.length === 0) {
+      setPoints([]);
+      setPointsRaw([]);
+      setPointsUMAP([]);
+      return;
+    }
+
+    // Helper: project and normalize
+    const projectAndNormalize = (getter) => {
+      // First pass: project points and compute min/max without spreading large arrays
+      const projected = new Array(allCoords.length);
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      let minZ = Infinity, maxZ = -Infinity;
+
+      for (let i = 0; i < allCoords.length; i++) {
+        const src = allCoords[i];
+        const { x, y, z } = getter(src);
+        const item = { ...src, x, y, z: z ?? 0 };
+        projected[i] = item;
+
+        const vx = item.x;
+        const vy = item.y;
+        const vz = item.z || 0;
+        if (vx < minX) minX = vx; if (vx > maxX) maxX = vx;
+        if (vy < minY) minY = vy; if (vy > maxY) maxY = vy;
+        if (vz < minZ) minZ = vz; if (vz > maxZ) maxZ = vz;
       }
-      if (p.raw) return { x: p.raw.x, y: p.raw.y, z: 0 };
+
+      // Second pass: normalize
+      for (let i = 0; i < projected.length; i++) {
+        const p = projected[i];
+        projected[i] = {
+          ...p,
+          label: p.label ?? (p.id % 11),
+          x: safeScale(p.x, minX, maxX),
+          y: -safeScale(p.y, minY, maxY),
+          z: safeScale(p.z || 0, minZ, maxZ),
+        };
+      }
+      return projected;
+    };
+
+    // Raw (2D)
+    const rawGetter = (p) =>
+      p?.raw ? { x: p.raw.x, y: p.raw.y, z: 0 } : { x: 0, y: 0, z: 0 };
+    const scaledRaw = projectAndNormalize(rawGetter);
+    setPointsRaw(scaledRaw);
+
+    // UMAP (2D/3D depending on is3D)
+    const umapGetter = (p) => {
+      if (is3D && p.umap3d) return { x: p.umap3d.x, y: p.umap3d.y, z: p.umap3d.z ?? 0 };
+      if (!is3D && p.umap2d) return { x: p.umap2d.x, y: p.umap2d.y, z: 0 };
       return { x: 0, y: 0, z: 0 };
     };
-    
-    const projectedCoords = allCoords.map(p => ({ ...p, ...getCoords(p) }));
-    
-    // Normalize coordinates to [-1, 1] range
-    const xs = projectedCoords.map(p => p.x);
-    const ys = projectedCoords.map(p => p.y);
-    const zs = projectedCoords.map(p => p.z || 0);
-    const [minX, maxX] = [Math.min(...xs), Math.max(...xs)];
-    const [minY, maxY] = [Math.min(...ys), Math.max(...ys)];
-    const [minZ, maxZ] = [Math.min(...zs), Math.max(...zs)];
-    
-    const scaled = projectedCoords.map(p => ({
-      ...p,
-      label: p.label ?? (p.id % 11),
-      x: safeScale(p.x, minX, maxX),
-      y: -safeScale(p.y, minY, maxY),
-      z: safeScale(p.z || 0, minZ, maxZ),
-    }));
-    
-    setPoints(scaled);
+    const scaledUMAP = projectAndNormalize(umapGetter);
+    setPointsUMAP(scaledUMAP);
+
+    // Keep legacy `points` for compatibility (default to raw)
+    setPoints(scaledRaw);
   };
 
   const refreshData = useCallback(async () => {
@@ -178,18 +211,22 @@ export default function useDataLoader() {
     refreshData();
   }, [refreshData]);
 
-  // When allCoords data is loaded, ensure coordinate projection is applied
+  // When allCoords data is loaded, build both projections
   useEffect(() => {
-    if (allCoords.length > 0) applyCoordinateProjection();
-    else setPoints([]);
+    if (allCoords.length > 0) applyAllProjections();
+    else {
+      setPoints([]);
+      setPointsRaw([]);
+      setPointsUMAP([]);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allCoords]);
 
-  // When UMAP mode or 2D/3D mode changes, reapply coordinate projection (maintain array order for smooth transitions)
+  // When 2D/3D mode changes, rebuild projections (side-by-side uses both)
   useEffect(() => {
-    if (allCoords.length > 0) applyCoordinateProjection();
+    if (allCoords.length > 0) applyAllProjections();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useUMAP, is3D]);
+  }, [is3D]);
 
   // Fetch UV for a chunk (only once)
   const ensureUV = async (chunkId) => {
@@ -285,10 +322,10 @@ export default function useDataLoader() {
     }
   };
 
-  // Calculate priority chunks in view (here only simplest: group by chunk, fetch all)
+  // Calculate priority chunks (group by chunk, fetch all); use allCoords to cover both views
   useEffect(() => {
     if (!meta || loading) return;
-    const chunks = new Set(points.map((p) => p.chunk_id));
+    const chunks = new Set((allCoords || []).map((p) => p.chunk_id));
     (async () => {
       for (const c of chunks) {
         await ensureUV(c);
@@ -301,7 +338,7 @@ export default function useDataLoader() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meta, loading, channels, renderMode, is3D, useUMAP, points]);
+  }, [meta, loading, channels, renderMode, is3D, allCoords]);
 
   // When selected channels change, notify backend for async prewarming to reduce subsequent first-packet latency
   useEffect(() => {
@@ -319,7 +356,9 @@ export default function useDataLoader() {
   return {
     // Data state
     meta,
-    points,
+    points, // legacy
+    pointsRaw,
+    pointsUMAP,
     loading,
     chunkUV,
     atlasURL,
@@ -338,7 +377,7 @@ export default function useDataLoader() {
     renderMode,
     is3D,
     
-    // UMAP mode
+    // UMAP mode (kept for compatibility)
     useUMAP,
 
     // —— Selection (exported for App/Viewer/Control use) ——
@@ -347,6 +386,8 @@ export default function useDataLoader() {
     selectedIds,
     setSelectedIds,
     clearSelection,
+    filteredIds,
+    setFilteredIds,
     
     // Setter functions
     setChannels,

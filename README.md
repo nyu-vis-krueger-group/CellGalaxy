@@ -27,8 +27,11 @@ A multi-scale image projection visualization system based on FastAPI and React, 
    ```
 
 ### Frontend Installation (Node.js)
+1. **Install node.js**
+https://nodejs.org/en/download
 
-1. **Install Node.js dependencies**
+
+2. **Install Node.js dependencies**
    ```bash
    npm install
    ```

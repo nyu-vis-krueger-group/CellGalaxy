@@ -44,12 +44,16 @@ const Viewer = ({
   selectedIds = new Set(),
   setSelectedIds = () => {},
   clearSelection = () => {},
+  filteredIds = new Set(),
+  // Shared zoom (optional): when provided, viewers sync zoom level
+  sharedZoom,
+  setSharedZoom,
 }) => {
   const center = useMemo(() => computeCenter(points), [points]);
 
   const [viewState, setViewState] = useState(() => ({
     target: [0, 0, 0],
-    zoom: 8,
+    zoom: typeof sharedZoom === 'number' ? sharedZoom : 8,
     rotationX: 0,
     rotationOrbit: 0,
     transitionDuration: 0,
@@ -64,6 +68,14 @@ const Viewer = ({
       initialized.current = true;
     }
   }, [center, points.length]);
+
+  // If parent provides sharedZoom, keep local viewState.zoom in sync
+  useEffect(() => {
+    if (typeof sharedZoom === 'number' && sharedZoom !== viewState.zoom) {
+      setViewState((prev) => ({ ...prev, zoom: sharedZoom }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedZoom]);
 
   // Clean up timer
   useEffect(() => {
@@ -80,43 +92,31 @@ const Viewer = ({
       rotationX: is3D ? 45 : 0,
       transitionDuration: 600,
       transitionEasing: ease,
+      // Exclude 'zoom' from transitions to avoid post-gesture wobble
       transitionInterpolator: new LinearInterpolator([
         "rotationX",
         "rotationOrbit",
-        "zoom",
         "target",
       ]),
     }));
   }, [is3D]);
 
   // Zoom sensitivity control - improved trackpad support
-  const zoomSensitivity = 0.8; // Reduce zoom sensitivity for smoother trackpad
-  const minImageSize = 1;
-  const maxImageSize = 40;
-  
-  // Use debouncing to avoid frequent updates
+  // const zoomSensitivity = 0.8; // Reduce zoom sensitivity for smoother trackpad
+  // Note: keep sprite size independent from camera zoom to avoid double scaling
   const zoomTimeoutRef = useRef(null);
   
   const handleViewStateChange = ({ viewState: next }) => {
-    setViewState(next);
-    
-    // When zoom changes, synchronously update imageSize
-    if (next.zoom !== viewState.zoom) {
-      const zoomDelta = next.zoom - viewState.zoom;
-      const newImageSize = Math.max(
-        minImageSize,
-        Math.min(maxImageSize, imageSize + zoomDelta * zoomSensitivity)
-      );
-      
-      // Clear previous timer
-      if (zoomTimeoutRef.current) {
-        clearTimeout(zoomTimeoutRef.current);
-      }
-      
-      // Use debouncing for smooth updates
-      zoomTimeoutRef.current = setTimeout(() => {
-        setImageSize(newImageSize);
-      }, 16); // ~60fps update frequency
+    const isZoomChange = next.zoom !== viewState.zoom;
+    setViewState((prev) => ({
+      ...next,
+      // Avoid animating zoom updates; other transitions remain
+      transitionDuration: isZoomChange ? 0 : (next.transitionDuration ?? prev.transitionDuration),
+    }));
+
+    // Propagate zoom to shared state if provided
+    if (typeof setSharedZoom === 'function' && next.zoom !== sharedZoom) {
+      setSharedZoom(next.zoom);
     }
   };
 
@@ -173,16 +173,24 @@ const Viewer = ({
       // Use utils function to perform box selection
       const picked = performBoxSelection(deck, bounds);
       
+      const activeFilter = filteredIds && filteredIds.size > 0;
       for (const p of picked) {
         const id = p?.object?.id;
-        if (id != null) ids.add(id);
+        if (id == null) continue;
+        if (activeFilter && !filteredIds.has(id)) continue; // ignore filtered-out items
+        ids.add(id);
       }
     }
 
     if (selectionMode === "lasso" && lassoPts.length >= 3 && viewport) {
       // Use utils function to perform lasso selection
       const lassoIds = performLassoSelection(points, viewport, lassoPts);
-      lassoIds.forEach(id => ids.add(id));
+      const activeFilter = filteredIds && filteredIds.size > 0;
+      if (activeFilter) {
+        for (const id of lassoIds) { if (filteredIds.has(id)) ids.add(id); }
+      } else {
+        lassoIds.forEach(id => ids.add(id));
+      }
     }
 
     setSelectedIds(ids);
@@ -196,13 +204,20 @@ const Viewer = ({
     if (!info?.object) clearSelection();
   };
 
+  // Establish a baseline zoom the first time we render. We map size by 2^(zoom-delta)
+  const baseZoomRef = useRef(null);
+  if (baseZoomRef.current == null) baseZoomRef.current = viewState.zoom;
+  const zoomScale = Math.pow(2, (viewState.zoom ?? 0) - (baseZoomRef.current ?? 0));
+  const computedImageSize = Math.max(1, Math.min(2048, imageSize * zoomScale));
+
   // Create base layer configuration
   const createBaseLayerConfig = (chunkId, arr, mapping) => ({
     data: arr.map((d) => ({ ...d, icon: `t_${d.local_index}` })),
     iconMapping: mapping,
     getIcon: (d) => d.icon,
     getPosition: (d) => [d.x, d.y, d.z ?? 0],
-    getSize: imageSize,
+    // Keep sprite size synchronized with camera zoom
+    getSize: computedImageSize,
     sizeScale: 1,
     fovy: 45,
     near: 0.1,
@@ -217,6 +232,9 @@ const Viewer = ({
       getPosition: { duration: 600, easing: ease },
       getSize: { duration: 300, easing: ease },
     },
+    updateTriggers: {
+      getSize: [computedImageSize]
+    }
   });
 
   const layers = useMemo(() => {
@@ -264,10 +282,15 @@ const Viewer = ({
               windowMin: winMin01,
               windowMax: winMax01,
               premultiply: true,
-              getColor: (d) =>
-                selectedIds.has(d.id)
-                  ? [255, 140, 0, 255]
-                  : [col[0] ?? 255, col[1] ?? 255, col[2] ?? 255, a],
+              getColor: (d) => {
+                if (selectedIds.has(d.id)) return [255, 140, 0, 255];
+                const activeFilter = filteredIds && filteredIds.size > 0;
+                if (activeFilter && !filteredIds.has(d.id)) {
+                  const dimA = Math.min(a, 24);
+                  return [col[0] ?? 255, col[1] ?? 255, col[2] ?? 255, dimA];
+                }
+                return [col[0] ?? 255, col[1] ?? 255, col[2] ?? 255, a];
+              },
             })
           );
         }
@@ -283,7 +306,12 @@ const Viewer = ({
               parameters: { depthTest: true, blend: true, blendFunc: [1, 1], blendEquation: 32774 },
               windowMin: 0.0,
               windowMax: 1.0,
-              getColor: (d) => selectedIds.has(d.id)? [255, 140, 0, 255]: [255, 255, 255, 255],
+              getColor: (d) => {
+                if (selectedIds.has(d.id)) return [255, 140, 0, 255];
+                const activeFilter = filteredIds && filteredIds.size > 0;
+                if (activeFilter && !filteredIds.has(d.id)) return [255,255,255,30];
+                return [255,255,255,255];
+              },
             })
           );
         }
@@ -295,9 +323,15 @@ const Viewer = ({
           id: "scatter",
           data: points ?? [],
           getPosition: (d) => [d.x, d.y, d.z ?? 0],
-          getFillColor: (d) => selectedIds.has(d.id)? [255, 140, 0, 255]: [255, 255, 255, 255],
+          getFillColor: (d) => {
+            if (selectedIds.has(d.id)) return [255,140,0,255];
+            const activeFilter = filteredIds && filteredIds.size > 0;
+            if (activeFilter && !filteredIds.has(d.id)) return [255,255,255,30];
+            return [255,255,255,255];
+          },
           stroked: false,
-          getRadius: imageSize*0.75,
+          // Sync point radius with zoom the same way
+          getRadius: computedImageSize*0.75,
           radiusScale: 1,
           radiusUnits: "pixels",
           pickable: true,
@@ -308,7 +342,8 @@ const Viewer = ({
             getRadius: { duration: 300, easing: ease },
           },
           updateTriggers: {
-            getFillColor: [selectedIds],
+            getFillColor: [selectedIds, filteredIds],
+            getRadius: [computedImageSize]
           },
         })
       ];
@@ -321,12 +356,14 @@ const Viewer = ({
     meta,
     renderMode,
     imageSize,
+    viewState.zoom,
     selectedIds,
     channels,
     colors,
     alphas,
     windows,
     is3D,
+    filteredIds,
   ]);
 
 
@@ -378,18 +415,19 @@ const Viewer = ({
             : [new OrthographicView({ id: "2d", flipY: false })]
         }
         controller={controller}
-        viewState={viewState}
+        viewState={{ ...viewState, zoom: typeof sharedZoom === 'number' ? sharedZoom : viewState.zoom }}
         onViewStateChange={handleViewStateChange}
         layers={layers}
         onClick={onClick}
         onDragStart={onDragStart}
         onDrag={onDrag}
         onDragEnd={onDragEnd}
-        getTooltip={({ object }) =>
-          object
-            ? `id: ${object.id}\nlabel: ${object.label ?? object.id % 11}`
-            : null
-        }
+        getTooltip={({ object }) => {
+          if (!object) return null;
+          const activeFilter = filteredIds && filteredIds.size > 0;
+          if (activeFilter && !filteredIds.has(object.id)) return null;
+          return `id: ${object.id}\nlabel: ${object.label ?? object.id % 11}`;
+        }}
         getCursor={() => "default"}
         pickingRadius={6}
       />

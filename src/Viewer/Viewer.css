@@ -1,4 +1,8 @@
 /* Viewer component styles */
+.viewer-root {
+  position: absolute;
+  inset: 0;
+}
 .viewer-loading {
   height: 100vh;
   width: 100vw;

@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import "./FileUpload.css";
 
 export default function FileUpload({ onRefresh = async () => {} }) {
-  const [status, setStatus] = useState({ zarr: false, csv: false });
+  const [status, setStatus] = useState({ zarr: false, csv: false, raw: false });
   const [busy, setBusy] = useState(false);
-  const [processing, setProcessing] = useState({ zarr: false, csv: false });
+  const [processing, setProcessing] = useState({ zarr: false, csv: false, raw: false });
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -17,10 +17,11 @@ export default function FileUpload({ onRefresh = async () => {} }) {
       setStatus({
         zarr: Boolean(data?.zarr),
         csv: Boolean(data?.csv),
+        raw: Boolean(data?.raw),
       });
     } catch (err) {
       console.error("status fetch failed", err);
-      setStatus({ zarr: false, csv: false });
+      setStatus({ zarr: false, csv: false, raw: false });
     }
   }, []);
 
@@ -67,7 +68,7 @@ export default function FileUpload({ onRefresh = async () => {} }) {
   const handleFileSelect = (fileType) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = fileType === 'csv' ? '.csv' : '.zarr,.zip,.zarr.zip';
+    input.accept = (fileType === 'csv' || fileType === 'raw') ? '.csv' : '.zarr,.zip,.zarr.zip';
     input.onchange = (e) => {
       const file = e.target.files[0];
       if (file) {
@@ -97,12 +98,13 @@ export default function FileUpload({ onRefresh = async () => {} }) {
 
   return (
     <>
-      {(processing.csv || processing.zarr) && (
+      {(processing.csv || processing.zarr || processing.raw) && (
         <div className="fullscreen-processing-overlay">
           <div className="processing-content">
             <div className="processing-spinner"></div>
             {processing.csv && <div className="processing-text">uploading CSV...</div>}
             {processing.zarr && <div className="processing-text">uploading Zarr...</div>}
+            {processing.raw && <div className="processing-text">uploading Raw...</div>}
           </div>
         </div>
       )}
@@ -142,6 +144,24 @@ export default function FileUpload({ onRefresh = async () => {} }) {
             disabled={busy}
             title="Clear uploaded CSV"
             aria-label="Clear uploaded CSV"
+          />
+        </div>
+        <div className="upload-row">
+          <button
+            type="button"
+            className="upload-btn upload-csv"
+            onClick={() => handleFileSelect('raw')}
+            disabled={busy || status.raw}
+          >
+            {processing.raw ? 'Processing...' : 'Upload Raw'}
+          </button>
+          <button
+            type="button"
+            className={`clear-upload-btn${status.raw ? ' has-file' : ''}`}
+            onClick={() => handleClear('raw')}
+            disabled={busy}
+            title="Clear uploaded Raw"
+            aria-label="Clear uploaded Raw"
           />
         </div>
       </div>

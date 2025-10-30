@@ -27,15 +27,25 @@ export function pointInPolygon([px, py], polygon) {
  */
 export function computeCenter(points) {
   if (!points?.length) return [0, 0, 0];
-  
-  const xs = points.map(p => p.x);
-  const ys = points.map(p => p.y);
-  const zs = points.map(p => p.z ?? 0);
-  
+
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
+
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const x = p.x;
+    const y = p.y;
+    const z = p.z ?? 0;
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+
   return [
-    (Math.min(...xs) + Math.max(...xs)) / 2,
-    (Math.min(...ys) + Math.max(...ys)) / 2,
-    (Math.min(...zs) + Math.max(...zs)) / 2
+    (minX + maxX) / 2,
+    (minY + maxY) / 2,
+    (minZ + maxZ) / 2,
   ];
 }
 
