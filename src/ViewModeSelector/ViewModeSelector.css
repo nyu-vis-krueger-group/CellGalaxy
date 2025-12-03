@@ -1,0 +1,78 @@
+.viewmode-section {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e0e0e0;
+}
+.viewmode-title {
+  margin-bottom: 12px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+}
+.viewmode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.vm-row.radios {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.vm-row-label {
+  font-size: 12px;
+  color: #ffffff;
+}
+.vm-row-label.disabled {
+  opacity: 0.5;
+}
+.viewmode-group {
+  display: flex;
+  gap: 8px;
+}
+.viewmode-btn {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 6px;
+  color: #e6e6e6;
+  background: rgba(255,255,255,0.05);
+  cursor: pointer;
+}
+.viewmode-btn.active {
+  background: #ff8f00;
+  border-color: #ff8f00;
+  color: #ffffff;
+}
+.viewmode-btn:hover {
+  background: rgba(255,255,255,0.12);
+}
+.viewmode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: rgba(255,255,255,0.04);
+}
+
+/* Single toggle control */
+/* Reuse global .toggle-switch/.toggle-slider from RenderModeSelector.css */
+.toggle-switch.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.vm-row.radios.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.vm-row.radios .render-option {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+

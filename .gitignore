@@ -5,4 +5,14 @@ public/data.csv
 public/coords.json
 public/.DS_Store
 public/channel_info.json
+public/raw.json
+public/raw.csv
+public/features.npy
+public/channel_list.csv
+public/cluster_channel_avg.csv
+public/cluster_multilevel_hierarchy.csv
+public/__MACOSX/
+server/__pycache__/
 .cache/
+.DS_Store
+server/secrets/

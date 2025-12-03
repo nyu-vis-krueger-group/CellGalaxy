@@ -1,12 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import "./Control.css";
 import FileUpload from "../FileUpload/FileUpload";
 import RenderModeSelector from "../RenderModeSelector/RenderModeSelector";
-import UMAPSelector from "../UMAPSelector/UMAPSelector";
+import ViewModeSelector from "../ViewModeSelector/ViewModeSelector";
 import ImageSizeControl from "../ImageSizeControl/ImageSizeControl";
 import ChannelManager from "../ChannelManager/ChannelManager";
 import SelectionPanel from "../SelectionPanel/SelectionPanel";
 import Filter from "../Filter/Filter";
+import ClusteringControl from "../ClusteringControl/ClusteringControl";
 
 export default function Control({
   meta,
@@ -34,19 +35,65 @@ export default function Control({
   setSelectedIds = () => {},
   filteredIds = new Set(),
   setFilteredIds = () => {},
+  viewMode = "dual",
+  setViewMode = () => {},
+  
+  // —— clustering overlay props ——
+  clusterOutlineOn = false,
+  setClusterOutlineOn = () => {},
+  clusterOpacity = 0.25,
+  setClusterOpacity = () => {},
+  clusterLineWidth = 1.5,
+  setClusterLineWidth = () => {},
+  clusterAnnotationOn = false,
+  setClusterAnnotationOn = () => {},
+  clusterAnnotationModel = "MedGemma",
+  setClusterAnnotationModel = () => {},
+  clusterPreviewOn = true,
+  setClusterPreviewOn = () => {},
 }) {
+  const [collapsed, setCollapsed] = useState(false);
   return (
-    <div className="control-panel">
-      <FileUpload onRefresh={refreshData} />
+    <div className={`control-panel ${collapsed ? "collapsed" : ""}`}>
+      <div className="control-header">
+        <div className="brand">
+          <div className="brand-logo" aria-hidden="true"></div>
+          <div className="brand-name">Cell Galaxy</div>
+        </div>
+        <button
+          className="control-toggle"
+          aria-label="Toggle sidebar"
+          onClick={() => setCollapsed((v) => !v)}
+          title={collapsed ? "Expand settings" : "Collapse settings"}
+        >
+          {collapsed ? "›" : "‹"}
+        </button>
+      </div>
+      <div className="control-content">
+        <FileUpload onRefresh={refreshData} />
+      {/* Channel management (moved above Selection) */}
+      <ChannelManager
+        selected={channels}
+        setSelected={setChannels}
+        colors={colors}
+        setColors={setColors}
+        windows={windows}
+        setWindows={setWindows}
+        dataVersion={dataVersion}
+      />
       {/* Selection panel */}
       <SelectionPanel
         selectionMode={selectionMode}
         setSelectionMode={setSelectionMode}
         selectedIds={selectedIds}
       />
-
-      {/* UMAP mode selection */}
-      <UMAPSelector useUMAP={useUMAP} setUseUMAP={setUseUMAP} />
+      
+      <ViewModeSelector
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        useUMAP={useUMAP}
+        setUseUMAP={setUseUMAP}
+      />
 
       {/* Rendering mode selection */}
       <RenderModeSelector
@@ -62,16 +109,23 @@ export default function Control({
       {/* Filter (by raw data) */}
       <Filter setFilteredIds={(ids) => { setFilteredIds(ids); }} />
 
-      {/* Channel management */}
-      <ChannelManager
-        selected={channels}
-        setSelected={setChannels}
-        colors={colors}
-        setColors={setColors}
-        windows={windows}
-        setWindows={setWindows}
-        dataVersion={dataVersion}
+      {/* Clustering overlay control */}
+      <ClusteringControl
+        outlineOn={clusterOutlineOn}
+        setOutlineOn={setClusterOutlineOn}
+        opacity={clusterOpacity}
+        setOpacity={setClusterOpacity}
+        lineWidth={clusterLineWidth}
+        setLineWidth={setClusterLineWidth}
+        annotationOn={clusterAnnotationOn}
+        setAnnotationOn={setClusterAnnotationOn}
+        annotationModel={clusterAnnotationModel}
+        setAnnotationModel={setClusterAnnotationModel}
+        previewOn={clusterPreviewOn}
+        setPreviewOn={setClusterPreviewOn}
       />
+    
+      </div>
     </div>
   );
 }

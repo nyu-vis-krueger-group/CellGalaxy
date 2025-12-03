@@ -1,0 +1,16 @@
+/* TooltipPreview styles */
+.tooltip-thumb {
+  image-rendering: pixelated;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.tooltip-composite {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #000;
+}
+.tooltip-layer {
+  pointer-events: none;
+}
+
+

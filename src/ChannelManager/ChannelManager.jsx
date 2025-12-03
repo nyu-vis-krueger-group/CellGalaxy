@@ -15,6 +15,22 @@ export default function ChannelManager({
   // Slider read/write directly uses global windows (min/max for each channel)
   const [tooltip, setTooltip] = useState({ show: false, value: '', x: 0, y: 0 });
 
+  // Normalize backend pixel_value_range into:
+  // - dataMin/dataMax: true global range (slider bounds)
+  // - autoMin/autoMax: recommended automatic window (based on 1%-99% percentiles)
+  const getChannelRanges = (channel) => {
+    const pv = channel?.pixel_value_range || {};
+    const dataMin = Number.isFinite(pv.data_min)
+      ? pv.data_min
+      : (Number.isFinite(pv.min) ? pv.min : 0);
+    const dataMax = Number.isFinite(pv.data_max)
+      ? pv.data_max
+      : (Number.isFinite(pv.max) ? pv.max : 65535);
+    const autoMin = Number.isFinite(pv.auto_min) ? pv.auto_min : dataMin;
+    const autoMax = Number.isFinite(pv.auto_max) ? pv.auto_max : dataMax;
+    return { dataMin, dataMax, autoMin, autoMax };
+  };
+
   // Get channel information
   useEffect(() => {
     const fetchChannelInfo = async () => {
@@ -93,12 +109,12 @@ export default function ChannelManager({
       const c = defaultColorFor(channel.id);
       setColors((prev) => ({ ...prev, [channel.id]: c }));
     }
-    // If window not initialized, initialize with channel default range
-    const pv = channel.pixel_value_range || { min: 0, max: 65535 };
+    // If window has not been initialized, use recommended autoMin/autoMax as default window.
+    const { autoMin, autoMax } = getChannelRanges(channel);
     setWindows((prev) => (
       prev[channel.id]
         ? prev
-        : { ...prev, [channel.id]: { min: pv.min ?? 0, max: pv.max ?? 65535 } }
+        : { ...prev, [channel.id]: { min: autoMin, max: autoMax } }
     ));
   };
 
@@ -161,7 +177,7 @@ export default function ChannelManager({
   return (
     <div className="channel-manager">
       <div className="channel-section-title">
-        <span>Channels</span>
+        <span>Channels({selected.length} / 4)</span>
         
         {/* Add channel area */}
         <div className="add-channel-section">
@@ -201,7 +217,7 @@ export default function ChannelManager({
           const channel = channelInfo.channels?.find(ch => ch.id === channelId);
           if (!channel) return null;
 
-          const { min = 0, max = 100 } = channel.pixel_value_range || {};
+          const { dataMin, dataMax, autoMin, autoMax } = getChannelRanges(channel);
 
           return (
             <div key={channelId} className="channel-item">
@@ -214,15 +230,29 @@ export default function ChannelManager({
               />
 
               {/* Channel name */}
-              <span className="channel-name">{channel.name}</span>
+              <span className="channel-name" title={channel.name}>{channel.name}</span>
 
               {/* Dual-end slider */}
               <div className="range-slider-container">
                 <div className="dual-range-slider">
-                  {renderSlider(channelId, 'min', min, min, max)}
-                  {renderSlider(channelId, 'max', max, min, max)}
+                  {renderSlider(channelId, 'min', autoMin, dataMin, dataMax)}
+                  {renderSlider(channelId, 'max', autoMax, dataMin, dataMax)}
                 </div>
               </div>
+
+              {/* Auto button: reset to recommended automatic window */}
+              <button
+                className="auto-button"
+                onClick={() => {
+                  const { autoMin: aMin, autoMax: aMax } = getChannelRanges(channel);
+                  setWindows((prev) => ({
+                    ...prev,
+                    [channelId]: { min: aMin, max: aMax },
+                  }));
+                }}
+              >
+                Auto
+              </button>
 
               {/* Delete button */}
               <button

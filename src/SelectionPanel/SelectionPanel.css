@@ -1,16 +1,17 @@
 .selection-panel {
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #ffffff;
+  border-bottom: 1px solid #e0e0e0;
 }
 
 .selection-panel-title {
-  font-weight: 600;
-  margin-bottom: 8px;
   color: #ffffff;
   font-size: 14px;
   font-weight: 500;
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .selection-mode-buttons {
@@ -56,12 +57,12 @@
 }
 
 .selection-count {
-  font-size: 13px;
-  margin: 8px 0 10px;
+  display: none;
+}
+.selection-count-inline {
   color: #ffae00;
-  font-size: 18px;
+  font-size: 13px;
   font-weight: 500;
-  margin-bottom: 12px;
 }
 
 .clear-selection-btn {

@@ -1,0 +1,165 @@
+.clu-block {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #2e3440;
+}
+.clu-title {
+  margin-bottom: 12px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+}
+.clu-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.clu-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #3a3a3a;
+  background: transparent;
+  color: #e2e8f0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.clu-btn:hover { background: rgba(255,255,255,0.12); }
+.clu-btn.on {
+  background: rgba(99,102,241,0.22);
+  border-color: rgba(99,102,241,0.55);
+}
+.clu-btn .icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+.clu-btn.model {
+  padding: 8px 12px;
+}
+.clu-btn.model .icon, .clu-btn.annotate .icon {
+  width: 22px;
+  height: 22px;
+}
+.clu-panel {
+  margin-top: 6px;
+}
+.clu-tip {
+  margin-top: 6px;
+  color: #93c5fd;
+  font-size: 12px;
+  opacity: 0.9;
+}
+.clu-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.clu-label {
+  color: #cbd5ff;
+  font-size: 12px;
+}
+.clu-select-wrap {
+  position: relative;
+}
+.clu-select-display {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #3a3a3a;
+  background: rgba(15, 17, 24, 0.96);
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.6);
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.clu-select-display:hover {
+  background: rgba(24, 27, 36, 0.98);
+  border-color: #4b5563;
+}
+.clu-select-display:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96,165,250,.35);
+}
+.clu-select-display-label {
+  font-size: 13px;
+}
+.clu-select-display-caret {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.clu-select-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 100%;
+  background: rgba(15, 17, 24, 0.98);
+  border-radius: 8px;
+  border: 1px solid rgba(55,65,81,0.9);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.85);
+  padding: 4px 0;
+  z-index: 40;
+}
+.clu-select-option {
+  width: 100%;
+  padding: 6px 10px 6px 26px;
+  background: transparent;
+  border: none;
+  color: #e5e7eb;
+  font-size: 13px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.clu-select-option:hover {
+  background: rgba(55,65,81,0.75);
+}
+.clu-select-option.active {
+  background: rgba(34,197,94,0.45);
+  color: #f9fafb;
+}
+.clu-select-option-check {
+  width: 14px;
+  font-size: 12px;
+  color: #f9fafb;
+}
+.clu-actions {
+  display: flex;
+  gap: 8px;
+}
+.clu-run-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(96,165,250,.55);
+  background: linear-gradient(180deg, rgba(96,165,250,.22), rgba(96,165,250,.10));
+  color: #e5edff;
+  cursor: pointer;
+  transition: transform .05s ease, background .15s ease, box-shadow .15s ease;
+}
+.clu-run-btn:hover { background: linear-gradient(180deg, rgba(96,165,250,.30), rgba(96,165,250,.14)); box-shadow: 0 0 0 2px rgba(96,165,250,.18) inset; }
+.clu-run-btn:active { transform: translateY(1px); }
+.clu-run-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.clu-range {
+  width: 100%;
+}
+.clu-val {
+  color: #94a3b8;
+  font-size: 12px;
+  min-width: 52px;
+  text-align: right;
+}
+
+

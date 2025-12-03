@@ -1,14 +1,103 @@
 /* Control component styles */
 .control-panel {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: rgba(79, 79, 79, 0.9);
-  border: 1px solid #ffffff;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background: rgba(79, 79, 79, 0.3);
+  /* border: 0.5px solid #979191; */
   padding: 12px;
   width: 250px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   font-family: ui-sans-serif, system-ui;
+  height: 100vh;              /* automatically adjust to viewport height */
+  max-height: none;
+  overflow-y: auto;           /* allow scrolling within the panel */
+  box-sizing: border-box;
+  z-index: 1000;
+  /* hide scrollbar but keep scrolling functionality */
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* IE/Edge old version */
+}
+
+/* WebKit scrollbar hidden (Chrome/Safari) */
+.control-panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.control-panel::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+/* Header row: brand left, toggle right */
+.control-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  min-height: 36px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6);
+}
+.brand-name {
+  font-size: 14px;
+  color: #e6e6e6;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+/* Collapse toggle button */
+.control-toggle {
+  position: static;
+  width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  border: 1px solid rgba(255,255,255,0.5);
+  background: rgba(0,0,0,0.2);
+  color: #fff;
+  cursor: pointer;
+  line-height: 20px;
+  text-align: center;
+  padding: 0;
+}
+.control-toggle:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+/* Content wrapper; hidden when collapsed */
+.control-panel.collapsed {
+  width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible; /* keep toggle visible/clickable */
+  pointer-events: none; /* panel does not receive events to avoid transparent rect blocking content */
+}
+.control-panel.collapsed .control-content {
+  display: none;
+}
+.control-panel.collapsed .brand {
+  display: none;
+}
+.control-panel.collapsed .control-toggle {
+  position: fixed;   /* break out of panel width, only show small circle button */
+  top: 12px;
+  left: 10px;
+  right: auto;
+  z-index: 1100;
+  pointer-events: auto; /* still clickable */
+}
+.control-panel.collapsed .control-content {
+  display: none;
 }
 
 .control-section {

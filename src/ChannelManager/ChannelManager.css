@@ -1,6 +1,8 @@
 .channel-manager {
     width: 100%;
     margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e0e0e0;
   }
   
 .channel-section-title {
@@ -14,12 +16,17 @@
   justify-content: space-between;
 }
 
+/* Ensure the plus button vertically centers with the title */
+.channel-section-title .add-channel-button {
+  align-self: center;
+}
+
 /* Add channel area */
 .add-channel-section {
   display: flex;
   flex-direction: row;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 0;
   position: relative;
 }
 
@@ -92,15 +99,23 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 190px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px; 
+  scrollbar-width: none;      
+  -ms-overflow-style: none;   
 }
+.selected-channels::-webkit-scrollbar { width: 0; height: 0; }
 
 .channel-item {
   display: flex;
   align-items: center;
-  padding: 8px;
+  padding: 5px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  min-height: 30px; 
 }
 
 /* Color picker */
@@ -110,7 +125,7 @@
   border: none;
   border-radius: 3px;
   cursor: pointer;
-  margin-right: 4px;
+  margin-right: 2px;
 }
 
 .color-picker::-webkit-color-swatch-wrapper {
@@ -127,16 +142,45 @@
   font-size: 10px;
   color: #fff;
   margin-right: 10px;
-  min-width: 50px;
+  /* fixed column width, ensure right slider is equal length; overflow with ellipsis */
+  width: 40px;
+  flex: 0 0 40px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: default;          /* avoid text cursor */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;        /* prevent text selection */
 }
 
 /* Range slider container */
 .range-slider-container {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0; /* allow correct shrinkage when fixed column exists, keep slider equal length */
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin-right: 10px;
+  margin-right: 4px;
+}
+
+/* Auto button: small flat button to avoid taking too much space */
+.auto-button {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  font-size: 9px;
+  padding: 1px 4px;
+  margin-right: 2px;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.auto-button:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 /* Dual-end slider container */

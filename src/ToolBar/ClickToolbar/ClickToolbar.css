@@ -1,0 +1,55 @@
+/* ClickToolbar - floating toolbar styles */
+.click-toolbar {
+  position: absolute;
+  transform: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  /* Make toolbar fully opaque and ensure it sits above selection outlines */
+  background: rgba(28,28,31,1.0);
+  color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  z-index: 3000;
+  backdrop-filter: blur(2px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.tb-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  outline: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 0.15s ease-in-out, transform 0.1s ease;
+}
+.tb-btn:hover {
+  background: rgba(255,255,255,0.12);
+}
+.tb-btn:active { transform: translateY(1px); }
+
+.tb-btn-disabled,
+.tb-btn-disabled:hover,
+.tb-btn-disabled:active {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+  transform: none;
+}
+.tb-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255,255,255,0.08);
+  margin: 0 2px;
+}
+.tb-close {
+  color: #ffb3b3;
+}
+
+

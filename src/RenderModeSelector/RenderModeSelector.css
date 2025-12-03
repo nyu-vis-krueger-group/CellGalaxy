@@ -111,7 +111,6 @@
 
 /* Additional styles when 3D mode is active */
 .toggle-switch input:checked + .toggle-slider::after {
-  content: "3D";
   position: absolute;
   top: 50%;
   left: 50%;

@@ -1,0 +1,49 @@
+.group-toolbar {
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  background: rgba(16,18,24,0.9);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  z-index: 6;
+  backdrop-filter: blur(4px);
+}
+.group-toolbar.compare {
+  border-color: rgba(0,200,255,0.35);
+  box-shadow: 0 8px 28px rgba(0,180,255,0.22);
+}
+.gtb-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #e8eaed;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+.group-toolbar.compare .gtb-btn {
+  color: #a7e8ff;
+}
+.group-toolbar.compare .gtb-btn:hover {
+  color: #63d0ff;
+}
+.gtb-btn:hover {
+  color: #7fb3ff;
+}
+.gtb-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(255,255,255,0.12);
+  margin: 0 4px;
+}
+.gtb-close {
+  color: #ff9aa8;
+}
+.gtb-close:hover {
+  color: #ff6b7d;
+}
+

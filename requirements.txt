@@ -18,3 +18,7 @@ pydantic==2.7.1
 python-multipart==0.0.9
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+transformers==4.44.0
+accelerate==0.33.0
+huggingface-hub==0.24.0
+torch>=2.1.0

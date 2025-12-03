@@ -25,6 +25,7 @@ function aliasOf(name) {
 
 // Guard: only allow safe characters/operators
 function isExpressionSafe(expr) {
+  // eslint-disable-next-line no-useless-escape
   return /^[\s\w\d_"'().,!<>=&|+\-/*%\[\]]+$/.test(expr);
 }
 
@@ -213,7 +214,7 @@ export default function Filter({ setFilteredIds = () => {} }) {
     }
   };
 
-  // Try preloading on mount so第一次聚焦更快（若失败不影响，聚焦时仍会再尝试）
+  // Try preloading on mount so the first focus is faster (if it fails, it will retry on focus)
   useEffect(() => { ensureMeta.current(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const columns = useMemo(() => metaList.map((m)=>m.rawName), [metaList]);
@@ -357,16 +358,17 @@ export default function Filter({ setFilteredIds = () => {} }) {
       const rows = rawRows || [];
       if (rows.length === 0) { setFilteredIds(new Set()); setCount(0); return; }
       const exp = (expr || "").trim();
-      if (!exp) { setError("表达式为空"); setFilteredIds(new Set()); setCount(0); return; }
-      if (!isExpressionSafe(exp)) { setError("表达式包含不支持的字符"); setFilteredIds(new Set()); setCount(0); return; }
+      if (!exp) { setError("Expression is empty"); setFilteredIds(new Set()); setCount(0); return; }
+      if (!isExpressionSafe(exp)) { setError("Expression contains unsupported characters"); setFilteredIds(new Set()); setCount(0); return; }
 
       // Build param aliases from known columns (by aliasIndex order)
       const uniqueAliases = Object.keys(aliasIndex);
       let fn;
       try {
+        // eslint-disable-next-line no-new-func
         fn = new Function(...uniqueAliases, `return (${exp});`);
       } catch (e) {
-        setError(`表达式语法错误: ${e?.message || e}`);
+        setError(`Expression syntax error: ${e?.message || e}`);
         setFilteredIds(new Set());
         setCount(0);
         return;
@@ -377,7 +379,7 @@ export default function Filter({ setFilteredIds = () => {} }) {
         const zeros = new Array(uniqueAliases.length).fill(0);
         void fn(...zeros);
       } catch (e) {
-        setError(`表达式不可执行: ${e?.message || e}`);
+        setError(`Expression is not executable: ${e?.message || e}`);
         setFilteredIds(new Set());
         setCount(0);
         return;
@@ -558,9 +560,33 @@ export default function Filter({ setFilteredIds = () => {} }) {
         </div>
       )}
 
-      {/* Simplified UI: no contextual hint below */}
+      {columnHint && (
+        <div
+          className="filter-hint"
+          style={{ marginTop: 6, fontSize: 12, color: "#999" }}
+        >
+          {columnHint}
+        </div>
+      )}
 
-      {/* Simplified: hide footer chips and status */}
+      {error && (
+        <div
+          className="filter-error"
+          style={{ marginTop: 4, fontSize: 12, color: "#ff6b6b" }}
+        >
+          {error}
+        </div>
+      )}
+
+      {count != null && (
+        <div
+          className="filter-count"
+          style={{ marginTop: 2, fontSize: 12, color: "#ccc" }}
+        >
+          {count} matched cells
+        </div>
+      )}
+
     </div>
   );
 }

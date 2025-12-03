@@ -1,0 +1,25 @@
+/* LocalFeaturePanel scoped styles */
+
+.hist-wrapper {
+  position: relative;
+  overflow: visible;
+}
+
+.fixed-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  z-index: 9999;
+  white-space: nowrap;
+}
+
+.metric-pad-right {
+  padding-right: 8px;
+}
+
+

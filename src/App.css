@@ -16,6 +16,8 @@
   flex: 1 1 50%;
   min-width: 0; /* allow DeckGL canvas to shrink */
   border-right: 1px solid rgba(255,255,255,0.2);
+  /* Treat each viewer-pane as a clipping container to prevent tooltips/previews crossing the center line */
+  overflow: hidden;
 }
 
 .viewer-pane:last-child {

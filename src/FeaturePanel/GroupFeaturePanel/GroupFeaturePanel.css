@@ -1,0 +1,65 @@
+/* GroupFeaturePanel - extracted styles */
+
+.gfp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gfp-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.gfp-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gfp-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.gfp-swatch--global {
+  /* match grayscale global violin color */
+  background: rgba(200, 200, 200, 1);
+}
+
+.gfp-swatch--selection {
+  /* match grayscale selection violin color */
+  background: rgba(120, 120, 120, 1);
+}
+
+.gfp-legend-label {
+  color: rgba(235, 235, 240, 0.95);
+  font-size: 12px;
+}
+
+.gfp-violin-canvas {
+  width: 100%;
+  height: 180px;
+  display: block;
+}
+
+.gfp-field-canvas {
+  width: 100%;
+  height: 280px;
+  display: block;
+}
+
+/* Merged from GroupAnalysisPanel.css (shared gallery row layout) */
+.gallery-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  overflow-x: hidden;
+  padding-bottom: 8px;
+}
+
+

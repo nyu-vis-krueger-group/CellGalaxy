@@ -1,4 +1,5 @@
 import React from "react";
+import { RENDER_SPRITES, RENDER_POINTS } from "../constants/render";
 import "./RenderModeSelector.css";
 
 export default function RenderModeSelector({ renderMode, setRenderMode, is3D, setIs3D }) {
@@ -10,8 +11,8 @@ export default function RenderModeSelector({ renderMode, setRenderMode, is3D, se
           <input
             type="radio"
             name="renderMode"
-            value="sprites"
-            checked={renderMode === 'sprites'}
+            value={RENDER_SPRITES}
+            checked={renderMode === RENDER_SPRITES}
             onChange={(e) => setRenderMode(e.target.value)}
           />
           <span className="radio-custom"></span>
@@ -21,8 +22,8 @@ export default function RenderModeSelector({ renderMode, setRenderMode, is3D, se
           <input
             type="radio"
             name="renderMode"
-            value="points"
-            checked={renderMode === 'points'}
+            value={RENDER_POINTS}
+            checked={renderMode === RENDER_POINTS}
             onChange={(e) => setRenderMode(e.target.value)}
           />
           <span className="radio-custom"></span>

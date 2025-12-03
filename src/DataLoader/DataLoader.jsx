@@ -2,11 +2,20 @@
 // useDataLoader.js  (with selection states)
 // =============================
 import { useEffect, useState, useRef, useCallback } from "react";
+import {
+  API_BASE,
+  fetchMeta,
+  fetchCoords,
+  fetchUV,
+  staticAtlasURL,
+  headStaticAtlas,
+  generateAtlasGrayGet,
+  generateAtlasGrayPost,
+  prewarm as prewarmAPI,
+} from "../api/api";
 
-// Development environment (port 3000) defaults to backend 8000; production same-origin can be empty
-const API = (typeof window !== 'undefined' && window.location && window.location.port === '3000')
-  ? 'http://localhost:8000'
-  : '';
+// API base is centralized in ../api/api
+const API = API_BASE;
 
 export default function useDataLoader() {
   const [meta, setMeta] = useState(null);
@@ -28,6 +37,20 @@ export default function useDataLoader() {
   const [renderMode, setRenderMode] = useState('sprites'); // 'sprites' | 'points'
   const [is3D, setIs3D] = useState(false); // 2D/3D toggle
   
+  // —— Clustering overlay settings ——
+  // two independent toggles: color overlay & outline
+  const [clusterColorOn, setClusterColorOn] = useState(false);
+  const [clusterOutlineOn, setClusterOutlineOn] = useState(false);
+  // opacity for color overlay [0..1]
+  const [clusterOpacity, setClusterOpacity] = useState(1.0);
+  // line width (px) for outline mode
+  const [clusterLineWidth, setClusterLineWidth] = useState(1.5);
+  // cluster text annotation (LLM titles/descriptions)
+  const [clusterAnnotationOn, setClusterAnnotationOn] = useState(false);
+  const [clusterAnnotationModel, setClusterAnnotationModel] = useState("MedGemma");
+  // Toggle for the visibility of fixed cluster preview images (off by default, enabled by user)
+  const [clusterPreviewOn, setClusterPreviewOn] = useState(false);
+  
   // UMAP mode settings (kept for compatibility, side-by-side uses both)
   const [useUMAP, setUseUMAP] = useState(false);
 
@@ -46,6 +69,12 @@ export default function useDataLoader() {
       try {
         const result = await task();
         resolve(result);
+      } catch (e) {
+        // Avoid unhandled rejection bubbling up
+        try {
+          console.error("runWithLimit task error", e);
+        } catch {}
+        resolve(undefined);
       } finally {
         limiterRef.current.inFlight--;
         const next = limiterRef.current.queue.shift();
@@ -62,7 +91,11 @@ export default function useDataLoader() {
   // —— Selection related (new) ——
   const [selectionMode, setSelectionMode] = useState('none'); // 'none' | 'box' | 'lasso'
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const clearSelection = () => setSelectedIds(new Set());
+  const [selectedRegions, setSelectedRegions] = useState(() => []); // array of Set<number>
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setSelectedRegions([]);
+  };
   // —— Filtered ids (dim non-matching) ——
   const [filteredIds, setFilteredIds] = useState(() => new Set());
 
@@ -71,6 +104,19 @@ export default function useDataLoader() {
     const span = maxV - minV;
     if (!isFinite(span) || span === 0) return 0;
     return 2 * (v - minV) / span - 1;
+  }
+
+  // —— Utility: derive a reasonable default imageSize from atlas tile size —— 
+  // Requirements: tile=64 → default 1.5; tile=16 → default 0.3; linear interpolation in between.
+  function defaultImageSizeForTile(tile) {
+    const t = Number(tile) || 16;
+    const minTile = 16;
+    const maxTile = 64;
+    const clamped = Math.max(minTile, Math.min(maxTile, t));
+    const ratio = (clamped - minTile) / (maxTile - minTile); // 0..1
+    const minSize = 0.3;
+    const maxSize = 1.5;
+    return minSize + ratio * (maxSize - minSize);
   }
 
   // Build both projections (raw and UMAP) and normalize each set independently
@@ -140,33 +186,16 @@ export default function useDataLoader() {
   const refreshData = useCallback(async () => {
     setLoading(true);
     try {
-      let metaJson = null;
-      try {
-        const metaRes = await fetch(`${API}/meta`, { cache: 'no-store' });
-        if (metaRes.ok) {
-          metaJson = await metaRes.json();
-        } else {
-          try {
-            metaJson = await metaRes.json();
-          } catch {
-            metaJson = { error: "Failed to fetch meta" };
-          }
-        }
-      } catch (err) {
-        console.error("meta fetch failed", err);
-        metaJson = { error: "Failed to fetch meta" };
-      }
+      const abort = new AbortController();
+      let metaJson = await fetchMeta(abort.signal);
       setMeta(metaJson);
 
-      let coords = [];
-      try {
-        const coordsRes = await fetch(`${API}/public/coords.json?ts=${Date.now()}`, { cache: 'no-store' });
-        if (coordsRes.ok) {
-          coords = await coordsRes.json();
-        }
-      } catch (err) {
-        console.warn("coords fetch failed", err);
+      // Reset default size control value based on atlas tile size of current dataset
+      if (metaJson && metaJson.atlas && metaJson.atlas.tile) {
+        setImageSize(defaultImageSizeForTile(metaJson.atlas.tile));
       }
+
+      let coords = await fetchCoords(abort.signal);
       if (!Array.isArray(coords)) coords = [];
       setAllCoords(coords);
       if (coords.length === 0) {
@@ -232,8 +261,12 @@ export default function useDataLoader() {
   const ensureUV = async (chunkId) => {
     if (!meta) return;
     if (chunkUV[chunkId]) return;
-    const uv = await fetch(`${API}/atlas_uv/${chunkId}?tile=${meta.atlas.tile}`).then((r) => r.json());
-    setChunkUV((prev) => ({ ...prev, [chunkId]: uv }));
+    try {
+      const uv = await fetchUV(chunkId, meta.atlas.tile, undefined);
+      setChunkUV((prev) => ({ ...prev, [chunkId]: uv }));
+    } catch (e) {
+      console.error("ensureUV failed", e);
+    }
   };
 
   // Request atlas for a chunk (server-side RGBA synthesis)
@@ -278,11 +311,11 @@ export default function useDataLoader() {
     try {
       await runWithLimit(async () => {
         const t = meta?.atlas?.tile ?? 16;
-        const staticURL = `${API}/public/cache/ch${channel}/tile_${t}/chunk_${chunkId}.png`;
+        const staticURL = staticAtlasURL(channel, t, chunkId);
 
         // 1) First try HEAD to probe static cache at fixed path (avoid duplicate image downloads)
-        let head = await fetch(staticURL, { method: 'HEAD' });
-        if (head.ok || head.status === 304) {
+        const ok = await headStaticAtlas(staticURL, undefined);
+        if (ok) {
           setAtlasByChannel((prev) => ({
             ...prev,
             [chunkId]: { ...(prev[chunkId] || {}), [channel]: staticURL },
@@ -291,20 +324,16 @@ export default function useDataLoader() {
         }
 
         // 2) If not exists, trigger generation (GET alias → fallback to POST on failure)
-        let gen = await fetch(`${API}/atlas/${chunkId}?channel=${channel}&tile=${t}`, { method: 'GET' });
+        let gen = await generateAtlasGrayGet(chunkId, channel, t, undefined);
         if (!gen.ok && gen.status !== 304) {
           if (gen.status === 405 || gen.status === 404) {
-            gen = await fetch(`${API}/atlas/${chunkId}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ channels: [channel], tile: t })
-            });
+            gen = await generateAtlasGrayPost(chunkId, channel, t, undefined);
             if (!gen.ok) {
-              console.error("atlas generate POST failed", gen.status, await gen.text());
+              try { console.error("atlas generate POST failed", gen.status, await gen.text()); } catch {}
               return;
             }
           } else {
-            console.error("atlas generate GET failed", gen.status, await gen.text());
+            try { console.error("atlas generate GET failed", gen.status, await gen.text()); } catch {}
             return;
           }
         }
@@ -347,7 +376,7 @@ export default function useDataLoader() {
     (async () => {
       for (const ch of channels) {
         try {
-          fetch(`${API}/prewarm?channel=${ch}&tile=${t}`, { method: 'POST', keepalive: true }).catch(() => {});
+          prewarmAPI(ch, t);
         } catch {}
       }
     })();
@@ -377,6 +406,22 @@ export default function useDataLoader() {
     renderMode,
     is3D,
     
+    // Clustering overlay
+    clusterColorOn,
+    setClusterColorOn,
+    clusterOutlineOn,
+    setClusterOutlineOn,
+    clusterOpacity,
+    setClusterOpacity,
+    clusterLineWidth,
+    setClusterLineWidth,
+    clusterAnnotationOn,
+    setClusterAnnotationOn,
+    clusterAnnotationModel,
+    setClusterAnnotationModel,
+    clusterPreviewOn,
+    setClusterPreviewOn,
+    
     // UMAP mode (kept for compatibility)
     useUMAP,
 
@@ -385,6 +430,8 @@ export default function useDataLoader() {
     setSelectionMode,
     selectedIds,
     setSelectedIds,
+    selectedRegions,
+    setSelectedRegions,
     clearSelection,
     filteredIds,
     setFilteredIds,

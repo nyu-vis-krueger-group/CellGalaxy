@@ -1,0 +1,32 @@
+.cluster-annotation-title {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  cursor: "default";
+  user-select: none;
+}
+
+.cluster-annotation-description {
+  position: absolute;
+  left: 50%;
+  top: -12px;
+  transform: translate(-50%, -110%);
+  pointer-events: none;
+  width: 320px;
+  max-height: 180px;
+  overflow-y: hidden;
+  text-align: left;
+  white-space: normal;
+}
+
+.cluster-annotation-title-text {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #fff;
+  font-family: Monaco, Menlo, "DejaVu Sans Mono", "Courier New", monospace;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+

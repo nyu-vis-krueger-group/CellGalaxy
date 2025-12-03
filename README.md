@@ -65,50 +65,48 @@ Frontend application will start at `http://localhost:3000`
 
 - **Frontend Interface**: http://localhost:3000
 - **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
 
 ## Data Preparation
 
 Before using the application, you need to prepare the following data files:
+An example here: 
 
-1. **Zarr data file**: Compressed file containing image data
-2. **CSV data file**: File containing coordinates and metadata information
+1. **Zarr data file**: Compressed(zip) file containing image data.
+2. **Raw data(csv)**: File containing spatial and umap position, clustering infomation for each tiles.
+3. **Zooming Cluster(csv)**: File containing hierarchical clustering information.
+4. **Channel List(csv)**: File containing the channels in order.
+5. **Features(npy)**: High dim features from model.
+6. **Meta Data(csv)**: Meta Data for each tile.
 
-### CSV Data Format
+### Zarr Image (Zip): named as output.zarr.zip 
+We should use zarr-2 instead of zarr-3. the dtype should be "u2" and 
+"compressor": {
+    "id": "blosc",
+    "cname": "zstd",
+    "clevel": 3,
+    "shuffle": 1,
+    "blocksize": 0
+  },
+### Raw Data and Zooming Cluster
+Raw Data and Zooming Cluster should be came from the python script `build_multilevel_clusters.py` 
 
-The CSV file should contain the following columns in order:
+To run the script, the input csv file for the python script should contain the following columns in order:
 
 - `cellid`: Unique identifier for each cell
 - `X_centroid`: X coordinate of cell centroid
 - `Y_centroid`: Y coordinate of cell centroid  
-- `name`: Cell name or label
+- `clustering`: Clusters for the whole data 
 - `umap2_x`: UMAP 2D X coordinate
 - `umap2_y`: UMAP 2D Y coordinate
 - `umap3_x`: UMAP 3D X coordinate
 - `umap3_y`: UMAP 3D Y coordinate
 - `umap3_z`: UMAP 3D Z coordinate
-- `[channel_name_1]`, `[channel_name_2]`, ...: Channel data columns (ordered by channel sequence)
 
-The channel columns should match the order of channels in the Zarr data file.
+### Channel List (CSV)
+Two columns: `channel_id`, `channel_name`
 
-## Project Structure
-
-```
-Multi_scale_image_projection/
-├── main.py                 # FastAPI backend main file
-├── requirements.txt        # Python dependencies
-├── environment.yml         # Conda environment configuration
-├── package.json           # Node.js dependencies
-├── public/                # Static files and data directory
-│   ├── output.zarr/       # Zarr data files
-│   ├── data.csv          # CSV data files
-│   └── cache/            # Cache directory
-└── src/                   # React frontend source code
-    ├── App.jsx           # Main application component
-    ├── Viewer/           # Image viewer component
-    ├── Control/          # Control panel component
-    └── ...
-```
+### Features (npy)
+High-dim features from vit(or other) model, each tile is a high-dimensional vector, and the tiles are stored sequentially.
 
 ## License
 

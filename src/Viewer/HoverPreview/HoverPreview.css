@@ -1,0 +1,43 @@
+.hover-preview-tooltip {
+  /* Reuse global .deck-tooltip base styles; only adjust details here. */
+}
+
+.hover-preview-canvas-wrapper {
+  margin-top: 6px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  width: 128px;
+  height: 128px;
+}
+
+.hover-preview-canvas {
+  width: 128px;
+  height: 128px;
+  display: block;
+  /* Use default interpolation so scaled previews look smoother. */
+  image-rendering: auto;
+}
+
+/* White outline for hovered tile (raw / UMAP view) */
+.hover-tile-outline {
+  position: absolute;
+  border-radius: 4px;
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+  z-index: 15;
+}
+
+/* Selected tiles: slightly thinner white border than hover outline. */
+.selected-tile-outline {
+  position: absolute;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  z-index: 14; /* keep below hover outline */
+}
+
+
