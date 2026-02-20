@@ -4,12 +4,12 @@
       "0": {
         "models": {
           "MedGemma": {
-            "title": "Monocytic/Macrophage-like",
-            "description": "This cluster is characterized by high expression of CD117, CD14, CD68, and CD163, and low expression of DNA1, FoxP3, HLADR, and Pancytokeratin. The high CD117 and CD68 levels, along with the low DNA1 and Pancytokeratin, are suggestive of a monocyte/macrophage-like population. The presence of CD14 and CD163 further supports this interpretation, as these markers are commonly expressed in macrophages and monocytes. The low expression of DNA1 and HLADR is consistent with a non-hematopoietic cell type. The UMAP centroid location (3.93, 6.71) indicates a position within the spatial context of the dataset, potentially reflecting a specific region of the lung tissue."
+            "title": "Tumor-Infiltrating Lymphocytes (TILs)",
+            "description": "This cluster likely represents tumor-infiltrating lymphocytes, characterized by high expression of CD3 and CD45RO, consistent with activated T cells. The presence of CD4 and CD8 markers suggests a T cell population, potentially including cytotoxic T cells (CD8a). The expression of FOXP3, a marker for regulatory T cells, may indicate a subset of T cells involved in immune suppression or tolerance. The presence of PD-1 and PDL1 suggests potential immune exhaustion or checkpoint blockade. The epithelial markers (Keratin_570, Ecad_488) and aSMA (alpha-smooth muscle actin) suggest a possible co-existence with tumor cells and stromal cells, respectively. The overall profile is suggestive of an immune response within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "Perivascular CD11c+CD163+ macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD14, and CD163. The cluster also contains some CD117+ cells, which may represent a mixed population of macrophages and mast cells. The low expression of DNA1, FoxP3, HLADR, MPO, and TTF1 suggests that this cluster does not contain significant numbers of lymphoid or epithelial cells. The high expression of CD31 and CD3 suggests that this cluster may contain some endothelial cells or immune cells in close proximity to blood vessels. The high expression of CD4 and CD68 also suggests that this cluster may contain some T cells and other immune cells. The low expression of CD8a and CD94 suggests that this cluster does not contain significant numbers of NK cells. The high expression of CD16 suggests that this cluster may contain some neutrophils. The low expression of Pancytokeratin suggests that this cluster does not contain significant numbers of epithelial cells."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-enriched cluster with high anti-CD3, anti-CD45RO, and aSMA expression, consistent with a myeloid-rich niche. Low CDX2 and PCNA expression suggests limited epithelial contamination. High PD1 expression may indicate an immunosuppressive phenotype."
           }
         }
       }
@@ -18,36 +18,36 @@
       "0": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich, Mesenchymal-like",
-            "description": "This cluster likely represents a mesenchymal-like population, possibly including fibroblasts or myofibrob lasts, given the high expression of CD11c, CD14, CD163, MPO, and CD3. The presence of CD20 and CD3 suggests the possible co-existence of immune cells, potentially involved in tissue remodeling or fibrosis. The low expression of epithelial markers (Pancytokeratin, TTF1) and markers like CD94, HLADR, and DNA1 is consistent with a non-epithelial phenotype. The overall profile suggests a cell type involved in tissue support and potentially immune modulation, possibly contributing to the tumor microenvironment."
+            "title": "Epithelial-like cells",
+            "description": "This cluster likely represents epithelial cells, consistent with the high expression of Keratin_570, Ecad_488, and LaminABC_488. The low expression of markers like CD8a_660, Desmin_555, and Vimentin_555 suggests a non-mesenchymal or non-fibroblastic phenotype. The presence of PCNA_488 indicates potential proliferation, while CDX2_647 may suggest a more differentiated epithelial state. Overall, this cluster is suggestive of a well-differentiated epithelial cell population."
           },
           "BioMistral": {
-            "title": "Immunosuppressive CD11c+CD163+ macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD163, and MPO. The presence of CD14 and CD31 suggests a tissue-resident macrophage phenotype. Low expression of CD94 and HLADR suggests an immunosuppressive state. The presence of CD16 and CD31 may indicate a pro-angiogenic phenotype. Low expression of CD20, CD3, CD4, CD68, CD8a, and TTF1 suggests a lack of lymphoid cells and epithelial cells."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of keratin and E-cadherin, as well as low expression of immune markers. These cells are likely to be part of the malignant epithelial tumor cells in the colorectal cancer tissue."
           }
         }
       },
       "1": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial-like cells with immune cell co-localization",
-            "description": "This cluster likely represents epithelial-like cells, possibly tumor cells, given the high expression of Pancytokeratin and TTF1. The presence of CD117 suggests a potential role in tumor growth or differentiation. The co-localization of immune cells, including CD8a, CD68, and CD14, suggests a potential immune response to the tumor. The low expression of CD20 and CD3 may indicate a lack of B-cell involvement. The overall profile is suggestive of a tumor-associated epithelial cell population interacting with the tumor microenvironment."
+            "title": "Stromal-Like Cells",
+            "description": "This cluster likely represents a stromal component of the tumor microenvironment. The high expression of aSMA, CollagenIV, and CD31, coupled with low expression of epithelial markers (Ecad, Keratin), suggests a fibrotic or extracellular matrix-rich environment. The presence of CD45RO, CD3, and CD4 may indicate the presence of immune cells, potentially macrophages or T cells, contributing to the stromal remodeling. The overall profile is consistent with a quiescent or activated stromal cell population involved in tissue organization and immune modulation."
           },
           "BioMistral": {
-            "title": "Proliferative TTF1+ tumour epithelium",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of pancytokeratin and TTF1. They are also enriched in DNA1, a marker of cell proliferation, and HLADR, a marker of antigen presentation. These cells are surrounded by low-intensity CD11c, CD14, and CD68, suggesting a low immune infiltrate. The cluster is also characterized by low expression of MPO, a marker of neutrophils, and CD20, a marker of B cells. The cluster is enriched in CD117, a marker of mast cells, and CD94, a marker of natural killer cells. The cluster is also characterized by low expression of CD31, a marker of endothelial cells, and CD3, a marker of T cells. The cluster is enriched in CD4, a marker of helper T cells, and FoxP3, a marker of regulatory T cells. The cluster is also characterized by low expression of CD163, a marker of macrophages, and CD16, a marker of natural killer cells."
+            "title": "Macrophage-enriched",
+            "description": "Macrophages are likely enriched in this cluster, which is consistent with the presence of strong CD68 and CD163 signals. The cluster also exhibits a high level of collagen IV, which is indicative of a stromal or extracellular matrix component. The presence of CD31 and CD45RO suggests that this cluster may be located near the tumour–stroma boundary. The low levels of CD4 and CD8a suggest that this cluster is not composed of T cells. The cluster also exhibits a low level of PCNA, which is indicative of a non-proliferative state."
           }
         }
       },
       "2": {
         "models": {
           "MedGemma": {
-            "title": "Monocyte-Rich Area",
-            "description": "This cluster likely represents a monocyte-rich area, consistent with the high expression of CD68 and MPO. The low expression of CD8a and TTF1 suggests a less activated or differentiated state compared to other immune cell populations. The presence of CD14 and CD163 could indicate a macrophage-like phenotype, potentially involved in tissue remodeling or immune suppression. The high Pancytokeratin expression may indicate epithelial cell presence, suggesting a possible interaction between the monocyte-rich area and the tumor microenvironment."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), characterized by high expression of markers associated with macrophage polarization and tissue remodeling. The high levels of CD68, CD163, and Vimentin, along with low expression of CD45 and CD3, are consistent with an M2-like macrophage phenotype. The presence of CDX2 and LaminABC suggests a role in tumor cell interactions and tissue support. The elevated PCNA indicates potential proliferation, while the low CollagenIV suggests a less fibrotic environment. Overall, this cluster is suggestive of a TAM population contributing to tumor progression and immune suppression."
           },
           "BioMistral": {
-            "title": "Proliferative CD163+ myeloid–epithelial mix",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD163, CD11c, and CD68. The cluster also contains some T cells (CD3, CD8a), B cells (CD20), and epithelial cells (Pancytokeratin). The presence of CD117 and CD14 suggests that some mast cells and monocytes may also be present. The cluster has a high expression of DNA1, which is consistent with a proliferative state. The low expression of CD94 and HLADR suggests that this cluster is not enriched for activated T cells or other immune cells. The low expression of TTF1 suggests that this cluster is not enriched for lung epithelial cells."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of CDX2, LaminABC, PDL1, and PD1, as well as moderate expression of Ecad and Keratin. These cells are likely to be part of the malignant epithelial tumor cells in the colorectal cancer tissue. They may also be associated with a stromal or immune interface, as suggested by the high expression of CD31 and moderate expression of PCNA. The low expression of CollagenIV and CD68 suggests that these cells are not part of the stromal compartment. The low expression of CD45 and CD45RO indicates that these cells are not part of the immune compartment. The low expression of aSMA, CD8a, CD163, FOXP3, and Vimentin suggests that these cells are not part of the myeloid or lymphoid compartments."
           }
         }
       }
@@ -56,72 +56,72 @@
       "0": {
         "models": {
           "MedGemma": {
-            "title": "Immune-Suppressive Macrophages",
-            "description": "This cluster likely represents a population of macrophages with a suppressive phenotype. The high expression of CD68 and MPO, coupled with low expression of markers associated with activation (e.g., CD117, CD14, CD163, CD16, CD20, CD3, CD4, CD8a, HLADR, FoxP3), suggests a state of immune suppression. The high expression of Pancytokeratin and TTF1 could indicate a tumor-associated macrophage (TAM) population, potentially contributing to the tumor microenvironment. The low expression of DNA1 is consistent with a less actively proliferating cell population. The overall profile is suggestive of a population that may be involved in remodeling the tumor microenvironment and/or suppressing anti-tumor immune responses."
+            "title": "CD4+ T helper cells",
+            "description": "This cluster likely represents CD4+ T helper cells, consistent with the high expression of CD4 and CD45RO, and the presence of FOXP3. The low expression of CD3 and PD1 suggests a potentially less activated state, possibly a regulatory T cell (Treg) population. The presence of CD20 is also suggestive of B cells, although the low expression of CD4 and CD45RO makes this less likely. The high expression of Keratin and aSMA suggests a possible epithelial-mesenchymal transition (EMT) or interaction with the tumor stroma. The presence of CD68 and CD163 suggests the presence of macrophages, which may be involved in immune regulation and tissue remodeling. The low expression of CD8a and PDL1 suggests a less cytotoxic or immune-inhibitory function. The high expression of Vimentin and LaminABC suggests a mesenchymal phenotype. The presence of CDX2 is suggestive of a progenitor cell state."
           },
           "BioMistral": {
-            "title": "Immune-suppressive MPO+ macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD163, and MPO. The cluster also contains low expression of CD68, which is consistent with a macrophage-like phenotype. The presence of CD117 and CD14 suggests that some neutrophils and monocytes may also be present. The low expression of Pancytokeratin and TTF1 suggests that epithelial cells are not a major component of this cluster."
+            "title": "Macrophage-enriched",
+            "description": "Macrophages are likely enriched in this cluster, which is characterized by high expression of anti-CD45RO, CD68, and PDL1, and low expression of CD31 and PCNA. This cluster is also consistent with a high expression of aSMA and Vimentin, suggesting a mesenchymal phenotype. The cluster is likely located in the stroma or at the tumor-stroma interface, given its low expression of CDX2 and high expression of CollagenIV."
           }
         }
       },
       "1": {
         "models": {
           "MedGemma": {
-            "title": "MPO/HLADR+ Epithelial-like Cells",
-            "description": "This cluster likely represents epithelial cells, possibly with a degree of differentiation or activation, given the high expression of MPO and HLADR. The presence of Pancytokeratin and TTF1 further supports this interpretation. The low expression of immune markers like CD3, CD4, CD8, CD11c, CD20, and CD94 is consistent with a non-immune cell population. The high DNA1 intensity suggests a potentially proliferative state. The overall profile is suggestive of a non-immune epithelial cell population, possibly with some degree of activation or differentiation."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), consistent with the high expression of CD68 and CD163, and low expression of CD3 and CD45RO. The elevated PCNA and Keratin suggest a proliferative and epithelial-like phenotype, potentially reflecting their role in tumor progression and remodeling. The presence of PDL1 and FOXP3 may indicate an activated or regulatory state, respectively, within the tumor microenvironment. The high expression of LaminABC and Desmin suggests a mesenchymal component, potentially reflecting the plasticity of TAMs in response to the tumor microenvironment. The overall profile is suggestive of a macrophage-enriched population with potential for both pro-tumor and anti-tumor functions, depending on the specific context."
           },
           "BioMistral": {
-            "title": "Immune-hot MPO/HLADR+ macrophage niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of MPO and HLADR. The cluster also contains some neutrophils (MPO+), and low expression of T cells (CD3-, FoxP3-). The presence of CD11c+ cells suggests that there may be some dendritic cells or other myeloid cells present. The high expression of DNA1 and Pancytokeratin suggests that there may be some epithelial cells present as well. The cluster is likely enriched for immune cells and may represent an inflammatory or immune-hot region."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of epithelial markers such as Keratin and Ecad, as well as PCNA, which is a marker of proliferation. These cells are also characterized by low expression of immune markers such as anti_CD3 and anti_CD45RO, as well as low expression of fibroblast markers such as CollagenIV. The presence of PCNA suggests that these cells are actively proliferating, which is consistent with their epithelial phenotype. The low expression of immune markers suggests that these cells are not part of the immune infiltrate, and the low expression of fibroblast markers suggests that these cells are not part of the stromal compartment. These cells are likely to be part of the tumour epithelium."
           }
         }
       },
       "2": {
         "models": {
           "MedGemma": {
-            "title": "CD117+ Monocytes/Macrophages",
-            "description": "This cluster is likely enriched in CD117+ monocytes/macrophages, given the high expression of CD117 and MPO, and the low expression of CD31, CD3, CD4, and CD8a. The high expression of Pancytokeratin and TTF1 suggests a possible epithelial-like component, potentially reflecting a role in tissue remodeling or immune modulation. The presence of CD14 and CD68 further supports a macrophage-like phenotype. The low expression of CD16, CD163, CD94, and CD20 is consistent with a less activated or differentiated state. The overall profile is suggestive of a myeloid-rich niche with a potential for tissue repair or immune regulation."
+            "title": "Stromal-Like Cells",
+            "description": "This cluster likely represents a stromal component of the tumor microenvironment. The high expression of CD68, CD163, CollagenIV, and aSMA, coupled with low expression of epithelial markers (Ecad, Keratin, CDX2) and immune checkpoint molecules (PD1, FOXP3), is consistent with a fibroblast-like or macrophage-like state. The presence of CD31 suggests a possible role in angiogenesis. The high expression of CD45RO and CD45 suggests a possible role in immune regulation. The overall profile is suggestive of cells involved in tissue remodeling and immune modulation within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "Immune-cold TTF1+ tumour epithelium",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of pancytokeratin and TTF1, and low expression of immune markers. These cells are likely to be proliferative, as indicated by high DNA1 expression."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-enriched cluster with high expression of CD68, CD163, and PDL1, and low expression of anti-CD3, CD45RO, and PD1. High expression of CollagenIV and low expression of PCNA suggest a stromal component. High expression of CD31 and low expression of Keratin 570 suggest an endothelial component. High expression of aSMA and low expression of Ecad suggest a myofibroblastic component. High expression of CDX2 and low expression of LaminABC suggest an epithelial component. High expression of Desmin and low expression of FOXP3 suggest a smooth muscle component."
           }
         }
       },
       "3": {
         "models": {
           "MedGemma": {
-            "title": "FoxP3+ Regulatory T cells",
-            "description": "This cluster is likely enriched with FoxP3+ regulatory T cells, consistent with the high FoxP3 expression. The presence of CD4 and CD20 suggests a T cell population, potentially a subset of regulatory T cells. The low expression of DNA1, Pancytokeratin, and TTF1 is suggestive of a non-epithelial cell type. The co-expression of CD3 and CD8a could indicate a T cell population with a mixed phenotype, possibly including CD8+ regulatory T cells. The overall profile is consistent with a population of regulatory T cells, potentially involved in immune suppression or maintaining immune homeostasis within the tumor microenvironment.\"}\n```\nexpression of CD3 and CD8a could indicate a T cell population with a mixed phenotype, possibly including CD8+ regulatory T cells. The overall profile is consistent with a population of regulatory T cells, potentially involved in immune suppression or maintaining immune homeostasis within the tumor microenvironment."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), consistent with the high expression of CD68 and CD163. The low expression of CD45 and CD45RO suggests a non-hematopoietic origin. The presence of CDX2 and LaminABC, along with the high expression of Keratin, suggests a possible epithelial-like phenotype, potentially reflecting a role in tumor-stromal interactions or tissue remodeling. The expression of PD1 and PDL1 may indicate an immune-suppressive state, consistent with the observed immunosuppressive environment in CRC. The presence of aSMA and Desmin suggests a possible mesenchymal component, potentially reflecting a role in ECM remodeling or tissue organization. The high expression of Ecad_488 and PCNA suggests proliferation, potentially reflecting a role in tumor growth and progression. The overall profile is suggestive of a TAM-like population with potential epithelial and mesenchymal features, contributing to the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "CD11c+CD117+ macrophage/T-cell niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD117, CD163, and CD68. The cluster also contains some T cells (CD3, CD4, CD8a) and B cells (CD20). The presence of CD14 and CD16 suggests that these macrophages may be M2-like. The cluster is characterized by low expression of epithelial markers (Pancytokeratin, TTF1) and DNA1, which is consistent with a non-epithelial cell type. The cluster also contains some CD94+ cells, which may represent NK cells or other myeloid cells. The cluster has a high average intensity for most markers, indicating strong marker expression."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of Ecad_488, CDX2_647, and LaminABC_488, and low expression of Vimentin_555 and CollagenIV_647. These cells are likely to be part of the malignant epithelial tumour cells in the colorectal cancer tissue. They may also be associated with stromal fibroblasts, as indicated by high expression of LaminABC_488."
           }
         }
       },
       "4": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich, Fibroblast-associated",
-            "description": "This cluster likely represents a region of the tumour microenvironment characterized by a high density of immune cells, particularly macrophages and possibly fibroblasts. The elevated expression of CD68 and CD163, along with CD117 and CD31, suggests a macrophage-rich niche. The presence of CD94 and CD117 could indicate the presence of certain myeloid cell subsets. The low expression of epithelial markers (Pancytokeratin, TTF1) and B-cell markers (CD20) is consistent with a non-epithelial, immune-dominant environment. The high expression of CD3 and CD8a could indicate the presence of cytotoxic T cells. The presence of FoxP3 is suggestive of regulatory T cells, which may be involved in modulating the immune response within the tumour microenvironment. The overall picture is suggestive of an immune-rich, fibroblast-associated region with potential for immune regulation."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents a population of tumor-associated macrophages (TAMs). The high expression of CD68 and CD163, along with low expression of CD3 and CD45RO, is consistent with an M2-like macrophage phenotype. The presence of PDL1 and PCNA suggests a role in tumor promotion and proliferation. The expression of Keratin and CDX2 may indicate a role in the tumor microenvironment. The overall profile is suggestive of a macrophage-enriched niche, potentially contributing to immunosuppression and tumor progression. The presence of CD45RO suggests a possible presence of memory macrophages."
           },
           "BioMistral": {
-            "title": "FoxP3+ CD117+CD163+ macrophage niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD117, CD163, and CD68. The cluster also contains low expression of CD11c, MPO, and CD20, suggesting a lack of neutrophils, eosinophils, and B cells. The presence of CD94 and FoxP3 may indicate a mixed population of macrophages and regulatory T cells. The cluster has a high average intensity for DNA1, which could be indicative of a high cell density or a high number of nuclei per cell. The cluster also has low expression of Pancytokeratin and TTF1, suggesting a lack of epithelial cells."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of CDX2, Keratin, and LaminABC, as well as low expression of immune markers such as anti_CD3, anti_CD45RO, and CD4. These cells are likely to be part of the malignant epithelial tumor cells in the colorectal cancer tissue. They may also be associated with a stromal or immune-enriched microenvironment, as suggested by the high expression of CD31 and PCNA, as well as the low expression of CollagenIV."
           }
         }
       },
       "5": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–lymphoid niche",
-            "description": "Cluster 5 likely represents epithelial-like cells, consistent with the high expression of Pancytokeratin and TTF1. The presence of CD117 and CD20 suggests a possible co-existence with lymphoid cells. The low expression of myeloid markers (CD68, CD14, CD163, MPO, CD31) and the absence of CD3 and CD8a, along with the presence of CD11c, suggests a potential interaction with immune cells, possibly a regulatory or immune-modulating role. The overall profile is suggestive of a cell type involved in tissue remodeling or immune response, possibly a cell of epithelial origin with immune cell interaction."
+            "title": "Tumor-Infiltrating Lymphocytes",
+            "description": "This cluster likely represents a population of T cells, possibly including CD4+ helper T cells and CD8+ cytotoxic T cells. The high expression of FOXP3 suggests a regulatory T cell (Treg) component, while the presence of CD45RO indicates memory T cells. The expression of CD20 is suggestive of B cells. The overall profile is consistent with an immune response within the tumor microenvironment, potentially involved in modulating the tumor's growth or suppressing other immune cells. The presence of PD-1 and PDL1 may indicate immune exhaustion or immune checkpoint blockade activity. The expression of CD3 and CD45 is suggestive of T cells. The expression of CD68 is suggestive of macrophages. The expression of CD163 is suggestive of M2 macrophages. The expression of CD8a is suggestive of cytotoxic T cells. The expression of CD4 is suggestive of helper T cells. The expression of CD20 is suggestive of B cells. The expression of CD45RO is suggestive of memory T cells. The expression of CD31 is suggestive of endothelial cells. The expression of CD34 is suggestive of hematopoietic stem cells. The expression of CD117 is suggestive of mast cells. The expression of CD14 is suggestive of monocytes. The expression of CD16 is suggestive of NK cells. The expression of CD19 is suggestive of B cells. The expression of CD138 is suggestive of plasma cells. The expression of CD22 is suggestive of B cells. The expression of CD33 is suggestive of myeloid cells. The expression of CD36 is suggestive of myeloid cells. The expression of CD40 is suggestive of B cells. The expression of CD45 is suggestive of T cells. The expression of CD45RO is suggestive of memory T cells. The expression of CD69 is suggestive of T cells. The expression of CD73 is suggestive of T cells. The expression of CD80 is suggestive of T cells. The expression of CD86 is suggestive of T cells. The expression of CD127 is suggestive of T cells. The expression of CD135 is suggestive of T cells. The expression of CD140b is suggestive of T cells. The expression of CD154 is suggestive of T cells. The expression of CD155 is suggestive of T cells."
           },
           "BioMistral": {
-            "title": "Epithelial-like",
-            "description": "Epithelial-like cells with high TTF1 and Pancytokeratin expression, low immune markers, and low proliferation markers. Consistent with tumour cells."
+            "title": "Macrophage-enriched",
+            "description": "Macrophages are likely enriched in this cluster, which is characterized by high expression of aSMA, CD68, and CD163, and low expression of CD31 and PCNA. This cluster is consistent with a stromal or immune-enriched region of the tumour microenvironment."
           }
         }
       }
@@ -130,120 +130,120 @@
       "0": {
         "models": {
           "MedGemma": {
-            "title": "M2-like Macrophages",
-            "description": "This cluster likely represents M2-like macrophages, consistent with the high expression of CD68 and CD163, and low expression of CD14 and CD8a. The elevated CD117 suggests potential involvement in tumor angiogenesis or stromal remodeling. The low expression of TTF1 and Pancytokeratin is suggestive of a non-epithelial phenotype. The overall profile is consistent with a tumor-associated macrophage population that may contribute to immunosuppression or tissue repair within the tumor microenvironment."
+            "title": "FOXP3+ Regulatory T Cells",
+            "description": "This cluster likely represents a population of regulatory T cells (Tregs), characterized by high expression of FOXP3 and CD4. The presence of CD45RO suggests a memory phenotype. The low expression of proliferation markers (PCNA) and epithelial markers (Ecad, Keratin) is consistent with a quiescent or terminally differentiated state. The expression of CD20 and CD8a may indicate a mixed population of CD4+CD20+CD8+ Tregs, or a subset of CD4+CD20+ Tregs with some CD8+ expression. The presence of PD-1 and PDL1 suggests potential immune suppression or exhaustion. The expression of CD68 and CD163 may indicate the presence of macrophages or other myeloid cells within the Treg compartment, potentially contributing to their suppressive function. The overall profile is suggestive of a regulatory T cell population, possibly with some degree of activation or exhaustion, and potentially interacting with other immune cells within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "M2-like CD68+CD163+ macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD68 and CD163. The cluster also contains some neutrophils (MPO) and CD117+ cells, which may be mast cells or other myeloid cells. The low expression of CD14 and CD8a suggests that this is not a lymphoid-rich region. The low expression of TTF1 and Pancytokeratin suggests that this is not an epithelial-rich region. The low expression of DNA1 suggests that this is not a region with high apoptotic activity. The high expression of CD31 and CD94 suggests that this is a region with some vascular and lymphoid components, respectively. The low expression of HLADR suggests that this is not a region with high immune activation. Overall, this cluster is likely a region with high myeloid infiltration and low lymphoid infiltration."
+            "title": "Tumour-associated macrophages",
+            "description": "Macrophages are a heterogeneous population of immune cells that play a crucial role in the tumour microenvironment. They can be divided into two main subtypes: M1-like and M2-like macrophages. M1-like macrophages are pro-inflammatory and are associated with a good prognosis, while M2-like macrophages are anti-inflammatory and are associated with a poor prognosis. This cluster is enriched for markers associated with M2-like macrophages, such as CD163 and PDL1, and is also positive for CD68, a marker of all macrophages. The cluster is also positive for FOXP3, a marker of regulatory T cells, which are known to be associated with M2-like macrophages. The cluster is also positive for CD45RO, a marker of memory T cells, which are known to be associated with M1-like macrophages. The cluster is also positive for CD45, a marker of all leukocytes, and is negative for markers of other immune cells, such as CD20 and CD3. The cluster is also positive for markers of epithelial cells, such as CDX2 and Ecad, which may indicate that the macrophages are in close proximity to epithelial cells. The cluster is also positive for markers of fibroblasts, such as CollagenIV and aSMA, which may indicate that the macrophages are in close proximity to fibroblasts. The cluster is also positive for markers of proliferation, such as PCNA, which may indicate that the macrophages are actively proliferating. Overall, this cluster is consistent with a population of M2-like macrophages that are in close proximity to epithelial cells and fibroblasts and are actively proliferating."
           }
         }
       },
       "1": {
         "models": {
           "MedGemma": {
-            "title": "Monocyte-Rich, Activated",
-            "description": "This cluster likely represents a monocyte-rich region with evidence of activation. The high expression of CD68, CD14, and CD163, along with the presence of CD16, suggests an active macrophage population. The presence of CD117, a marker for hematopoietic stem cells and progenitor cells, could indicate a progenitor pool or a region of increased cellularity. The low expression of CD20 and CD3, along with TTF1 and Pancytokeratin, is consistent with a non-epithelial or non-lymphoid cell population. The presence of CD31 and CD3 may suggest endothelial involvement or a transitional state. The overall profile is suggestive of a monocyte-dominated area undergoing activation or differentiation."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), characterized by high expression of markers associated with M2-like polarization, such as CD163 and Vimentin. The presence of CD68 suggests a myeloid origin. The high levels of PCNA and PD1 are suggestive of a proliferative and potentially exhausted state, consistent with their role in tumor progression and immune suppression. The low expression of CD45RO and CD20 is consistent with a non-hematopoietic cell type. The overall profile is suggestive of a TAM population that may be involved in tumor-promoting activities."
           },
           "BioMistral": {
-            "title": "HLADR+ activated macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD68, CD163, and HLADR. These cells may be activated, as suggested by high CD16 expression and moderate CD4 expression. The cluster also contains some T cells, as indicated by CD3 and CD8a expression. The presence of CD14 and CD11c suggests that some monocytes and dendritic cells may also be present. The low expression of CD20 and CD94 suggests that B cells and NK cells are unlikely to be major components of this cluster."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of epithelial markers such as Ecad and Keratin, as well as CDX2. They also express moderate levels of PCNA, which is consistent with proliferation. These cells are likely to be part of the malignant epithelial tumor cells in the colorectal cancer tissue."
           }
         }
       },
       "2": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–B/T interaction",
-            "description": "This cluster likely represents epithelial-like cells, possibly tumor cells, given the high expression of Pancytokeratin and TTF1. The presence of CD20 and CD3 suggests the potential for B-cell interactions or co-expression. The low expression of CD117, CD14, CD68, CD163, CD16, CD31, and CD3 indicates a less myeloid-rich or stromal-like environment. The overall profile is suggestive of a tumor microenvironment with a degree of immune cell interaction, possibly with a focus on epithelial cells. Further investigation is needed to confirm the specific cell type and its role in the tumor microenvironment."
+            "title": "Stromal-Like Cells",
+            "description": "This cluster likely represents a stromal cell population, consistent with the high expression of CollagenIV, aSMA, and CD163. The low expression of epithelial markers (Keratin, Ecad) and proliferation markers (PCNA) suggests a non-epithelial phenotype. The presence of CD68 and CD45RO may indicate the presence of macrophages or other myeloid cells within the stromal niche. The overall profile is suggestive of a quiescent or activated stromal cell, potentially involved in tissue remodeling and immune modulation."
           },
           "BioMistral": {
-            "title": "TTF1+ epithelial cells with immune suppression",
-            "description": "Epithelial-like cells are characterized by high expression of TTF1 and Pancytokeratin, and low expression of CD117, CD14, CD68, CD163, CD94, and CD31. These cells are likely to be part of the tumour microenvironment, possibly representing a subtype of fibroblasts or myofibroblasts. They may also be associated with immune suppression, as suggested by low expression of CD11c and CD3."
+            "title": "Macrophage-enriched",
+            "description": "Macrophages are likely enriched in this cluster, which is consistent with the strong expression of CD163 and CD68. The cluster also shows high expression of aSMA, which may reflect the presence of myofibroblasts. The low expression of PCNA and Keratin suggests that this cluster is not composed of proliferating epithelial cells. The cluster also shows low expression of CD45, which may indicate that it is not composed of immune cells other than macrophages. The high expression of PDL1 and CD20 suggests that this cluster may be associated with immune responses. The cluster also shows high expression of CD31, which may reflect the presence of endothelial cells. The low expression of CollagenIV suggests that this cluster is not composed of stromal cells. The cluster also shows low expression of CDX2, which may indicate that it is not composed of intestinal-like cells. The low expression of LaminABC suggests that this cluster is not composed of nucleated cells. The cluster also shows low expression of Desmin, which may indicate that it is not composed of smooth muscle cells."
           }
         }
       },
       "3": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–CD8 T interaction",
-            "description": "This cluster likely represents epithelial-like cells, possibly tumor cells, exhibiting a high expression of Pancytokeratin and TTF1, suggesting a lung origin. The presence of CD3 and CD8a indicates the potential interaction with immune cells. The low expression of CD163, CD14, and CD68, along with CD117 and CD31, is consistent with a less macrophage-rich or stromal-like environment. The overall profile suggests a tumor cell population interacting with immune cells, possibly in a region with some degree of immune activity. Further investigation is needed to confirm the epithelial nature and the specific immune cell interactions within this cluster."
+            "title": "Tumor-Infiltrating Lymphocytes",
+            "description": "This cluster likely represents a population of tumor-infiltrating lymphocytes (TILs), possibly including T cells. The high expression of anti-CD3 and anti-CD45RO, along with PD1 and PDL1, is suggestive of activated or exhausted T cells. The presence of CD8a and FOXP3 further supports the presence of cytotoxic T cells and regulatory T cells, respectively. The expression of CD20 and CD68 may indicate the presence of B cells and macrophages, respectively, within the TIL population. The expression of CDX2 and LaminABC may indicate the presence of epithelial cells within the TIL population. The overall profile is consistent with a complex immune response within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "TTF1+ tumour epithelium in cold immune niche",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of pancytokeratin and TTF1. They are surrounded by a low-density immune microenvironment, with low expression of CD11c, CD14, CD163, CD68, and HLADR. The presence of CD117 and CD31 suggests a possible association with stromal fibroblasts and endothelial structures, respectively."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of Ecad_488, LaminABC_488, CDX2_647, and low expression of aSMA_660, Vimentin_555, CD31_647. These cells are likely to be part of the malignant epithelial tumour cells in the colorectal cancer tissue."
           }
         }
       },
       "4": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial-like cells with high proliferation",
-            "description": "This cluster likely represents epithelial-like cells, possibly basal or progenitor cells, given the high expression of Pancytokeratin and DNA1. The elevated CD117 suggests increased proliferation and/or stem cell properties. The relatively low expression of immune markers like CD3, CD4, CD8a, and FoxP3 is consistent with a less activated or immune-suppressed state. The presence of TTF1 suggests a lung origin. The overall profile is suggestive of a non-immune cell population with a proliferative capacity."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), consistent with the high expression of CD68 and CD163, and low expression of CD3 and CD45RO. The presence of PCNA suggests a proliferative state, potentially reflecting their role in tumor progression. The expression of PDL1 and Ecadherin may indicate an activated or alternatively activated state, potentially involved in immune modulation and tumor cell interaction. The high expression of Keratin and LaminABC suggests a possible epithelial-like phenotype, potentially reflecting their interaction with tumor cells. The low expression of CD8a and CD45RO is consistent with an immunosuppressive phenotype."
           },
           "BioMistral": {
-            "title": "Basal-like proliferative TTF1+ epithelium",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of Pancytokeratin and TTF1, and low expression of FoxP3, CD11c, CD14, CD163, CD16, CD20, CD31, CD3, CD4, CD68, CD8a, CD94, DNA1, HLADR, MPO, and CD117. These cells are likely to be proliferative, as indicated by high expression of DNA1."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of epithelial markers such as Ecad_488 and Keratin_570, as well as PCNA_488, which is a marker of proliferation. These cells are also characterized by low expression of CollagenIV_647, which is a marker of stromal cells. The presence of PDL1_647 and CD20_488 suggests that these cells may be involved in immune responses. The presence of CD31_647 suggests that these cells may be located in the vasculature. The presence of CD68_555 and CD163_488 suggests that these cells may be located in the tumor microenvironment and may be involved in immune suppression."
           }
         }
       },
       "5": {
         "models": {
           "MedGemma": {
-            "title": "FoxP3+ Regulatory T cells",
-            "description": "This cluster is likely enriched with FoxP3+ regulatory T cells, consistent with the high FoxP3 expression. The presence of CD4 and CD20 suggests a T cell population, potentially a subset of regulatory T cells. The low expression of CD16, CD31, CD117, MPO, TTF1, and Pancytokeratin is suggestive of a non-hematopoietic or non-epithelial cell type. The co-expression of CD3 and CD8a could indicate a T cell population with a more cytotoxic or suppressive phenotype. The overall profile is consistent with a regulatory T cell population, possibly involved in immune suppression or maintaining immune homeostasis within the tumor microenvironment."
+            "title": "Tumor-Infiltrating Lymphocytes",
+            "description": "This cluster likely represents a population of tumor-infiltrating lymphocytes (TILs), possibly including CD4+ T cells, CD8+ T cells, and/or NK cells. The high expression of CD3, CD45RO, and CD8a, coupled with the low expression of epithelial markers (Ecad, Keratin), suggests a cell type that is not primarily epithelial. The presence of FOXP3, a marker of regulatory T cells, could indicate a subset of regulatory T cells within the TIL population. The high expression of CD45 and CD45RO, along with the low expression of CD20, suggests a T cell population rather than a B cell population. The overall profile is consistent with an immune cell population that is actively infiltrating the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "CD117+CD163+ immunosuppressive macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD117, and CD163. These cells may be involved in tissue remodelling or immunosuppressive states."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-enriched cluster with high expression of anti-CD45RO, CD68, and CD163, and low expression of CDX2 and PCNA. Consistent with a macrophage-enriched niche, this cluster is likely involved in tissue remodelling and immunosuppression."
           }
         }
       },
       "6": {
         "models": {
           "MedGemma": {
-            "title": "FoxP3+ Regulatory T cells",
-            "description": "This cluster likely contains FoxP3+ regulatory T cells, consistent with the high FoxP3 expression and low expression of epithelial markers (Pancytokeratin, TTF1). The presence of CD3, CD4, CD8a, CD68, and CD163 suggests a complex immune environment, potentially including activated T cells, macrophages, and possibly some myeloid-derived suppressor cells (MDSCs). The high CD117 and CD31 expression could indicate a role in angiogenesis or tumor cell interaction. The low CD11c and CD20 expression is consistent with a lack of classical dendritic cells or B cells. The overall profile suggests a potential role in immune suppression or modulation of the tumor microenvironment."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), characterized by high expression of markers associated with macrophage polarization and tissue remodeling. The high expression of CD68 and CD163, along with aSMA and CollagenIV, suggests an M2-like phenotype, potentially involved in tumor progression and immunosuppression. The presence of FOXP3, while low, could indicate a regulatory role within the tumor microenvironment. The overall profile is consistent with a macrophage-enriched population contributing to the tumor's immune evasion strategies."
           },
           "BioMistral": {
-            "title": "CD117+CD163+ myeloid suppressive niche",
-            "description": "A cluster of cells with high expression of macrophage markers (CD117, CD163, CD68) and low expression of lymphoid markers (CD11c, CD20, CD3, CD4, CD8a, FoxP3). The cells are likely to be macrophages, possibly in an activated state, and may be involved in tissue remodelling or immunosuppressive processes."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of keratin and CDX2, as well as low expression of immune markers. These cells are likely to be part of the malignant epithelial tumor cells in the colorectal cancer tissue. They may also include some stromal cells that exhibit an epithelial-like phenotype."
           }
         }
       },
       "7": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–mixed T/B niche",
-            "description": "This cluster likely represents epithelial-like cells, possibly tumor cells, exhibiting a high expression of Pancytokeratin and TTF1, suggesting a lung origin. The presence of CD20 and CD3, along with CD4 and CD8a, indicates a potential interaction with immune cells. The low expression of CD14, CD68, CD163, and CD11c, along with MPO and CD31, suggests a relatively low myeloid or endothelial cell content. The presence of FoxP3 is suggestive of a regulatory T cell population, potentially involved in immune suppression or tolerance within the tumor microenvironment. The overall profile is consistent with a tumor-associated epithelial cell population interacting with a diverse immune cell landscape."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents a population of tumor-associated macrophages (TAMs). The high expression of CD68 and CD163, along with low expression of epithelial markers (Ecad, Keratin), suggests an M2-like phenotype, consistent with their role in tumor promotion and immunosuppression. The presence of PD-L1 and FOXP3 may indicate an activated or regulatory state, potentially involved in immune suppression or modulation. The high expression of aSMA and Desmin suggests a fibrotic or stromal component, potentially reflecting interactions with the tumor microenvironment. The presence of CD45RO suggests a more differentiated or activated state compared to naive macrophages. Overall, this cluster is suggestive of a TAM population with potential regulatory or immunosuppressive functions within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "Epithelial-like",
-            "description": "Epithelial-like cells with high pancytokeratin and TTF1 expression, and low immune markers. Consistent with tumour cells."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of CDX2 and low expression of Ecad. They are also positive for Desmin, aSMA, CollagenIV, and CD8a, suggesting a myoepithelial phenotype. These cells are likely to be part of the tumour epithelium and may represent a subpopulation of tumour cells with a more differentiated phenotype."
           }
         }
       },
       "8": {
         "models": {
           "MedGemma": {
-            "title": "Immune-Suppressive Myeloid Niche",
-            "description": "This cluster likely represents an immune-suppressive myeloid niche, consistent with the low expression of markers associated with activation and effector functions (e.g., CD3, CD4, CD8a, FoxP3). The high expression of markers like CD68, CD163, and MPO suggests a macrophage-rich environment, potentially contributing to tissue remodeling or immunosuppression. The presence of CD11c and CD14 may indicate the presence of monocytes or macrophages. The low expression of epithelial markers (Pancytokeratin, TTF1) and markers associated with T cell activation (CD20, HLADR) is suggestive of a non-epithelial, immune-dominant environment. The high expression of DNA1 may indicate a high proportion of cells undergoing DNA replication, potentially associated with proliferation or repair processes within the niche."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), characterized by high expression of markers associated with macrophage polarization and tissue remodeling. The high levels of CD68 and CD163, along with low expression of CD45RO and CD3, are consistent with an M2-like macrophage phenotype. The presence of CDX2 and LaminABC suggests a role in tumor cell interactions and tissue organization. The elevated PCNA and PDL1 expression may indicate an activated or proliferating state, potentially involved in tumor progression and immune modulation. The overall profile is suggestive of a TAM population contributing to the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "CD11c+CD68+ myeloid-rich niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD68, and MPO. The cluster also contains a mix of other myeloid cells, including neutrophils (CD16) and dendritic cells (CD117). The presence of CD163 and CD14 suggests a monocyte-like phenotype. The low expression of CD31 and CD3 suggests a lack of endothelial and T cells, respectively. The low expression of CD94 and HLADR suggests a lack of NK cells and dendritic cells, respectively. The low expression of TTF1 and Pancytokeratin suggests a lack of epithelial cells. The low expression of DNA1 suggests a lack of nucleated cells. The cluster is likely located in a stromal or immune-cold region of the tumour, given the low expression of CD31 and CD3."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of CDX2, PCNA, PDL1, LaminABC, and Keratin. They are likely to be malignant epithelial tumor cells, which are known to express these markers. The presence of PCNA suggests that these cells are proliferating. The high expression of PDL1 and CDX2 indicates that these cells may be involved in immune evasion and tumor progression. The low expression of anti-CD45RO, CD68, and CD45 suggests that these cells are not infiltrated by immune cells. The high expression of LaminABC and Keratin indicates that these cells have an epithelial phenotype."
           }
         }
       },
       "9": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich, Epithelial-like",
-            "description": "This cluster likely represents a region of active immune response, possibly associated with tumour control or tertiary lymphoid structures. The high expression of markers like MPO, HLADR, Pancytokeratin, and TTF1, along with the presence of CD3, CD8a, and CD4, suggests a significant population of immune cells, including cytotoxic T cells and potentially some helper T cells. The relatively low expression of FoxP3 and CD20, along with the absence of strong B-cell markers, is consistent with a less prominent regulatory T cell or B-cell population. The presence of CD117 and CD68 suggests the presence of myeloid cells, possibly macrophages or dendritic cells, which could be involved in antigen presentation or immune modulation. The overall profile is suggestive of an immune-rich environment with a potential epithelial component."
+            "title": "Stromal-Like Cells",
+            "description": "This cluster likely represents a stromal or extracellular matrix-associated population. The high expression of CD31, CollagenIV, and Vimentin, along with low expression of epithelial markers (Ecad, Keratin), suggests a mesenchymal or fibrotic component. The presence of CD68 and CD163 further supports the presence of macrophages and/or other myeloid cells within the stromal niche. The elevated aSMA expression is consistent with a fibrotic or contractile phenotype. The low expression of T cell markers (anti-CD3, CD4, CD8, PD1, FOXP3) and B cell markers (CD20) is suggestive of a non-immune cell population. The high expression of CD45RO is consistent with a memory cell population. The overall profile is suggestive of a stromal or extracellular matrix-associated population with a fibrotic or contractile phenotype."
           },
           "BioMistral": {
-            "title": "MPO/HLADR+ macrophage–epithelial mix",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of MPO and HLADR. The cluster also contains some pancytokeratin-positive cells, which may represent epithelial contamination. The presence of DNA1 suggests that some cells in the cluster are apoptotic. The cluster is characterized by low expression of CD3, CD20, CD11c, CD94, and CD31, which are markers of T cells, B cells, dendritic cells, NK cells, and endothelial cells, respectively. The cluster also has low expression of FoxP3, which is a marker of regulatory T cells. The high expression of CD14 and CD163, which are markers of monocytes/macrophages, further supports the dominance of macrophages in this cluster."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-enriched cluster with high expression of CD68, CD163, and PDL1, and low expression of CD8a, PCNA, and anti-CD3. This cluster is likely to be composed of macrophages, which are known to be involved in tissue remodelling and immunosuppression in cancer."
           }
         }
       }
@@ -252,180 +252,180 @@
       "0": {
         "models": {
           "MedGemma": {
-            "title": "Monocyte-Rich, Activated",
-            "description": "This cluster likely represents a monocyte-rich region with evidence of activation. The high expression of CD14, CD68, and CD163, coupled with the low expression of CD20 and TTF1, is suggestive of a myeloid-derived cell population. The presence of CD16 and HLADR may indicate an activated state, potentially reflecting a role in antigen presentation or immune surveillance. The low expression of epithelial markers like Pancytokeratin and TTF1 further supports a non-epithelial origin. The overall profile is consistent with a monocyte-dominated area involved in tissue remodeling or immune response."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), characterized by high expression of CD68 and CD163, and low expression of epithelial markers like Keratin and Ecadherin. The presence of CD45RO and CD3 suggests a potential activation state, possibly reflecting an M2-like phenotype associated with tumor promotion. The high levels of aSMA and CollagenIV suggest a role in stromal remodeling and tissue organization within the tumor microenvironment. The presence of FOXP3 is suggestive of regulatory T cells, which can suppress anti-tumor immunity. The overall profile is consistent with a macrophage-enriched population contributing to tumor progression and immune suppression."
           },
           "BioMistral": {
-            "title": "CD163+ monocyte-rich activated niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD163, CD14, and CD68. These cells may be involved in tissue remodelling or immunosuppressive states. Low expression of CD20 and CD94 suggests a lack of B cells and NK cells, respectively. Low expression of TTF1 and Pancytokeratin suggests a lack of epithelial cells. High expression of CD117 and CD11c suggests the presence of mast cells and dendritic cells, respectively. High expression of CD31 and CD3 suggests the presence of endothelial cells and T cells, respectively. High expression of CD4 and HLADR suggests the presence of T helper cells. High expression of MPO suggests the presence of neutrophils. The cluster is likely located in the stroma or interstitial space, rather than within epithelial cells."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-enriched cluster with high expression of CD45, Vimentin, CD20, anti-CD45RO, anti-CD3, and CD4. Low expression of epithelial markers such as Ecad, LaminABC, Keratin, CDX2, and PCNA. Consistent with a macrophage-enriched phenotype, this cluster is likely to be involved in tissue remodelling and immune regulation."
           }
         }
       },
       "1": {
         "models": {
           "MedGemma": {
-            "title": "Malignant Epithelial Cell Cluster",
-            "description": "This cluster likely represents malignant epithelial cells, consistent with the high expression of Pancytokeratin and TTF1. The low expression of CD117, CD14, CD163, CD68, CD31, and HLADR is suggestive of a non-hematopoietic cell type. The presence of CD20 and CD3 may indicate a B-cell component, while CD8a and CD4 could represent T-cell interactions. The overall morphology and marker profile are consistent with a tumor cell population."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), characterized by high expression of markers associated with M2-like polarization, such as CD68 and CD163. The low expression of markers like CD3, CD45RO, and CD8a suggests a less activated or cytotoxic phenotype. The presence of PCNA indicates proliferation, potentially reflecting their role in tumor remodeling and immune suppression. The high expression of CollagenIV and aSMA further supports a stromal-associated phenotype, consistent with their role in tissue remodeling and immune modulation. The presence of CDX2 suggests a possible epithelial origin, potentially reflecting a transition towards an epithelial-like phenotype. Overall, this cluster is suggestive of a TAM population with a pro-tumorigenic role, contributing to immune suppression and tissue remodeling within the CRC microenvironment."
           },
           "BioMistral": {
-            "title": "TTF1+ malignant epithelial cluster",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of pancytokeratin and TTF1, and low expression of immune markers. These cells are likely to be proliferative, as indicated by high DNA1 expression."
+            "title": "Macrophage-enriched",
+            "description": "Macrophages are likely enriched in this cluster, which exhibits high expression of CD68 and CD163, and low expression of CD3 and CD45RO. The cluster also shows high expression of PDL1, which is consistent with an immunosuppressive phenotype. The presence of CD8a and CDX2 suggests a possible epithelial-like phenotype. The cluster is also characterized by high expression of PCNA and CollagenIV, which may indicate a proliferative and stromal phenotype, respectively."
           }
         }
       },
       "2": {
         "models": {
           "MedGemma": {
-            "title": "Myeloid-rich area",
-            "description": "This cluster likely represents a myeloid-rich niche, consistent with the high expression of CD68, MPO, and CD163. The low expression of epithelial markers (Pancytokeratin, TTF1) and immune markers (CD3, CD4, CD8a, CD20, CD94) suggests a non-epithelial, non-lymphoid component. The presence of CD117 and CD11c could indicate myeloid progenitors or activated myeloid cells. The overall profile is suggestive of a tissue remodeling or immunosuppressive environment, potentially contributing to tumour progression."
+            "title": "Regulatory T cells",
+            "description": "This cluster likely represents regulatory T cells (Tregs), consistent with the high expression of FOXP3 and CD20. The presence of CD4 and CD45RO further supports this interpretation. The low expression of proliferation markers (PCNA) and epithelial markers (Ecad, Keratin) suggests a non-proliferative, non-epithelial state. The expression of PD1 and PDL1 may indicate an exhausted or suppressed state. The presence of CD3 and CD8a could indicate a mixed population of Tregs and other immune cells. The overall profile is suggestive of a population involved in immune regulation and suppression within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "CD11c+CD163+ myeloid–epithelial niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c and CD163. The cluster also contains some neutrophils, as indicated by MPO expression. The presence of CD14 and CD68 further supports a macrophage-like phenotype. The cluster is characterized by low expression of CD8a, CD4, and CD3, suggesting a lack of T cells. The low expression of CD94 and HLADR suggests that this cluster is not enriched for NK cells or dendritic cells. The cluster also contains some epithelial cells, as indicated by Pancytokeratin expression. The low expression of TTF1 suggests that these epithelial cells are not likely to be lung epithelial cells. The cluster is characterized by low expression of DNA1, suggesting that it does not contain many apoptotic cells. The cluster is also characterized by low expression of CD117, CD20, and CD31, suggesting that it does not contain many mast cells, B cells, or endothelial cells."
+            "title": "Tumour-associated macrophages",
+            "description": "Macrophages are a heterogeneous population of immune cells that play a crucial role in the tumour microenvironment. They can be divided into two main subtypes: M1-like and M2-like. M1-like macrophages are pro-inflammatory and are associated with a good prognosis, while M2-like macrophages are anti-inflammatory and are associated with a poor prognosis. This cluster is enriched for markers associated with M2-like macrophages, such as CD163 and FOXP3, and is also positive for PD1, which is a marker of exhausted T cells. The cluster is also positive for CD45RO, which is a marker of memory T cells. The cluster is negative for markers associated with M1-like macrophages, such as aSMA and CD8a. The cluster is also negative for markers associated with epithelial cells, such as CDX2 and Keratin. The cluster is positive for markers associated with fibroblasts, such as CollagenIV and Desmin. The cluster is also positive for markers associated with endothelial cells, such as CD31 and PCNA. The cluster is enriched for markers associated with anti-tumour responses, such as CD45RO and PD1, and is also enriched for markers associated with tissue remodelling, such as CollagenIV and Desmin. The cluster is likely to be a mixture of macrophages and fibroblasts, with a possible contribution from endothelial cells. The cluster is consistent with an anti-tumour response, but the presence of exhausted T cells suggests that the response may be impaired."
           }
         }
       },
       "3": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–HLADR+ T niche",
-            "description": "This cluster likely represents epithelial-like cells, possibly tumor cells, exhibiting a high expression of markers like Pancytokeratin and TTF1, suggesting a lung origin. The presence of CD8a and HLADR, along with CD117, indicates potential interaction with immune cells. The low expression of CD20, CD14, CD163, CD16, CD68, and CD94 is consistent with a less activated or less myeloid-rich environment. The overall profile suggests a tumor cell population interacting with the tumor microenvironment, possibly in a relatively immune-active state."
+            "title": "Stromal-Like Cells",
+            "description": "This cluster likely represents a stromal-like population, consistent with the high expression of CollagenIV and CD31, and the presence of aSMA. The low expression of epithelial markers (Ecad, Keratin) and proliferation markers (PCNA) suggests a non-epithelial phenotype. The presence of CD45RO and CD3 may indicate a subset of cells with a more differentiated or activated state, potentially involved in tissue remodeling or immune regulation. The overall profile is suggestive of cells contributing to the extracellular matrix and supporting tissue architecture."
           },
           "BioMistral": {
-            "title": "Immune-interacting TTF1+ tumour epithelium",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of Pancytokeratin and TTF1. They are surrounded by a low-density stroma with low expression of DNA1 and HLADR."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-enriched cluster with high expression of CD68, CD163, and PDL1, and low expression of CDX2, PCNA, and anti-CD3. The cluster is likely to be composed of macrophages and may represent an immune-suppressive niche."
           }
         }
       },
       "4": {
         "models": {
           "MedGemma": {
-            "title": "Myeloid-rich niche",
-            "description": "This cluster likely represents a myeloid-rich niche within the tumour microenvironment. The high expression of CD68, CD163, and CD117, coupled with low expression of epithelial markers (Pancytokeratin, TTF1), suggests a predominance of myeloid cells, potentially including macrophages and/or dendritic cells. The presence of CD14 and CD16 further supports this interpretation. The low expression of CD20 and CD3 is consistent with a lack of B-cell involvement. The overall profile is suggestive of a region involved in tissue remodelling or immunosuppression, possibly contributing to the tumour's survival. The high CD31 expression could indicate angiogenesis, which is common in tumours. The low expression of CD16 and CD94 is not consistent with a strong immune response. The high CD117 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell recruitment. The high CD117 and CD31 expression is suggestive of a proliferative state, possibly related to tumour growth or immune cell"
+            "title": "Tumor-Infiltrating Lymphocytes",
+            "description": "This cluster likely represents a population of tumor-infiltrating lymphocytes (TILs), possibly T cells. The high expression of anti-CD3 and PD1, along with the presence of CD8a and FOXP3, is suggestive of activated cytotoxic T cells or regulatory T cells. The expression of CD45RO and CD45, along with the absence of CD4 and CD20, is consistent with memory T cells. The presence of CDX2 and LaminABC suggests a possible epithelial component, potentially indicating a T cell response to epithelial cells within the tumor microenvironment. The expression of CD163 and CD68 may indicate macrophages or other myeloid cells within the TIL population. The overall profile is consistent with a T cell-rich infiltrate, potentially involved in anti-tumor immunity or immune regulation within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "CD11c+CD14+ activated macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD14, and CD163. The cluster also contains some CD68+ cells, which may represent monocytes or mature macrophages. The presence of CD16+ cells suggests that these macrophages may be activated. The cluster is characterized by low expression of CD20, CD3, CD4, CD8a, and TTF1, which are markers of B cells, T cells, and epithelial cells, respectively. The cluster also contains some CD117+ cells, which may represent mast cells or other myeloid cells. The cluster has a high average intensity for CD11c, CD14, CD163, and CD16, which are markers of macrophages. The cluster has a low average intensity for CD20, CD3, CD4, CD8a, and TTF1, which are markers of B cells, T cells, and epithelial cells, respectively."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of Ecad_488, LaminABC_488, CDX2_647, and PD1_647, and low expression of aSMA_660, Vimentin_555, CD31_647, and CollagenIV_647. These cells are likely to be epithelial cells with a high level of PD-1 expression, which may indicate an activated or exhausted state. The presence of CDX2_647 suggests a possible intestinal or colorectal origin. The low expression of aSMA_660 and Vimentin_555 indicates that these cells are not likely to be myofibroblasts or other mesenchymal cell types. The low expression of CD31_647 and CollagenIV_647 suggests that these cells are not likely to be endothelial cells or stromal cells, respectively. The presence of CD45_PE and anti_CD45RO suggests that these cells may be infiltrating immune cells, but their low expression levels indicate that they are not likely to be major contributors to the immune infiltrate."
           }
         }
       },
       "5": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich, Fibroblast-associated",
-            "description": "This cluster likely represents a region of the tumour microenvironment characterized by a high density of immune cells, particularly macrophages and possibly fibroblasts. The elevated expression of CD163 and CD68, along with the presence of CD117 and CD31, suggests a macrophage-rich niche. The presence of CD8a and FoxP3, along with the low expression of epithelial markers like Pancytokeratin and TTF1, is consistent with an immune-dominant state, potentially reflecting an anti-tumour response or a region of active immune cell recruitment. The high CD117 expression could be associated with tumour-associated macrophages (TAMs) or other myeloid cells involved in tumour progression. The presence of CD94:2.17σ, CD31:1.29σ, CD117:0.84σ, CD163:0.37σ, FoxP3:0.26σ, CD8a:0.21σ, and CD94:2.17σ, CD31:1.29σ, CD117:0.84σ, CD163:0.37σ, FoxP3:0.26σ, CD8a:0.21σ, and CD94:2.17σ, CD31:1.29σ, CD117:0.84σ, CD163:0.37σ, FoxP3:0.26σ, CD8a:0.21σ, and CD94:2.17σ, CD31:1.29σ, CD117:0.84σ, CD163:0.37σ, FoxP3:0.26σ, CD8a:0.21σ, and CD94:2.17σ, CD31:1.29σ, CD117:0.84σ, CD163:0.37σ, FoxP3:0.26σ, CD8a:0.21σ, and CD94:2.17σ, CD31:1.29σ, CD117:0.84σ."
+            "title": "Tumor-Infiltrating Lymphocytes",
+            "description": "This cluster likely represents a population of tumor-infiltrating lymphocytes (TILs), possibly cytotoxic T cells. The high expression of Keratin_570 and Ecad_488 suggests an epithelial-like phenotype, while the high PD1 and PDL1 expression is consistent with T cell exhaustion or an immune-suppressive environment. The presence of CD8a and CD3 suggests T cell lineage. The low expression of CD3 and CD45RO is suggestive of a more differentiated or activated T cell population. The presence of FOXP3 is suggestive of regulatory T cells (Tregs). The overall profile is consistent with a T cell population that has encountered tumor cells and may be exhibiting signs of exhaustion or suppression. The presence of CDX2 is suggestive of a more differentiated T cell population."
           },
           "BioMistral": {
-            "title": "Fibroblast-associated CD163+ macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD14, and CD163. These cells are likely to be involved in tissue remodelling and may contribute to an immunosuppressive state."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of keratin and E-cadherin, as well as low expression of immune markers. These cells may represent a subpopulation of tumor cells or stromal cells with epithelial-like features."
           }
         }
       },
       "6": {
         "models": {
           "MedGemma": {
-            "title": "Lung Cancer Epithelial-Like Cells",
-            "description": "This cluster likely represents epithelial-like cells within the lung tumor microenvironment. The high expression of Pancytokeratin and TTF1, along with CD117, suggests a component of epithelial cells, possibly basal or progenitor cells. The relatively low expression of immune markers like CD4, FoxP3, CD163, and CD68 is consistent with a less activated or immune-suppressed state. The presence of CD31 and CD117 could indicate a role in angiogenesis or tumor cell proliferation. The overall profile is suggestive of a tumor-associated epithelial component, possibly with some degree of stromal interaction."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), consistent with the high expression of CD68 and CD163, and the low expression of CD3 and CD45RO. The presence of CDX2 and LaminABC suggests a potential role in tumor support and remodeling. The elevated PCNA and Keratin expression may indicate an activated or proliferating state, potentially contributing to tumor progression. The overall profile is suggestive of a macrophage-enriched population within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "TTF1+ epithelial component with low immune infiltrate",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of pancytokeratin and TTF1. They are surrounded by a low-density stromal microenvironment with low expression of CD117, CD11c, CD14, CD163, CD16, CD20, CD31, CD3, CD4, CD68, CD8a, CD94, DNA1, FoxP3, HLADR, MPO, and Pancytokeratin. The cluster is also characterized by low expression of CD163, CD68, CD14, CD94, and FoxP3."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of CDX2, LaminABC, PDL1, PCNA, and Keratin. They are likely to be malignant epithelial tumor cells, which are known to express these markers. The low expression of aSMA, Vimentin, anti-CD45RO, CollagenIV, anti-CD3, and anti-CD45 suggests that these cells are not stromal or immune cells. The high expression of CD45_PE and PD1 suggests that these cells may be activated immune cells. The high expression of CD31 and PCNA suggests that these cells are proliferating. The low expression of FOXP3 and CD163 suggests that these cells are not regulatory T cells or macrophages."
           }
         }
       },
       "7": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich, Epithelial-like",
-            "description": "This cluster likely represents a region of active immune cell infiltration and/or epithelial cell proliferation. The high expression of CD3, CD4, CD8a, CD117, and CD31, along with the presence of markers like CD14 and CD68, suggests a significant immune response. The relatively low expression of markers like CD16, CD20, and TTF1, along with Pancytokeratin, is consistent with a non-epithelial or less differentiated cell population. The presence of FoxP3 could indicate a regulatory T cell population, while the high DNA1 expression might reflect increased cell division. Overall, this cluster is suggestive of an immune-rich environment with potential epithelial involvement."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents a population of macrophages, possibly M2-polarized, given the high expression of aSMA, CollagenIV, and CD68. The low expression of CD45RO and CD4 suggests a less activated state compared to T cells. The presence of CD163 and FOXP3 could indicate an alternative activation state or a mixed population. The high expression of CDX2 is consistent with epithelial-like cells, suggesting a possible interaction with the tumor microenvironment. The overall profile is suggestive of a macrophage-enriched niche, potentially involved in tissue remodeling and immunosuppression."
           },
           "BioMistral": {
-            "title": "Immune-rich CD11c+CD163+ macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD14, and CD163. These cells are likely to be involved in tissue remodelling and may contribute to an immunosuppressive state."
+            "title": "Myofibroblastic stroma",
+            "description": "A cluster of cells with high expression of desmin, aSMA, and collagen IV, consistent with a myofibroblastic phenotype. These cells are likely involved in tissue remodelling and may contribute to immunosuppressive signalling in the tumour microenvironment."
           }
         }
       },
       "8": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich epithelial niche",
-            "description": "This cluster likely represents an immune-rich region within the tumour, possibly associated with active epithelial cell proliferation. The high expression of Pancytokeratin and TTF1, along with the presence of CD117 and CD11c, suggests a strong epithelial component. The relatively low expression of CD4, CD8a, and CD163, along with the presence of CD20, may indicate a T cell-rich environment with a possible B cell component. The presence of CD31 and CD3 suggests the presence of T cells. The overall picture is suggestive of an active immune response within the tumour microenvironment, potentially contributing to tumour control or immune-mediated killing."
+            "title": "Epithelial-like cells",
+            "description": "This cluster likely represents epithelial-like cells, consistent with the high expression of Keratin_570, CDX2, and Ecad. The low expression of CD8a, CD45RO, and PCNA suggests a non-activated or quiescent state. The presence of Vimentin and Desmin may indicate a degree of epithelial-mesenchymal transition (EMT) or a mixed epithelial/mesenchymal phenotype. The overall profile is suggestive of a normal or pre-cancerous epithelial cell population."
           },
           "BioMistral": {
-            "title": "Epithelial-like",
-            "description": "Epithelial-like cells with high pancytokeratin and TTF1 expression, and low CD4, CD8a, CD14, CD68, and CD163 expression. Consistent with epithelial cells, which are typically positive for pancytokeratin and TTF1, and negative for myeloid and monocyte markers."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of keratin and CDX2, as well as low expression of immune markers. These cells are likely to be part of the malignant epithelial tumor cells in the colorectal cancer tissue. They may also include some stromal cells that exhibit an epithelial-like phenotype."
           }
         }
       },
       "9": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–myeloid/T cell mix",
-            "description": "This cluster likely represents epithelial-like cells, possibly tumor cells, exhibiting a high expression of Pancytokeratin and TTF1, suggesting a lung origin. The presence of CD11c and CD20, along with moderate expression of CD3 and CD4, suggests interaction with immune cells. The low expression of CD14, CD163, CD16, CD31, CD3, CD4, CD68, CD8a, CD94, HLADR, and CD117 is consistent with a less activated or less myeloid-rich state. The overall profile is suggestive of a tumor cell population interacting with the tumor microenvironment, possibly in a relatively quiescent or less immunosuppressive state."
+            "title": "Stromal-Like Macrophages",
+            "description": "This cluster likely represents a population of macrophages with a pronounced stromal-like phenotype. The high expression of CD68, CD163, and aSMA, coupled with low expression of epithelial markers (Ecad, Keratin, LaminABC) and immune checkpoint molecules (PD1, PDL1), is suggestive of a role in tissue remodeling and ECM deposition. The presence of CollagenIV and CD31 further supports this interpretation, indicating a potential role in angiogenesis and vascular support within the tumor microenvironment. The elevated levels of anti-CD45RO and CD8a could indicate a role in immune regulation or antigen presentation within the tumor. Overall, this cluster is consistent with a population of macrophages contributing to the structural and functional organization of the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "Epithelial-like",
-            "description": "Epithelial-like cells with high pancytokeratin and TTF1 expression, and low immune markers. Consistent with tumour cells."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-enriched cluster with high expression of CD163, CD68, CollagenIV, aSMA, and Vimentin, and low expression of PDL1, Ecad, PCNA, Keratin, and LaminABC. This cluster is likely to be composed of macrophages and myofibroblasts, which are known to be involved in tissue remodelling and immune regulation."
           }
         }
       },
       "10": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich epithelial region",
-            "description": "This cluster likely represents an immune-rich region within the tumour, possibly reflecting an active anti-tumour response. The high expression of markers like CD3, CD4, CD8a, and HLADR, along with TTF1 and Pancytokeratin, suggests a significant presence of cytotoxic T cells, helper T cells, and epithelial cells. The presence of CD16 and CD163, along with CD14, may indicate the presence of macrophages and/or neutrophils. The low expression of CD31 and CD117 is consistent with a less vascularized and less stem-cell-like environment. The presence of FoxP3 is suggestive of regulatory T cells, which could be involved in immune suppression or maintaining immune homeostasis. Overall, this cluster is consistent with an active immune response against the tumour, potentially contributing to tumour control."
+            "title": "Stromal Fibroblast-like",
+            "description": "This cluster likely represents a population of stromal fibroblasts or myofibroblasts. The high expression of CollagenIV, aSMA, and CD31, coupled with low expression of epithelial markers (Ecad, CDX2) and proliferation markers (PCNA, Ki67), is consistent with a fibrotic or remodeling phenotype. The presence of CD45RO and CD3 suggests potential interactions with immune cells, possibly contributing to the tumor microenvironment. The overall profile is suggestive of a cell type involved in tissue organization and potentially contributing to tumor progression."
           },
           "BioMistral": {
-            "title": "Immune-high TTF1+ epithelial region",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of Pancytokeratin and TTF1, and low expression of CD31. They may also express CD8a and HLADR, suggesting a potential immune response. The presence of DNA1 suggests that these cells are actively dividing."
+            "title": "Macrophage-enriched",
+            "description": "Macrophages are likely enriched in this cluster, which is consistent with the presence of aSMA and CD68. The cluster is also characterized by low CD45 and CD4 expression, suggesting a non-T cell population. The presence of FOXP3 and PDL1 may indicate a regulatory or suppressive phenotype. The high expression of CollagenIV suggests a stromal or extracellular matrix component. The cluster is also characterized by low PCNA expression, suggesting a non-proliferative population."
           }
         }
       },
       "11": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich, activated macrophages",
-            "description": "This cluster likely represents activated macrophages, consistent with high CD68 and CD163 expression. The presence of CD11c and MPO further supports this interpretation. The low expression of CD31 and Pancytokeratin suggests a non-epithelial phenotype. The elevated FoxP3 may indicate a regulatory role, potentially dampening inflammation. The overall profile is suggestive of an immune-rich niche with a potential for tissue remodeling."
+            "title": "CD8+ T cell cluster",
+            "description": "This cluster is likely enriched for cytotoxic T cells, given the high expression of CD8a and anti-CD3, and the presence of PD-1 and PDL1. The high levels of CD45 and PCNA suggest proliferation. The low expression of FOXP3 and CD20 is consistent with a T cell population, while the low expression of CD31 and CD163 is less suggestive of myeloid cells. The presence of Keratin and Ecad suggests epithelial cells, which may be present in the tumor microenvironment. The high levels of CD45RO suggest a memory T cell population. The overall profile is suggestive of an activated CD8+ T cell response within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "Immune-rich CD11c+CD163+ macrophage niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD163, and CD68. The cluster also contains a mix of neutrophils (MPO), B cells (CD20), and T cells (CD3). The low expression of CD31, Pancytokeratin, and CD94 suggests a lack of endothelial cells, epithelial cells, and NK cells, respectively. The low expression of HLADR and DNA1 suggests a lack of antigen-presenting cells and apoptotic cells, respectively. The high expression of FoxP3 suggests the presence of regulatory T cells. The cluster is likely located in a stromal or immune-cold region of the tumour, given the low expression of CD4 and CD8a. The cluster may represent a myeloid-rich niche associated with immunosuppression or tissue remodelling."
+            "title": "CD8+ cytotoxic T cells",
+            "description": "High expression of CD8a, anti-CD3, PDL1, and PD1, with low expression of FOXP3, CD31, CD20, aSMA, CollagenIV, and CD163. Consistent with activated cytotoxic T cells. Size: 1.2% of cells. Prevalence: 10.2% of regions. Spatially enriched in tumour glands and stromal–immune interfaces."
           }
         }
       },
       "12": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–myeloid interaction",
-            "description": "This cluster likely represents epithelial-like cells, possibly tumor cells, given the high expression of Pancytokeratin and TTF1. The presence of CD11c and CD20 suggests co-expression with immune cells. The low expression of CD68, CD163, and CD14, along with CD117, is suggestive of a less macrophage-rich or myeloid-depleted environment. The overall profile is consistent with a tumor microenvironment where epithelial cells are interacting with immune cells, potentially in a context of immune modulation or immune-mediated tumor control. Further investigation is needed to determine the specific subtype and functional state of these cells."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents a population of tumor-associated macrophages (TAMs), characterized by high expression of markers associated with macrophage polarization and tumor microenvironment interactions. The high levels of CD68, CD163, and PD-L1, along with the low levels of CD3 and CD45RO, are consistent with an M2-like macrophage phenotype, potentially involved in immunosuppression and tumor promotion. The presence of PCNA suggests active cellular processes, potentially related to tumor cell interactions or tissue remodeling. The high levels of CDX2 and LaminABC are suggestive of epithelial-like cells, possibly representing a component of the tumor stroma or a co-existing epithelial cell population. The overall profile is suggestive of a macrophage-enriched niche with potential interactions with tumor cells and stromal components."
           },
           "BioMistral": {
-            "title": "Epithelial-like",
-            "description": "Epithelial-like cells with high TTF1 and Pancytokeratin expression, low immune markers, and low proliferation markers. Consistent with tumour cells."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of PCNA, PDL1, Ecad, and CDX2, and low expression of aSMA, CD8a, CollagenIV, anti-CD45RO, and anti-CD3. These cells are likely to be malignant epithelial tumor cells, which are known to express these markers. The high expression of PCNA and PDL1 suggests that these cells are proliferating and may be involved in immune evasion, respectively. The low expression of aSMA and anti-CD45RO indicates that these cells are not stromal or immune cells. The low expression of anti-CD3 suggests that these cells are not T cells. The low expression of CollagenIV suggests that these cells are not in a fibrotic environment. The low expression of anti-CD45RO suggests that these cells are not immune cells. The low expression of anti-CD3 suggests that these cells are not T cells. The low expression of aSMA suggests that these cells are not stromal cells. The low expression of CD8a suggests that these cells are not immune cells. The low expression of CollagenIV suggests that these cells are not in a fibrotic environment."
           }
         }
       },
       "13": {
         "models": {
           "MedGemma": {
-            "title": "FoxP3+ Regulatory T cells",
-            "description": "This cluster is likely enriched with FoxP3+ regulatory T cells, consistent with the high FoxP3 expression. The presence of CD4 and CD20 suggests a T cell population, potentially a subset of regulatory T cells. The low expression of CD31, CD16, CD117, and TTF1 is suggestive of a non-hematopoietic or less actively proliferating cell type. The co-expression of CD11c and CD68 may indicate a subset of regulatory T cells that are also involved in immune suppression or tissue remodeling. The overall profile is consistent with a population of regulatory T cells that are likely involved in maintaining immune homeostasis and suppressing inflammation within the tumor microenvironment."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), characterized by high expression of CD68 and CD163, suggesting an M2-like polarization. The presence of PD-L1 and Vimentin further supports this interpretation, as these markers are often upregulated in TAMs and associated with immune suppression and tumor cell interactions. The low expression of epithelial markers (Ecad, Keratin) and proliferation markers (PCNA) is consistent with a non-epithelial phenotype. The presence of CD4 and CD45RO suggests the presence of T cells, which may be interacting with the macrophages. The overall profile is suggestive of a macrophage-enriched population within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "CD11c+CD117+ stromal macrophage niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD117, and CD163. The cluster also contains some CD68+ macrophages and CD14+ monocytes. The presence of CD3+ T cells and CD4+ T cells suggests a mixed immune infiltrate. The low expression of CD31 and CD16 may indicate a lack of endothelial cells and neutrophils, respectively. The low expression of Pancytokeratin and TTF1 suggests a lack of epithelial cells. The cluster is likely located in a stromal or immune-rich region of the tumour."
+            "title": "Macrophage-enriched",
+            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD68, CD163, and PDL1. The cluster also contains some T cells, as indicated by CD4 and CD8a expression. The presence of anti-CD45RO suggests that these T cells may be activated. The cluster also contains some epithelial-like cells, as indicated by CDX2 expression. The cluster is likely activated, as indicated by high expression of CD45 and CD45RO."
           }
         }
       },
       "14": {
         "models": {
           "MedGemma": {
-            "title": "MPO/CD68-rich macrophage-like",
-            "description": "This cluster exhibits high expression of MPO and CD68, suggesting a macrophage-like phenotype. The low expression of FoxP3, CD3, and CD4 is consistent with a non-regulatory state. The presence of CD14 and CD94 further supports the macrophage identity. The high intensity of DNA1 may indicate increased cell proliferation or turnover. The overall profile is suggestive of a macrophage-rich area, potentially involved in tissue remodeling or immune modulation."
+            "title": "Epithelial-like cells with proliferation",
+            "description": "This cluster likely represents epithelial-like cells, consistent with the high expression of Keratin_570 and Ecad_488. The presence of PCNA_488 suggests active proliferation. The low expression of CD3, CD4, CD8a, and CD45RO is consistent with a non-immune cell population. The expression of LaminABC_488 and Desmin_555 may indicate a transition towards a more mesenchymal phenotype. The overall profile is suggestive of a cell undergoing epithelial differentiation or repair."
           },
           "BioMistral": {
-            "title": "MPO+CD68+ macrophage-rich niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD68 and MPO. The cluster also contains some neutrophils (MPO) and dendritic cells (CD11c). The low expression of CD3, CD4, and CD8a suggests a lack of T cells. The low expression of FoxP3 and CD94 suggests a lack of regulatory T cells and NK cells, respectively. The low expression of CD117 and CD163 suggests a lack of mast cells and monocytes/macrophages, respectively. The low expression of CD20 and CD31 suggests a lack of B cells and endothelial cells, respectively. The low expression of Pancytokeratin and TTF1 suggests a lack of epithelial cells. The high expression of DNA1 suggests a high nucleic acid content, which could be indicative of apoptosis or necrosis."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of PCNA, Ecad, LaminABC, and Keratin. They also express PDL1 at low levels. These cells are likely to be malignant epithelial tumor cells, which are known to express these markers. They may also be associated with stromal cells, as indicated by the high expression of CollagenIV."
           }
         }
       }
@@ -434,240 +434,240 @@
       "0": {
         "models": {
           "MedGemma": {
-            "title": "Myeloid-rich, Immune-Suppressive Niche",
-            "description": "This cluster likely represents a myeloid-rich niche, possibly associated with immunosuppression. The high expression of CD68, CD163, and MPO, coupled with low expression of epithelial markers (TTF1, Pancytokeratin) and immune effectors (CD3, CD4, CD8a, CD20, HLADR), is consistent with a macrophage- or monocyte-dominated environment. The presence of CD117 and CD11c could indicate the presence of immature myeloid cells or cells undergoing differentiation. The overall profile suggests a context where immune cell infiltration is limited, potentially contributing to tumor progression or immune evasion. The low expression of CD94 and CD16 may indicate a lack of activation or a specific functional state within the myeloid population. The high CD31 expression could be related to angiogenesis or vascular remodeling within the niche. The low expression of DNA1 is suggestive of a lack of proliferation within this niche."
+            "title": "Stromal-Like Cells",
+            "description": "This cluster likely represents a stromal cell population, consistent with the high expression of Vimentin, CollagenIV, and aSMA. The low expression of epithelial markers (Ecad, Keratin) and immune markers (CD3, CD45) further supports this interpretation. The presence of CD31 suggests a possible endothelial or pericyte component. The high levels of CD45RO and CD68 suggest a possible macrophage or myeloid cell component. The overall profile is suggestive of a quiescent or activated stromal cell, potentially involved in tissue remodeling and immune modulation."
           },
           "BioMistral": {
-            "title": "CD11c+CD14+ immunosuppressive myeloid niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD14, and CD163. The cluster also contains some neutrophils, as indicated by MPO expression. The presence of CD68 and CD16 suggests that these cells may be activated or differentiated macrophages. The low expression of CD31 and CD3 suggests that this cluster is not composed of endothelial or T cells. The low expression of CD8a and CD94 suggests that this cluster is not composed of cytotoxic T cells or NK cells. The low expression of DNA1 and Pancytokeratin suggests that this cluster is not composed of epithelial cells. The low expression of TTF1 suggests that this cluster is not composed of lung epithelial cells. The low expression of CD20 suggests that this cluster is not composed of B cells. The low expression of HLADR suggests that this cluster is not composed of dendritic cells. The low expression of FoxP3 suggests that this cluster is not composed of regulatory T cells."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-enriched cluster with high expression of CD68, CD163, and PDL1, and low expression of CD45 and CD8a. Consistent with a pro-tumorigenic phenotype, this cluster is likely to be associated with immunosuppression and tissue remodeling."
           }
         }
       },
       "1": {
         "models": {
           "MedGemma": {
-            "title": "Myeloid-rich niche",
-            "description": "This cluster likely represents a myeloid-rich niche, consistent with the high expression of CD68, CD163, and MPO. The presence of CD117 and CD31 suggests the presence of myeloid progenitors or mature myeloid cells. The low expression of epithelial markers (Pancytokeratin, TTF1) and lymphoid markers (CD3, CD4, CD8a, CD20, FoxP3) is suggestive of a non-epithelial, non-lymphoid environment. The overall profile is consistent with a tissue remodeling or immunosuppressive state, potentially contributing to tumor progression. The high CD117 and CD31 expression could indicate a role in angiogenesis or tumor cell support. The low expression of DNA1 is consistent with a non-proliferative state. The presence of CD94 could indicate a role in antigen presentation or immune regulation. The overall picture is suggestive of a myeloid-dominated environment with potential for immune modulation."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), consistent with the high expression of CD68 and CD163, and low expression of CD45 and CD3. The presence of PD-L1 and FOXP3 suggests a potential role in immune suppression or modulation, possibly reflecting a polarized M2-like phenotype. The elevated PCNA and LaminABC indicate active cellular processes, potentially related to tissue remodeling or repair. The epithelial markers (Ecad, Keratin) suggest a possible interaction with the tumor epithelium, potentially contributing to tumor progression or immune evasion. The overall profile is suggestive of a macrophage-enriched population with potential regulatory or reparative functions within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "Pro-tumour CD117+CD163+ myeloid niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD117, CD163, and CD14. These cells are consistent with a pro-tumour phenotype, as they can promote angiogenesis and immunosuppression. The presence of CD11c and CD16 may suggest a mixed myeloid population, while the low expression of CD20 and MPO suggests a lack of B cells and neutrophils. The low expression of TTF1 and Pancytokeratin suggests a lack of epithelial cells. The high expression of DNA1 and HLADR may indicate a high proliferative state and potential antigen presentation, respectively. The low expression of CD3 and CD4 suggests a lack of T cells. The low expression of FoxP3 may indicate a lack of regulatory T cells. The low expression of CD68 may indicate a lack of mature dendritic cells. The low expression of CD94 may indicate a lack of NK cells."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of epithelial markers such as Ecad_488 and CDX2_647, as well as nuclear lamin A/C_488. These cells also express moderate levels of PCNA_488, suggesting proliferative activity. They have low expression of immune markers such as anti_CD3, anti_CD45RO, and anti_CD8a, as well as CD68_555, indicating a lack of immune cell infiltration. The presence of PDL1_647 expression suggests that these cells may be involved in immune regulation. The cluster is also characterized by low expression of vimentin_555, suggesting an epithelial phenotype."
           }
         }
       },
       "2": {
         "models": {
           "MedGemma": {
-            "title": "Lung Cancer Epithelial-Like",
-            "description": "This cluster likely represents a population of epithelial cells, possibly with a component of adenocarcinoma. The high expression of Pancytokeratin and TTF1, along with the presence of CD117, suggests a potential epithelial origin. The relatively low expression of immune markers like CD4, CD8, and FoxP3, along with the absence of strong myeloid markers, is consistent with a non-immune-dominant state. The presence of DNA1 suggests a possible epithelial-mesenchymal transition (EMT) process. The overall profile is suggestive of a non-immune-active epithelial component within the tumor microenvironment."
+            "title": "CD8+ T cells in CRC",
+            "description": "This cluster likely represents a population of CD8+ T cells, possibly cytotoxic T lymphocytes (CTLs), given the high expression of CD8a and anti-CD3. The presence of anti-CD45RO suggests a memory T cell population. The low expression of FOXP3 and CD20, along with the high expression of PD1 and PDL1, is consistent with an exhausted or regulatory T cell state. The expression of aSMA and CD68 suggests a possible interaction with the tumor microenvironment, potentially indicating an immune-related response or a transition towards a more suppressive phenotype. The presence of CD163 and CD68 suggests a possible role in phagocytosis and immune regulation. The low expression of epithelial markers (Ecad, Keratin) and high expression of aSMA and CD68 is suggestive of an immune-infiltrated tumor microenvironment."
           },
           "BioMistral": {
-            "title": "Immune-cold TTF1+ epithelial tumour",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of pancytokeratin and TTF1. They are surrounded by low-intensity CD117, CD11c, CD14, CD163, CD16, CD20, CD31, CD3, CD4, CD68, CD8a, CD94, DNA1, FoxP3, HLADR, MPO, and Pancytokeratin. The cluster is enriched for epithelial-like cells and may represent a malignant epithelial tumour."
+            "title": "Macrophage-enriched",
+            "description": "Macrophages are likely enriched in this cluster, which is consistent with the strong expression of anti-CD45RO, anti-CD68, and CD163. The cluster also exhibits moderate expression of aSMA, which may reflect a subpopulation of myofibroblastic macrophages. The low expression of CDX2 and LaminABC suggests that this cluster is not composed of epithelial cells. The cluster is also characterized by low expression of PCNA and CollagenIV, which may indicate a lack of proliferation and stromal remodelling. The high expression of CD31 suggests that this cluster is located in a vascular region of the tissue."
           }
         }
       },
       "3": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich, Macrophage-like",
-            "description": "This cluster likely represents a macrophage-like population, consistent with the high expression of CD68 and CD163. The presence of CD14 and CD16 further supports this interpretation. The low expression of epithelial markers (Pancytokeratin, TTF1) and lymphoid markers (CD20, CD3, CD4, CD8a) suggests a non-epithelial or non-lymphoid origin. The elevated CD11c and CD117 may indicate a more activated or differentiated state. The presence of CD31 suggests possible endothelial involvement. Overall, this cluster is suggestive of a macrophage-like cell type, possibly involved in tissue remodeling or immune regulation within the tumor microenvironment."
+            "title": "Tumor-Infiltrating Lymphocytes (TILs)",
+            "description": "This cluster likely represents tumor-infiltrating lymphocytes (TILs), characterized by high expression of anti-CD3 and PD1, and low expression of aSMA, CD31, and CollagenIV. The presence of CD8a and CD163 suggests a potential for cytotoxic T cells or macrophages, respectively. The expression of CD45RO and CD45PE indicates a possible presence of memory T cells or B cells. The high expression of CDX2 and LaminABC is consistent with the presence of lymphocytes. The overall profile is suggestive of an activated immune response within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "CD163+HLADR+ stromal macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD163, CD14, and HLADR. The cluster also contains some CD68+ cells. The low expression of CD117 and CD94 suggests that this is not a mast cell- or dendritic cell-enriched cluster. The low expression of CD31 and CD3 suggests that this is not a vascular endothelial or T cell-enriched cluster. The low expression of CD20 and CD4 suggests that this is not a B cell- or T cell-enriched cluster. The low expression of Pancytokeratin and TTF1 suggests that this is not an epithelial cell-enriched cluster. The low expression of MPO suggests that this is not a neutrophil-enriched cluster. The low expression of DNA1 suggests that this is not a nucleated cell-enriched cluster. The low expression of FoxP3 suggests that this is not a regulatory T cell-enriched cluster. The cluster is likely located in the stroma or interstitial space, given the low expression of CD31 and CD3."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of Ecad_488, LaminABC_488, CDX2_647, and PD1_647, and low expression of Vimentin_555, aSMA_660, CD31_647, and CollagenIV_647. These cells are likely to be epithelial cells with a high level of cell-cell adhesion and low expression of stromal markers. They may represent a subpopulation of tumor cells or normal epithelial cells."
           }
         }
       },
       "4": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–CD8/HLADR+ niche",
-            "description": "Cluster 4 likely represents epithelial-like cells, possibly tumor cells, given the high expression of Pancytokeratin and TTF1. The presence of CD8a and HLADR suggests potential interaction with cytotoxic T cells or antigen-presenting cells. The low expression of CD14, CD163, CD68, and CD94 is consistent with a less macrophage- or myeloid-rich environment. The high CD117 expression could indicate a proliferative state or a specific subtype of epithelial cell. The overall profile is suggestive of a tumor microenvironment with a degree of immune surveillance, possibly involving T cell-mediated cytotoxicity."
+            "title": "Epithelial-like cells with proliferation",
+            "description": "This cluster likely represents epithelial-like cells, consistent with the high expression of Keratin_570, Ecad_488, CDX2_647, and LaminABC_488. The elevated PCNA_488 suggests active proliferation. The low expression of aSMA_660, CD8a_660, and CD45_PE is consistent with a non-myeloid or immune cell population. The presence of CD31_647 could indicate endothelial cells or cells with vascular connections. Overall, this cluster is suggestive of a population of cells undergoing epithelial differentiation and proliferation, potentially within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "Immune-surveilled TTF1+ epithelial cells",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of Pancytokeratin and TTF1. These cells are surrounded by a dense stroma with low expression of DNA1 and HLADR, suggesting an immune-cold tumour microenvironment."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of PCNA, Ecad, PDL1, and CDX2, and low expression of CD8a, aSMA, CollagenIV, anti-CD45RO, and anti-CD3. These cells are likely to be part of the malignant epithelial tumor cells in the colorectal cancer tissue. They may also be associated with stromal cells, as indicated by the high expression of LaminABC and Desmin."
           }
         }
       },
       "5": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich, MPO-positive region",
-            "description": "This cluster likely represents an immune-rich area within the tumour microenvironment. The high expression of MPO, CD163, CD16, CD11c, and CD3, along with moderate levels of CD14 and CD68, suggests a significant presence of myeloid cells, particularly macrophages and neutrophils. The low expression of epithelial markers (Pancytokeratin, TTF1) and markers associated with immune suppression (FoxP3, HLADR) is consistent with an active immune response. The presence of CD20 and CD8a could indicate the presence of B cells and cytotoxic T cells, respectively, further supporting an immune-mediated response. The high CD31 expression may indicate endothelial cell presence, which is consistent with the immune cell infiltration."
+            "title": "Immune-Activated Epithelial-Like Cells",
+            "description": "This cluster likely represents activated epithelial-like cells, possibly with a degree of immune cell interaction. The high expression of CD45RO and CD3 suggests T cell activation, while the presence of CD20 and CD4 may indicate B cell involvement. The expression of CD8a and CD163, along with PD-L1, could indicate cytotoxic T cells or macrophages with an activated phenotype. The relatively low expression of Keratin and Ecadherin suggests a loss of epithelial characteristics. The presence of aSMA and CD31 may indicate a transition towards a more mesenchymal or endothelial-like state. Overall, this cluster is suggestive of an immune-activated epithelial-like cell population, potentially involved in anti-tumor responses or tissue remodeling."
           },
           "BioMistral": {
-            "title": "CD163+CD16+ macrophage-rich region",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD163, and CD16. The cluster also contains low expression of TTF1, a marker of epithelial cells, and high expression of DNA1, a marker of nuclei. The cluster is consistent with a macrophage-enriched niche."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-enriched cluster with high expression of CD45, Vimentin, CD20, and anti-CD45RO, and low expression of Keratin, LaminABC, Ecad, PCNA, and PDL1. This cluster is likely to be composed of macrophages and may be involved in tissue remodelling."
           }
         }
       },
       "6": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–CD8 T / vessel niche",
-            "description": "This cluster likely represents epithelial-like cells, possibly tumor cells, given the high Pancytokeratin and TTF1 expression. The presence of CD3 and CD8a suggests the presence of cytotoxic T cells, potentially indicating an anti-tumor immune response. The low expression of CD14, CD68, and CD117, along with high CD31, suggests a possible interaction with endothelial cells and/or a lack of strong myeloid cell infiltration. The overall profile is suggestive of a tumor microenvironment with a possible interplay between tumor cells and immune cells, possibly with some degree of immune activation."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), characterized by high expression of markers associated with macrophage polarization and tissue remodeling. The high expression of CD68 and CD163, along with aSMA, suggests an M2-like phenotype, potentially involved in tumor progression and immunosuppression. The presence of FOXP3, while low, could indicate a regulatory role within the tumor microenvironment. The low expression of markers like CD45RO and PD1 is consistent with a less activated or exhausted state. The high expression of Keratin and Vimentin suggests a degree of epithelial-like characteristics, potentially reflecting interactions with the tumor epithelium. Overall, this cluster is suggestive of a TAM population contributing to the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "Proliferative TTF1+ tumour epithelium",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of pancytokeratin and TTF1, and low expression of immune markers such as CD14, CD4, CD68, HLADR, and MPO. These cells are likely to be proliferative, as indicated by high DNA1 expression."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of keratin and CDX2, as well as low expression of immune markers. These cells are likely to be part of the malignant epithelial tumor cells in the colorectal cancer tissue. They may also include some stromal cells that exhibit an epithelial-like phenotype."
           }
         }
       },
       "7": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich, Fibroblast-associated",
-            "description": "This cluster likely represents a region of the tumour microenvironment characterized by a high density of immune cells, particularly macrophages and possibly fibroblasts. The presence of CD68 and CD163 suggests an activated macrophage phenotype, potentially involved in tissue remodeling or immune suppression. The high CD117 expression could indicate the presence of tumour-associated macrophages (TAMs) or other myeloid cells. The low expression of epithelial markers (Pancytokeratin, TTF1) is consistent with a non-epithelial cell population. The presence of CD31 and CD94 could be indicative of endothelial cells or related cell types. The overall picture is suggestive of an immune-rich niche with a potential role in modulating the tumour microenvironment."
+            "title": "Stromal-Like Cell Cluster",
+            "description": "This cluster likely represents a stromal cell population, consistent with the high expression of aSMA and CollagenIV. The presence of CD68 and CD163 suggests the potential involvement of macrophages and/or M2-polarized macrophages, which are often associated with tissue remodeling and immune regulation in the tumor microenvironment. The low expression of epithelial markers (Ecad, Keratin) and proliferation markers (PCNA) is suggestive of a non-epithelial cell type. The presence of CD45RO and CD3 suggests the presence of memory T cells, which may be involved in immune surveillance or regulation within the tumor microenvironment. The overall profile is consistent with a cell type that contributes to the structural and immune context of the tumor."
           },
           "BioMistral": {
-            "title": "CD117+CD163+ fibroblast-associated macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD117, CD163, and CD68. The cluster also contains low expression of CD11c, CD20, MPO, DNA1, TTF1, and Pancytokeratin, suggesting a lack of epithelial or lymphoid cells. The high expression of CD94 and FoxP3 may indicate the presence of regulatory T cells. The cluster has a high average intensity for CD117, CD14, CD163, CD16, CD20, CD31, CD3, CD4, CD68, CD8a, CD94, DNA1, FoxP3, HLADR, MPO, Pancytokeratin, and TTF1, suggesting a high density of cells expressing these markers."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-enriched cluster with high expression of CD163, aSMA, CD68, and CollagenIV, and low expression of CDX2, PD1, LaminABC, PCNA, Ecad, and Keratin. This cluster is likely to be composed of macrophages and fibroblasts, and may represent a stromal-rich niche."
           }
         }
       },
       "8": {
         "models": {
           "MedGemma": {
-            "title": "Myeloid-Rich, Activated",
-            "description": "This cluster likely represents a myeloid-rich niche, possibly associated with tumour-associated macrophages (TAMs) or other myeloid cells. The high expression of CD68, CD163, and CD14, along with the low expression of epithelial markers (Pancytokeratin, TTF1), is suggestive of an activated, pro-tumour state. The presence of CD16 and CD163 could indicate alternative activation pathways. The high CD117 expression may be associated with tumour-associated macrophages or other myeloid cells involved in tumour growth and angiogenesis. The presence of CD4 and CD8a could indicate the presence of T cells, possibly involved in immune regulation or anti-tumour responses. The overall picture is consistent with a myeloid-dominated environment that may be contributing to tumour progression."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), consistent with the high expression of CD163 and the low expression of CD68. The presence of CDX2 and LaminABC suggests a more differentiated or activated state, potentially reflecting a role in tumor progression and immune modulation. The elevated PCNA and PDL1 expression could indicate increased proliferation and immune checkpoint activation, respectively. The overall profile is suggestive of a macrophage-enriched population with potential for immune suppression and tumor support."
           },
           "BioMistral": {
-            "title": "Pro-tumour CD163+ myeloid niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD163, CD68, and CD14. These cells may be involved in tissue remodelling or immunosuppressive states. Low expression of CD94 and MPO suggests a lack of NK cells and neutrophils. The cluster also contains low levels of CD20, CD117, and TTF1, which are markers of B cells, mast cells, and epithelial cells, respectively. The high expression of CD16 and CD31 suggests the presence of some T cells and endothelial cells. The low expression of Pancytokeratin and DNA1 indicates a lack of epithelial cells and nuclei, respectively."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of CDX2, LaminABC, and PCNA, and low expression of aSMA, anti-CD45RO, anti-CD3, CD45_PE, and CollagenIV. These cells are likely to be malignant epithelial tumor cells, which are known to express CDX2 and LaminABC, and are often proliferative, as indicated by high PCNA expression. The low expression of aSMA, anti-CD45RO, anti-CD3, CD45_PE, and CollagenIV suggests that these cells are not stromal or immune cells. The low expression of aSMA and CollagenIV is consistent with the malignant phenotype of these cells, as they are not expected to produce extracellular matrix. The low expression of anti-CD45RO and anti-CD3 suggests that these cells are not immune cells. The low expression of CD45_PE may indicate that these cells are not activated immune cells. Overall, these cells are likely to be malignant epithelial tumor cells that are proliferative and do not express markers associated with stromal or immune cells."
           }
         }
       },
       "9": {
         "models": {
           "MedGemma": {
-            "title": "MPO/CD68-rich Macrophages",
-            "description": "This cluster exhibits a high proportion of MPO and CD68-expressing cells, consistent with macrophages. The elevated CD68 suggests a potentially activated or phagocytic state, while the presence of MPO could indicate increased cellular turnover or tissue damage. The low expression of FoxP3, CD3, and CD4 is suggestive of a non-regulatory or non-T cell population. The overall profile is consistent with a macrophage-enriched niche, potentially contributing to tissue remodeling or immune modulation. The presence of Pancytokeratin and TTF1 suggests epithelial-like cells, possibly representing tumor-associated macrophages or other cells with epithelial characteristics. The high intensity of DNA1 could indicate increased cell proliferation or genomic instability. The low expression of CD8a and CD31 is suggestive of a non-cytotoxic or non-endothelial cell population. The presence of CD14 and CD163 could indicate alternative activation pathways or involvement in lipid metabolism. The overall picture is suggestive of a macrophage-rich environment with potential epithelial involvement and possible activation or proliferation."
+            "title": "Tumor-Infiltrating Lymphocytes",
+            "description": "This cluster likely represents a population of activated T cells, possibly CD8+ cytotoxic T lymphocytes, given the enrichment of CD8a and PD1 markers. The presence of anti-CD3 suggests T cell activation. The low expression of CD4 and CD45RO, along with FOXP3, is consistent with a cytotoxic T cell subset. The high expression of CDX2 and Desmin suggests a possible epithelial-like component, potentially indicating a T cell response to epithelial cells. The overall profile is suggestive of an immune response against tumor cells."
           },
           "BioMistral": {
-            "title": "MPO+CD68+ proliferative macrophage niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD68 and MPO. The cluster also contains some neutrophils (MPO) and dendritic cells (CD11c). The low expression of CD3, CD4, and CD8a suggests a lack of T cells. The low expression of FoxP3 and CD94 suggests a lack of regulatory T cells and NK cells, respectively. The low expression of CD117 and CD163 suggests a lack of mast cells and monocytes/macrophages, respectively. The low expression of CD20 and CD31 suggests a lack of B cells and endothelial cells, respectively. The low expression of Pancytokeratin and TTF1 suggests a lack of epithelial cells. The high expression of DNA1 suggests a high proliferative state. The cluster is likely located in a stromal or immune-cold region of the tumour."
+            "title": "Myofibroblastic stroma",
+            "description": "A cluster of cells with high expression of desmin, aSMA, and collagen IV, consistent with a myofibroblastic phenotype. These cells are likely involved in tissue remodelling and may contribute to immunosuppressive signalling in the tumour microenvironment."
           }
         }
       },
       "10": {
         "models": {
           "MedGemma": {
-            "title": "Lung Cancer Immune-Hot Region",
-            "description": "This cluster likely represents an immune-hot region within the lung tumor microenvironment. The high expression of Pancytokeratin and TTF1, along with CD31 and MPO, suggests a component of epithelial cells and blood vessels. The low expression of CD4, CD8a, CD68, CD163, CD14, and CD94 is consistent with a region dominated by activated immune cells, potentially including T cells and NK cells. The presence of CD20 and CD3 suggests the presence of B-lineage cells, possibly involved in antibody production or antigen presentation. The overall profile is suggestive of an active immune response against the tumor cells, possibly involving a complex interplay between different immune cell types and tumor cells. The high expression of DNA1 and FoxP3 could indicate the presence of regulatory T cells (Tregs) that are modulating the immune response. The high expression of HLADR is consistent with the presence of antigen-presenting cells (APCs) such as dendritic cells (DCs) or macrophages. The high expression of CD117 and CD11c is suggestive of the presence of myeloid cells, such as monocytes or DCs, which are important for antigen presentation and immune cell recruitment. The high expression of CD16 and CD163 is suggestive of the presence of macrophages, which are involved in phagocytosis and antigen presentation. The high expression of CD3 and CD8a is suggestive of the presence of cytotoxic T cells, which are involved in killing tumor cells. The high expression of CD4 is suggestive of the presence of helper T cells, which are involved in coordinating the immune response. The high expression of CD14 and CD68 is suggestive of the presence of macrophages, which are involved in phagocytosis and antigen presentation. The high expression of CD163 is suggestive of the presence of M2 macrophages, which are involved in tissue repair and immunosuppression. The high expression of CD94 is suggestive of the presence of Fc receptors, which are involved in antibody-dependent cell-mediated cytotoxicity (ADCC). The high expression of CD16 is suggestive of the presence of NK cells, which are involved in killing tumor cells. The high expression of CD163 is suggestive of the presence of M2 macrophages, which are involved in tissue repair and immunosuppression. The high expression of CD14 is suggestive of the presence of macrophages, which are involved in phagocytosis"
+            "title": "Tumor-Infiltrating Lymphocytes",
+            "description": "This cluster likely represents a population of activated cytotoxic T cells, consistent with the high expression of anti-CD3 and CD8a. The presence of PD-1 and PDL1 suggests potential immune evasion mechanisms. The low expression of FOXP3 and CD20 is consistent with a T cell population, while the presence of CD45RO indicates a memory phenotype. The expression of Keratin and Ecad suggests a possible epithelial-like component, potentially indicating interaction with tumor cells. The overall profile is suggestive of an immune response against the tumor, possibly with some degree of immune suppression."
           },
           "BioMistral": {
-            "title": "Epithelial-like",
-            "description": "Epithelial-like cells with high pancytokeratin and TTF1 expression, and low CD4, CD8a, and CD68 expression. Consistent with epithelial cells, but may represent tumour cells or reactive epithelial cells."
+            "title": "Tumour-infiltrating lymphocytes",
+            "description": "A cluster of CD8+ cytotoxic T cells and CD4+ helper T cells with high expression of activation markers, likely reflecting an anti-tumour response. FOXP3+ regulatory T cells are also present, which may contribute to immune suppression."
           }
         }
       },
       "11": {
         "models": {
           "MedGemma": {
-            "title": "FoxP3+ Regulatory T cells",
-            "description": "This cluster is likely enriched with FoxP3+ regulatory T cells, consistent with the high FoxP3 expression. The presence of CD4 and CD20 suggests a T cell population, potentially a subset of regulatory T cells. The low expression of CD31, CD117, and TTF1 is suggestive of a non-hematopoietic or non-epithelial cell type. The overall profile is consistent with a population involved in immune suppression or tissue homeostasis."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents a population of tumor-associated macrophages (TAMs), consistent with the high expression of CD68 and CD163. The presence of PD-L1 suggests an immunosuppressive phenotype, potentially reflecting interactions with tumor cells. The expression of CD45RO and CD45PE, along with the low expression of CD3 and CD4, is suggestive of a non-classical M2-like macrophage population. The high expression of Keratin570 and CDX2, along with low expression of LaminABC and Vimentin, is suggestive of an epithelial-like phenotype, possibly reflecting a role in tumor stroma remodeling. The presence of aSMA and Desmin suggests a possible role in stromal interactions and tissue remodeling. The low expression of CD4 and CD3, along with the high expression of CD163, is suggestive of an M2-like macrophage population. The overall profile is consistent with a TAM population involved in tumor progression and immune suppression."
           },
           "BioMistral": {
-            "title": "CD117+CD163+ macrophage/T-cell mix",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD117, and CD163. The cluster also contains some CD68+ macrophages and CD14+ monocytes. The presence of CD3+ T cells and CD4+ T cells suggests a mixed immune infiltrate. The low expression of CD31 and CD16 may indicate a lack of endothelial cells and neutrophils, respectively. The low expression of Pancytokeratin and TTF1 suggests a lack of epithelial cells. The cluster is likely located in a stromal or immune-rich region of the tumour."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of keratin and CDX2, as well as low expression of immune markers such as CD45 and CD3. These cells are likely to be part of the malignant epithelial tumor cells in the colorectal cancer tissue. They may also express markers of proliferation such as PCNA, suggesting active cell division. The presence of lamin A/C and desmin may indicate a more differentiated state. The cells are also characterized by high expression of Ecad, which is a marker of cell-cell adhesion, suggesting a more cohesive phenotype."
           }
         }
       },
       "12": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–myeloid-modulated",
-            "description": "This cluster likely represents epithelial-like cells, possibly tumor cells, exhibiting a high expression of Pancytokeratin and TTF1, suggesting a lung origin. The presence of CD11c and CD68, along with moderate expression of CD14, suggests an interaction with myeloid cells, possibly macrophages or dendritic cells. The low expression of CD163, CD16, CD20, CD3, CD4, CD8a, CD94, CD117, CD31, HLADR, and FoxP3 is consistent with a non-immune cell state or a cell type that is not actively involved in immune responses. The overall profile is suggestive of a tumor microenvironment with epithelial components and immune cell interactions."
+            "title": "FOXP3+ Regulatory T Cells",
+            "description": "This cluster is likely enriched for regulatory T cells (Tregs), as indicated by the high expression of FOXP3. The presence of CD4 and CD20 suggests a possible co-expression with helper T cells or B cells, potentially indicating a regulatory T cell subset. The low expression of proliferation markers (PCNA) and epithelial markers (Ecad, Keratin) is consistent with a quiescent or less actively proliferating state. The presence of CD45RO suggests a memory phenotype. The overall profile is suggestive of a population involved in immune suppression and maintaining immune homeostasis within the tumor microenvironment."
           },
           "BioMistral": {
-            "title": "Immune-cold proliferative TTF1+ epithelium",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of pancytokeratin and TTF1. They are also enriched in DNA1, a marker of cell proliferation. The cluster is depleted of immune markers such as CD11c, CD163, CD4, CD94, and HLADR, suggesting an immune-cold tumour microenvironment. The cluster is also enriched in MPO, a marker of neutrophils, which may contribute to tissue remodelling or immunosuppressive states."
+            "title": "Tumour-associated macrophages",
+            "description": "Macrophages are likely enriched in this cluster, which is characterized by high expression of anti-CD45RO, CD68, and CD163, and low expression of CD31 and PCNA. These cells are likely located in the tumour stroma and may be involved in immunosuppression and tissue remodelling."
           }
         }
       },
       "13": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–CD8/HLADR+ region",
-            "description": "Cluster 13 likely represents epithelial-like cells, consistent with the high expression of Pancytokeratin and TTF1. The presence of HLADR and CD8a suggests potential interaction with immune cells. The low expression of CD31, CD20, CD11c, CD14, CD163, CD16, CD94, CD117, and CD3 indicates a less vascularized and less lymphoid environment. The presence of CD68 and CD163 may suggest macrophage-like cells. The overall profile is suggestive of a tumor-associated epithelial cell population interacting with the tumor microenvironment."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), characterized by high expression of CD68 and CD163, and low expression of epithelial markers (Ecad, Keratin). The presence of Vimentin suggests a mesenchymal or tumor-associated phenotype. The high levels of CD45RO and CD3 are consistent with activated macrophages. The expression of PDL1 is suggestive of an immunosuppressive role within the tumor microenvironment. The presence of CD4 and FOXP3 may indicate a regulatory or alternatively, a T-cell-associated macrophage population. Overall, this cluster is consistent with a macrophage-enriched population within the tumor microenvironment, potentially contributing to immunosuppression and tumor progression."
           },
           "BioMistral": {
-            "title": "Angiogenic proliferative TTF1+ epithelium",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of Pancytokeratin and TTF1. They are also enriched in DNA1, a marker of cell proliferation. These cells are surrounded by low-intensity CD31, a marker of endothelial cells, suggesting a potential role in tumour angiogenesis."
+            "title": "Macrophage-enriched",
+            "description": "A cluster of cells with high expression of macrophage markers (CD68, CD163, Vimentin, PDL1) and low expression of epithelial markers (Ecad, CDX2), consistent with a macrophage-enriched phenotype. This cluster is also characterized by high expression of CD4 and CD45, suggesting a potential role in immune regulation."
           }
         }
       },
       "14": {
         "models": {
           "MedGemma": {
-            "title": "Malignant Epithelial Proliferation",
-            "description": "This cluster likely represents malignant epithelial cells, consistent with the high expression of Pancytokeratin and TTF1, and the presence of DNA1. The high CD117 and CD31 expression suggests active proliferation and angiogenesis. The low expression of FoxP3, CD20, CD68, CD14, and CD163 is consistent with a non-immune-suppressed state. The presence of CD3 and CD8a suggests the presence of cytotoxic T cells, which may be involved in anti-tumor immunity. The overall profile is suggestive of a rapidly proliferating, epithelial-like tumor cell population."
+            "title": "Tumor-Infiltrating Lymphocytes (TILs)",
+            "description": "Cluster 14 likely represents a population of tumor-infiltrating lymphocytes (TILs), characterized by high expression of markers like Keratin 570 and Ecadherin, suggesting an epithelial-like phenotype. The presence of PD-1 and PDL1, along with CD8a, indicates potential T cell exhaustion or immune regulation. The low expression of CD3 and CD4, along with CD45RO, is consistent with a subset of T cells, possibly regulatory T cells (Tregs) or exhausted effector T cells. The presence of FOXP3 is suggestive of Tregs. The overall profile is consistent with a T cell population within the tumor microenvironment, potentially involved in immune suppression or modulation."
           },
           "BioMistral": {
-            "title": "CD117+CD68+ activated macrophage–tumour niche",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD117, CD11c, CD14, and CD68. These cells are likely to be in an activated state, as indicated by high expression of CD117 and CD11c, and low expression of FoxP3 and CD20. The presence of CD163 and CD16 suggests that these macrophages may be M2-like, which are associated with anti-inflammatory and tissue-remodeling functions. The presence of CD31 and CD3 suggests that this region may be vascularized, and the presence of CD4 and CD8a suggests that T cells may also be present. The presence of DNA1 and TTF1 suggests that this region may contain epithelial cells, which could be part of the tumor or part of the stroma. The presence of HLADR suggests that this region may be immunologically active. The presence of MPO suggests that this region may contain neutrophils, which could be part of the immune response or part of the tumor microenvironment. The presence of Pancytokeratin suggests that this region may contain epithelial cells, which could be part of the tumor or part of the stroma."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of keratin and E-cadherin, as well as low expression of immune markers. These cells are likely to be part of the tumor epithelium, which is known to be heterogeneous and may include both malignant and non-malignant cells. The presence of low expression of anti-CD3 and anti-CD45RO suggests that these cells are not part of the immune infiltrate. The low expression of CDX2 and LaminABC also supports the epithelial nature of these cells. The high expression of PD1 and PDL1 suggests that these cells may be involved in immune regulation. The low expression of CD8a and CD163 suggests that these cells are not part of the cytotoxic T cell or macrophage populations, respectively. The high expression of PCNA suggests that these cells may be proliferative."
           }
         }
       },
       "15": {
         "models": {
           "MedGemma": {
-            "title": "Malignant Epithelial Cell-Rich",
-            "description": "This cluster likely represents a region of malignant epithelial cells, consistent with the presence of high levels of Pancytokeratin and TTF1. The elevated expression of CD117 and CD11c, along with MPO, suggests a potential role in cell proliferation and/or differentiation. The low expression of CD4, CD14, CD8a, HLADR, CD94, and DNA1 is suggestive of a less immune-infiltrated or immune-suppressed environment. The presence of CD20 may indicate the presence of B-cells. Overall, this cluster is consistent with a region of epithelial malignancy."
+            "title": "Stromal Fibroblast-like",
+            "description": "This cluster likely represents a stromal fibroblast-like population, consistent with the high CollagenIV and aSMA expression. The low expression of epithelial markers (Ecad, CDX2) and proliferation markers (PCNA) suggests a non-epithelial phenotype. The presence of CD45RO and CD31 indicates a possible role in tissue remodeling and angiogenesis. The elevated CD68 and CD163 suggest potential macrophage-like features, possibly involved in immune regulation and tissue repair. The presence of CD4 and CD8 suggests possible T cell interactions within the stromal niche. Overall, this cluster is suggestive of a stromal component with potential immune modulation and tissue remodeling functions."
           },
           "BioMistral": {
-            "title": "Stroma-rich immune-cold TTF1+ epithelium",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of pancytokeratin and TTF1. They are surrounded by a dense stromal compartment with low expression of CD4 and CD14, and a low density of immune cells with low expression of CD8a and CD94."
+            "title": "Macrophage-enriched",
+            "description": "Macrophages are likely enriched in this cluster, which is consistent with the presence of strong anti-CD45RO and CD68 signals and moderate aSMA expression. The cluster is also characterized by low CDX2 and PCNA expression, suggesting a non-epithelial phenotype. The presence of strong collagen IV expression is consistent with a stromal or extracellular matrix-rich environment."
           }
         }
       },
       "16": {
         "models": {
           "MedGemma": {
-            "title": "Myeloid-rich area",
-            "description": "This cluster likely represents a myeloid-rich niche, consistent with the high expression of CD68, MPO, and CD163. The low expression of CD8a, CD68, HLADR, TTF1, and Pancytokeratin suggests a lack of cytotoxic T cells, a lack of strong antigen presentation, and a lack of epithelial markers. The presence of CD117 and CD11c could indicate the presence of immature myeloid cells or cells with a myeloid-like phenotype. The overall profile is suggestive of a tissue remodeling or immunosuppressive state, potentially contributing to tumour progression. The high CD163 expression could be indicative of M2-like macrophages, which are often associated with tumour promotion. The low expression of CD3 and CD4 could indicate a lack of T cell infiltration, which is consistent with an immune-cold tumour microenvironment. The presence of CD14 and CD16 could indicate the presence of monocytes and macrophages, respectively. The high CD117 expression could be indicative of tumour-associated macrophages (TAMs)."
+            "title": "Stromal-Like Cells",
+            "description": "This cluster likely represents a stromal cell population, consistent with the high expression of aSMA, CollagenIV, and CD68. The low expression of epithelial markers (Ecad, Keratin) and proliferation markers (PCNA) suggests a non-epithelial phenotype. The presence of CD45RO and CD3 may indicate a differentiated or activated stromal cell, potentially involved in tissue remodeling or immune regulation. The high CD163 and CD8a expression could suggest a role in immune modulation or antigen presentation within the tumor microenvironment. The overall profile is suggestive of a stromal cell with potential immune-modulatory functions."
           },
           "BioMistral": {
-            "title": "CD11c+CD14+CD163+ myeloid-rich region",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD11c, CD14, and CD163. The cluster also contains some neutrophils (MPO) and B cells (CD20). The low expression of CD8a and CD68 suggests that this is not a T cell- or dendritic cell-enriched cluster. The low expression of TTF1 and Pancytokeratin suggests that this is not an epithelial-like cluster. The low expression of HLADR and FoxP3 suggests that this is not a lymphoid-enriched cluster. The low expression of DNA1 suggests that this is not a stromal-enriched cluster. The cluster is likely to be located in a region with high immune activity, given the high expression of CD11c, CD14, CD163, and MPO."
+            "title": "Macrophage-enriched",
+            "description": "Macrophage-like cells with high expression of CD163, CD68, and Vimentin, and low expression of epithelial markers. May represent a subtype of tumour-associated macrophages (TAMs) or myeloid-derived suppressor cells (MDSCs)."
           }
         }
       },
       "17": {
         "models": {
           "MedGemma": {
-            "title": "Epithelial–immune-contact zone",
-            "description": "Cluster 17 likely represents epithelial-like cells, consistent with the high expression of Pancytokeratin and TTF1. The presence of CD11c and CD20 suggests co-expression with immune cells. The low expression of CD163, CD94, CD117, CD68, CD31, and HLADR is suggestive of a non-myeloid or non-endothelial phenotype. The overall high intensity of Pancytokeratin and TTF1, coupled with the presence of immune markers, indicates a potential interaction between epithelial cells and the immune microenvironment. Further investigation is needed to determine the specific subtype and functional state of these cells."
+            "title": "Tumor-Associated Macrophages",
+            "description": "This cluster likely represents tumor-associated macrophages (TAMs), characterized by high expression of markers associated with M2-like polarization, such as CD163 and CD68. The presence of PD-L1 and PCNA suggests an activated state, potentially involved in immunosuppression and tumor cell proliferation. The high levels of Collagen IV and Vimentin are consistent with a stromal-like phenotype. The low expression of CD3 and CD45RO is suggestive of an M2-like macrophage phenotype, which are often found in the tumor microenvironment. The presence of CD4 and CD20 could indicate the presence of a mixed population of macrophages and B cells."
           },
           "BioMistral": {
-            "title": "Epithelial-like",
-            "description": "Epithelial-like cells with high TTF1 and Pancytokeratin expression, low immune markers, and low proliferation markers. Consistent with tumour cells."
+            "title": "Macrophage-enriched",
+            "description": "Macrophages are likely enriched in this cluster, which exhibits high expression of CD68 and PDL1, and low expression of CD8a and anti-CD45RO. The cluster also shows high expression of CD45_PE, which may indicate a proliferative state. The presence of CD31 suggests a potential association with the vasculature. The cluster is also characterized by high expression of LaminABC_488 and Desmin_555, which may indicate a stromal or fibroblastic phenotype."
           }
         }
       },
       "18": {
         "models": {
           "MedGemma": {
-            "title": "FoxP3+ Regulatory T cells",
-            "description": "This cluster likely contains FoxP3+ regulatory T cells, consistent with the high FoxP3 expression. The presence of CD3 and CD4 suggests a T cell population. The low expression of CD11c, CD68, CD16, and MPO, along with the absence of Pancytokeratin and TTF1, is suggestive of a non-hematopoietic or non-epithelial cell type. The high CD31 and CD8a expression may indicate a role in tissue remodeling or immune regulation. The overall profile is consistent with a regulatory T cell population involved in modulating the tumor microenvironment."
+            "title": "Tumor-Infiltrating Lymphocytes",
+            "description": "This cluster likely represents a population of tumor-infiltrating lymphocytes (TILs), possibly T cells. The high expression of markers like Keratin, LaminABC, and Desmin, along with the presence of CD3 and CD8a, suggests a possible co-localization with tumor cells. The low expression of CD45RO and CD3, along with the presence of PD1 and FOXP3, is consistent with a subset of T cells that may be exhausted or regulatory. The presence of CD20 and CD4 suggests the presence of B cells. The high PCNA and Ecad expression suggests proliferation and epithelial characteristics. The overall profile is suggestive of a T cell population, possibly with a degree of exhaustion or regulatory function, coexisting with tumor cells."
           },
           "BioMistral": {
-            "title": "CD68+CD163+ immunosuppressive macrophages",
-            "description": "Macrophages are likely the dominant cell type in this cluster, with high expression of CD68 and CD163. These cells may be involved in tissue remodelling or immunosuppressive states."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of PCNA, Ecad, LaminABC, and Keratin. They also express PDL1 at low levels. These cells are likely to be malignant epithelial tumor cells, which are known to express these markers. They may also be associated with stromal cells, as indicated by the high expression of CollagenIV."
           }
         }
       },
       "19": {
         "models": {
           "MedGemma": {
-            "title": "Immune-rich, Epithelial-like",
-            "description": "This cluster likely represents a region of active immune infiltration and epithelial cell presence. The high expression of markers like CD11c, CD16, CD20, and Pancytokeratin, alongside the presence of CD3 and CD4, suggests a T cell-rich environment with possible B cell involvement. The presence of TTF1 and MPO could indicate a lung-specific epithelial component. The relatively low expression of CD8a, CD68, and CD117, along with the high expression of DNA1, suggests a potentially active, but not necessarily exhausted, immune response. The high expression of CD14 and CD163 could indicate macrophage-like cells. The overall picture is suggestive of an immune-active region with a possible epithelial component, potentially involved in tumor control or immune-mediated tumor cell death."
+            "title": "Epithelial-like cells",
+            "description": "This cluster likely represents epithelial-like cells, consistent with the high expression of Keratin_570, Ecad_488, CDX2_647, LaminABC_488, and PCNA_488. The low expression of markers like anti_CD3, CD4_488, CD8a_660, CD163_488, and CD45_PE is suggestive of a non-immune cell population. The presence of Desmin_555 and Vimentin_555 may indicate a degree of epithelial-mesenchymal transition (EMT) or a mixed epithelial/mesenchymal phenotype. The high PCNA expression suggests active cell proliferation."
           },
           "BioMistral": {
-            "title": "Immune-active TTF1+ epithelial region",
-            "description": "Epithelial-like cells are likely to be malignant tumour cells, characterized by high expression of pancytokeratin and TTF1, and low expression of CD8a and DNA1. These cells are also enriched for CD11c, CD16, and CD20, suggesting a possible immune-related phenotype. The presence of MPO and CD117 may indicate an inflammatory or stromal component."
+            "title": "Epithelial-like cells",
+            "description": "Epithelial-like cells are characterized by high expression of epithelial markers such as Ecad_488 and CDX2_647, as well as nuclear markers such as LaminABC_488 and Desmin_555. These cells are also positive for PCNA_488, a marker of proliferation. They are negative for immune markers such as anti_CD3 and anti_CD45RO, as well as markers of myofibroblasts such as aSMA_660 and CollagenIV_647. The cells are also negative for markers of other cell types such as CD4_488, CD163_488, and FOXP3_570. The cells are likely to be epithelial cells, possibly with some degree of proliferation."
           }
         }
       }

@@ -34,7 +34,7 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
-  min-height: 36px;
+  min-height: 56px;
 }
 .brand {
   display: flex;
@@ -42,11 +42,14 @@
   gap: 10px;
 }
 .brand-logo {
-  width: 22px;
-  height: 22px;
+  /* Rectangular logo: make it taller and keep full aspect ratio */
+  height: 56px;
+  width: auto;
   border-radius: 4px;
-  background: linear-gradient(135deg, #60a5fa, #a78bfa);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6);
+  display: block;
+  object-fit: contain;
+  /* remove border/outline around logo */
+  box-shadow: none;
 }
 .brand-name {
   font-size: 14px;

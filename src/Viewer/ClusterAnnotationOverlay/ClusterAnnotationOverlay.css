@@ -8,8 +8,9 @@
 .cluster-annotation-description {
   position: absolute;
   left: 50%;
-  top: -12px;
-  transform: translate(-50%, -110%);
+  /* Move the description higher so it doesn't overlap the cluster preview thumbnail */
+  top: -24px;
+  transform: translate(-50%, -130%);
   pointer-events: none;
   width: 320px;
   max-height: 180px;

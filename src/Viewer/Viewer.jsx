@@ -92,6 +92,7 @@ const Viewer = ({
     handleViewStateChange,
     computedImageSize,
     altPressed,
+    autoRotate,
   } = DeckViewState({
     points,
     is3D,
@@ -128,26 +129,20 @@ const Viewer = ({
     setSemanticLevel(lvl);
   }, [isUMAPView, isSemanticAuto, viewState?.zoom]);
 
-  // Sampling budget for each semantic level (1..6).
-  // Maximum number of points per level (controls sampling density); smaller numbers show fewer points.
-  // To reduce further, decrease the values below.
+  // Sampling budget per semantic level (1..6): level 1 = 5k, level 6 = 100k, levels 2–5 scale linearly.
   const SAMPLING_BUDGETS = useMemo(
-    // level 1..5 use limited sampling; level 6 (finest) always shows all points.
-    () => [1000, 2500, 8000, 20000, 50000, Infinity],
+    () => [5000, 24000, 43000, 62000, 81000, 100000],
     []
   );
 
   const samplingThreshold = useMemo(() => {
     if (!points || points.length === 0) return 1.0;
-    // Raw view does not use sampling / semantic zoom, always show all points
     if (!isUMAPView) return 1.0;
-    // If highest semantic level (6), show all; otherwise downsample based on budget
-    if (semanticLevel >= 6) return 1.0;
 
-    const idx = Math.max(0, Math.min(SAMPLING_BUDGETS.length - 2, semanticLevel - 1));
+    const idx = Math.max(0, Math.min(SAMPLING_BUDGETS.length - 1, semanticLevel - 1));
     const budget = SAMPLING_BUDGETS[idx];
     const total = points.length;
-    return budget / total;
+    return Math.min(1.0, budget / total);
   }, [isUMAPView, semanticLevel, SAMPLING_BUDGETS, points]);
 
   // For outline/selection/interaction logic, we still want a "visible" subset for CPU calculations,
@@ -600,6 +595,13 @@ const Viewer = ({
                   <path key={i} d={s.d} fill="none" stroke={s.color} strokeWidth={clusterLineWidth} />
                 ))}
               </svg>
+            )}
+
+            {/* 3D mode: spacebar toggles auto-rotate hint */}
+            {is3D && (
+              <div className="viewer-3d-autorotate-hint" aria-hidden="true">
+                Space: auto-rotate {autoRotate ? "On" : "Off"}
+              </div>
             )}
 
             {/* Group analysis toolbar */}

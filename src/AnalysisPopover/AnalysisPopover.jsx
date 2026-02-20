@@ -5,6 +5,7 @@ import {
   fetchT2,
   fetchViolinGlobalKDE,
   fetchViolinSelectionKDE,
+  fetchViolinSelectionCellKDE,
   fetchRegionRepresentatives,
 } from "../api/api";
 import CellAnalysisPanel from "../FeaturePanel/LocalFeaturePanel/LocalFeaturePanel";
@@ -232,26 +233,14 @@ export default function AnalysisPopover({
           const idsB = regions[regions.length - 1];
           const activeChs = Array.isArray(channels) && channels.length > 0 ? channels.map((c) => Number(c)) : [];
           if (activeChs.length === 0) return;
-          const chKey = activeChs.join(",");
-          const gkdePromise =
-            globalKDECache.current.key === chKey && globalKDECache.current.data
-              ? Promise.resolve(globalKDECache.current.data)
-              : fetchViolinGlobalKDE(100000, 99.0, 0.1, activeChs, 256, undefined).then((res) => {
-                  if (res && !res.error) {
-                    globalKDECache.current = { key: chKey, data: res };
-                  }
-                  return res;
-                });
-          const [gkde, selA, selB, reps] = await Promise.all([
-            gkdePromise,
-            fetchViolinSelectionKDE(idsA, 100000, 99.0, 0.1, activeChs, 256, undefined),
-            fetchViolinSelectionKDE(idsB, 100000, 99.0, 0.1, activeChs, 256, undefined),
+          const [selA, selB, reps] = await Promise.all([
+            fetchViolinSelectionCellKDE(idsA, 400, activeChs, 192, undefined),
+            fetchViolinSelectionCellKDE(idsB, 400, activeChs, 192, undefined),
             fetchRegionRepresentatives([idsA, idsB], "cosine_centered", undefined),
           ]);
-          if (!gkde || gkde.error || !selA || selA.error || !selB || selB.error) return;
+          if (!selA || selA.error || !selB || selB.error) return;
           const repsArr = Array.isArray(reps?.regions) ? reps.regions : [];
           setTCompare({
-            global_kde: gkde,
             regions: [
               {
                 ids: idsA,

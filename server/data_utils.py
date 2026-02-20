@@ -184,12 +184,6 @@ def process_coord_row(row: pd.Series, idx: int, n_per_chunk: int) -> Dict[str, A
 
 
 def _pixel_stats_from_array(channel_data: np.ndarray) -> Dict[str, float]:
-    """
-    计算单个通道的像素统计信息，用于前端 intensity 窗宽/自动窗位：
-
-    - data_min / data_max: 全局真实最小/最大值（用于 slider 总范围）
-    - auto_min / auto_max: 百分位裁剪后的推荐显示范围（用于“Auto” 按钮和默认窗位）
-    """
     flat = channel_data.astype(np.float32).ravel()
     if flat.size == 0:
         return {
@@ -202,7 +196,6 @@ def _pixel_stats_from_array(channel_data: np.ndarray) -> Dict[str, float]:
     data_min = float(np.min(flat))
     data_max = float(np.max(flat))
 
-    # 使用 1% / 99% 百分位作为自动窗位，避免极少数 outlier 拉开对比度
     auto_low, auto_high = np.percentile(flat, [1.0, 99.0])
     return {
         "data_min": data_min,

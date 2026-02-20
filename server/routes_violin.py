@@ -137,6 +137,54 @@ def _sample_channel_selection(arr, channel_idx: int, sel_ids: np.ndarray, max_sa
         return np.array([], dtype=arr.dtype)
     return np.concatenate(samples, axis=0)
 
+
+def _sample_channel_selection_cell_means(arr, channel_idx: int, sel_ids: np.ndarray, max_cells: int) -> np.ndarray:
+    """
+    For a given channel and a list of **cell ids**, sample up to `max_cells`
+    cells and return one scalar per cell as its intensity summary.
+
+    Compared to pixel-level sampling, this:
+      - treats each cell equally (not weighted by area),
+      - reads Zarr in chunk-wise blocks instead of per-cell, which is
+        much faster on large selections.
+    """
+    C, N, H, W = arr.shape
+    _, n_per_chunk, _, _ = arr.chunks
+    # filter + dedup ids, clamp to valid range
+    sel_ids = np.unique(sel_ids[(sel_ids >= 0) & (sel_ids < N)])
+    if sel_ids.size == 0:
+        return np.array([], dtype=np.float32)
+    # downsample number of cells to keep cost roughly constant
+    max_cells = int(max(1, max_cells))
+    if sel_ids.size > max_cells:
+        idx = np.random.choice(sel_ids.size, size=max_cells, replace=False)
+        sel_ids = sel_ids[idx]
+    # group by chunk so we read each chunk once
+    by_chunk = _group_ids_by_chunk(sel_ids, int(n_per_chunk), int(N))
+    vals: List[np.ndarray] = []
+    for cid, local_idxs in by_chunk.items():
+        if local_idxs.size == 0:
+            continue
+        start = cid * n_per_chunk
+        end = min(start + n_per_chunk, N)
+        try:
+            block = np.asarray(arr[channel_idx, start:end, :, :], dtype=np.float32)  # [n_per_chunk,H,W]
+            block_sel = block[local_idxs, :, :]
+            if block_sel.size == 0:
+                continue
+            # Flatten to [n_cells_in_chunk, H*W]
+            flat2d = block_sel.reshape(block_sel.shape[0], -1)
+            # Use a **high but not extreme percentile (95th)** per cell as the
+            # summary intensity. Compared with pure mean,这会把真正亮的细胞
+            # 拉得更开，但又不会像 99/100 分位那样被单点噪声主导。
+            per_cell = np.percentile(flat2d, 95.0, axis=1).astype(np.float32)
+            vals.append(per_cell)
+        except Exception:
+            continue
+    if not vals:
+        return np.array([], dtype=np.float32)
+    return np.concatenate(vals, axis=0).astype(np.float32)
+
 def _kde_gaussian_1d(values: np.ndarray, grid: int = 256) -> Tuple[np.ndarray, np.ndarray, float, float, float]:
     """
     - Gaussian kernel density estimation (1D, Scott's bandwidth), return (xs, ys, lo, hi, bw)
@@ -259,7 +307,8 @@ def violin_selection(payload: Dict = Body(...)):
         arr = open_zarr()
         C, N, H, W, chunks, n_chunks, n_per_chunk = meta_from_img(arr)
         if isinstance(chs, list) and len(chs) > 0:
-            ch_sel = [int(c) for c in chs if 0 <= int(c) < int(C)]
+            ch_str = ",".join(str(int(c)) for c in chs)
+            ch_sel = _ensure_channel_list(int(C), ch_str)
         else:
             ch_sel = list(range(int(C)))
         ids_arr = np.array([int(x) for x in ids], dtype=np.int64)
@@ -304,17 +353,17 @@ def violin_selection_kde(payload: Dict = Body(...)):
         if not isinstance(ids, list) or len(ids) == 0:
             raise HTTPException(status_code=400, detail="ids must be a non-empty list")
         chs = payload.get("channels", None)
-        # max_samples 控制每个通道用于 KDE 的前景像素上限。
-        # 把默认值从 100000 略微降到 60000，在大区域时可以明显减轻
-        # CPU 负担，同时形状仍然足够平滑。
+
         max_samples = int(payload.get("max", 60000))
         perc = float(payload.get("perc", 99.0))
         thr = float(payload.get("thr", 0))
         grid = int(payload.get("grid", 256))
         arr = open_zarr()
         C, N, H, W, chunks, n_chunks, n_per_chunk = meta_from_img(arr)
+
         if isinstance(chs, list) and len(chs) > 0:
-            ch_sel = [int(c) for c in chs if 0 <= int(c) < int(C)]
+            ch_str = ",".join(str(int(c)) for c in chs)
+            ch_sel = _ensure_channel_list(int(C), ch_str)
         else:
             ch_sel = list(range(int(C)))
         ids_arr = np.array([int(x) for x in ids], dtype=np.int64)
@@ -345,6 +394,57 @@ def violin_selection_kde(payload: Dict = Body(...)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"violin_selection_kde failed: {e}")
+
+
+@router.post("/violin/selection_kde_cell")
+def violin_selection_kde_cell(payload: Dict = Body(...)):
+    """
+    KDE over **per‑cell mean intensities** for a selection.
+
+    Input:
+      { ids:number[], max_cells?:int, channels?: number[], grid?:int }
+
+    Each selected cell contributes a single scalar (its mean intensity) per
+    channel, so the resulting curves directly reflect how bright the cells
+    are in Region 1 vs Region 2, which matches visual intuition better than
+    a raw pixel‑level histogram.
+    """
+    try:
+        ids = payload.get("ids")
+        if not isinstance(ids, list) or len(ids) == 0:
+            raise HTTPException(status_code=400, detail="ids must be a non-empty list")
+        chs = payload.get("channels", None)
+        grid = int(payload.get("grid", 192))
+        max_cells = int(payload.get("max_cells", 400))
+
+        arr = open_zarr()
+        C, N, H, W, chunks, n_chunks, n_per_chunk = meta_from_img(arr)
+        if isinstance(chs, list) and len(chs) > 0:
+            ch_sel = [int(c) for c in chs if 0 <= int(c) < int(C)]
+        else:
+            ch_sel = list(range(int(C)))
+        ids_arr = np.array([int(x) for x in ids], dtype=np.int64)
+
+        def _sel_sampler(cidx: int) -> np.ndarray:
+            return _sample_channel_selection_cell_means(arr, cidx, ids_arr, max_cells=max_cells)
+
+        xs_list, ys_list, lo_list, hi_list, bw_list, n_list = _kde_for_channels(ch_sel, _sel_sampler, grid)
+        return JSONResponse(
+            {
+                "channels": [int(c) for c in ch_sel],
+                "xs": xs_list,
+                "ys": ys_list,
+                "lo": lo_list,
+                "hi": hi_list,
+                "bw": bw_list,
+                "n": n_list,
+                "meta": {"count_ids": int(ids_arr.size), "H": int(H), "W": int(W)},
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"violin_selection_kde_cell failed: {e}")
 
 @router.get("/violin/global_kde")
 def violin_global_kde(

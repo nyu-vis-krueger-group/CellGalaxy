@@ -57,8 +57,11 @@ export default function Control({
     <div className={`control-panel ${collapsed ? "collapsed" : ""}`}>
       <div className="control-header">
         <div className="brand">
-          <div className="brand-logo" aria-hidden="true"></div>
-          <div className="brand-name">Cell Galaxy</div>
+          <img
+            className="brand-logo"
+            src="/icons/logo.png"
+            alt="Cell Galaxy logo"
+          />
         </div>
         <button
           className="control-toggle"

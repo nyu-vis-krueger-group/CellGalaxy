@@ -52,16 +52,22 @@ export default function DeckViewState({
   }, [is3D, transitionsEnabled]);
 
   const [altPressed, setAltPressed] = useState(false);
+  const [autoRotate, setAutoRotate] = useState(false);
+
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e && e.altKey) setAltPressed(true);
+      if (is3D && e?.key === " ") {
+        e.preventDefault();
+        setAutoRotate((prev) => !prev);
+      }
     };
     const onKeyUp = (e) => {
       if (!e || !e.altKey) setAltPressed(false);
     };
     const onBlur = () => setAltPressed(false);
     try {
-      window.addEventListener("keydown", onKeyDown, { passive: true });
+      window.addEventListener("keydown", onKeyDown, { passive: false });
       window.addEventListener("keyup", onKeyUp, { passive: true });
       window.addEventListener("blur", onBlur, { passive: true });
     } catch {}
@@ -72,7 +78,25 @@ export default function DeckViewState({
         window.removeEventListener("blur", onBlur);
       } catch {}
     };
-  }, []);
+  }, [is3D]);
+
+  // 3D auto-rotate: toggle with spacebar, update rotationOrbit every frame via requestAnimationFrame
+  const autoRotateSpeed = 0.15; // degrees per frame
+  useEffect(() => {
+    if (!is3D || !autoRotate) return;
+    let rafId;
+    const tick = () => {
+      setViewState((prev) => ({
+        ...prev,
+        rotationOrbit: (prev.rotationOrbit ?? 0) + autoRotateSpeed,
+      }));
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+    };
+  }, [is3D, autoRotate]);
 
   const baseZoomRef = useRef(null);
   if (baseZoomRef.current == null) baseZoomRef.current = viewState.zoom;
@@ -97,6 +121,7 @@ export default function DeckViewState({
     handleViewStateChange,
     computedImageSize,
     altPressed,
+    autoRotate,
   };
 }
 

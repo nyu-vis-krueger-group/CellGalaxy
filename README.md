@@ -79,18 +79,13 @@ An example here:
 6. **Meta Data(csv)**: Meta Data for each tile.
 
 ### Zarr Image (Zip): named as output.zarr.zip 
-We should use zarr-2 instead of zarr-3. the dtype should be "u2" and 
-"compressor": {
-    "id": "blosc",
-    "cname": "zstd",
-    "clevel": 3,
-    "shuffle": 1,
-    "blocksize": 0
-  },
-### Raw Data and Zooming Cluster
-Raw Data and Zooming Cluster should be came from the python script `build_multilevel_clusters.py` 
 
-To run the script, the input csv file for the python script should contain the following columns in order:
+### Raw Data and Zooming Cluster
+
+In Raw Data, upload 'data_raw.csv'
+In Zooming cluster, upload 'cluster_multilevel_hierarchy.csv' 
+
+To generate 'data_raw.csv' and 'cluster_multilevel_hierarchy.csv', you can run the python script `build_multilevel_clusters.py`. The input csv file for the python script should contain the following columns in order:
 
 - `cellid`: Unique identifier for each cell
 - `X_centroid`: X coordinate of cell centroid
@@ -107,6 +102,13 @@ Two columns: `channel_id`, `channel_name`
 
 ### Features (npy)
 High-dim features from vit(or other) model, each tile is a high-dimensional vector, and the tiles are stored sequentially.
+
+## LLM 
+A request template is provided below the prompt. Please adapt the data description in the template to make it appropriate. 
+
+Also, to use llm, you should add 'hf_token.txt' under the folder 'server/secrets' which include the token to request llm.
+
+We give an example result formated as 'json' file called 'cluster_labels.json' under folder 'public'. If you don't have access to llm, you can just put it under the public.
 
 ## License
 

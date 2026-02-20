@@ -4,9 +4,10 @@ import "./CompareFeaturePanel.css";
 import { drawCellPreviewToCanvas } from "../../Viewer/HoverPreview/HoverPreview";
 import { API_BASE } from "../../api/api";
 
-// Use grayscale colors for violin plots (avoid conflicting with per-channel colors)
-const COLOR_GLOBAL = "rgba(200,200,200,0.95)"; // global: lighter gray
-const COLOR_SEL = "rgba(120,120,120,0.95)";    // selection: darker gray
+// Violin 形状本身仍然用中性白/灰两色区分 Region 1 / Region 2，
+// 颜色提示通过文字（Region 1 橙色 / Region 2 青色）来表达。
+const COLOR_REGION1 = "rgba(230,230,230,0.95)"; // Region 1 → 较亮的白
+const COLOR_REGION2 = "rgba(130,130,130,0.95)"; // Region 2 → 较深的灰
 
 function RegionThumb({
   repId,
@@ -102,15 +103,19 @@ function useChannelNames() {
   return channelNames;
 }
 
-function drawViolinRow(canvas, gkde, skde, channelNames, colors, message, selCountMaxPerChannel = null) {
+function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
   if (!canvas) return;
-  const chs = Array.isArray(gkde?.channels) ? gkde.channels : null;
+  const chs = Array.isArray(kdeA?.channels)
+    ? kdeA.channels
+    : Array.isArray(kdeB?.channels)
+    ? kdeB.channels
+    : null;
   const hasData =
     chs &&
-    Array.isArray(gkde?.xs) &&
-    Array.isArray(gkde?.ys) &&
-    Array.isArray(skde?.xs) &&
-    Array.isArray(skde?.ys);
+    Array.isArray(kdeA?.xs) &&
+    Array.isArray(kdeA?.ys) &&
+    Array.isArray(kdeB?.xs) &&
+    Array.isArray(kdeB?.ys);
   const ctx0 = canvas.getContext("2d");
   if (!ctx0) return;
   const dpr0 = window.devicePixelRatio || 1;
@@ -161,26 +166,45 @@ function drawViolinRow(canvas, gkde, skde, channelNames, colors, message, selCou
   ctx.fillRect(0, 0, w, h);
 
   const colW = plotW / C;
-  const gammaY = 4.0;
+  // 低值很多时压缩底部、拉伸高值区，让上方分布可见。gammaY > 1 时高值占更多纵轴
+  const gammaY = 0.5;
   const toY = (t01) => {
     const u = Math.max(0, Math.min(1, t01));
     const nonlin = Math.pow(u, gammaY);
     return marginT + (1 - nonlin) * plotH;
   };
 
-  let uLo = 0;
-  let uHi = 65535;
-  const mapToUnion01 = (v) => (v - uLo) / (uHi - uLo + 1e-6);
+  // 每通道用两区域实际数据范围 [lo,hi] 的并集映射 Y，避免整条压到底部
+  const unionRangeForChannel = (i) => {
+    const loA = Array.isArray(kdeA?.lo) ? kdeA.lo[i] : undefined;
+    const hiA = Array.isArray(kdeA?.hi) ? kdeA.hi[i] : undefined;
+    const loB = Array.isArray(kdeB?.lo) ? kdeB.lo[i] : undefined;
+    const hiB = Array.isArray(kdeB?.hi) ? kdeB.hi[i] : undefined;
+    let uLo = 0;
+    let uHi = 65535;
+    if (typeof loA === "number" && typeof hiA === "number" && typeof loB === "number" && typeof hiB === "number") {
+      uLo = Math.min(loA, loB);
+      uHi = Math.max(hiA, hiB);
+    } else {
+      const xsA = Array.isArray(kdeA?.xs?.[i]) ? kdeA.xs[i] : [];
+      const xsB = Array.isArray(kdeB?.xs?.[i]) ? kdeB.xs[i] : [];
+      const allX = [...xsA, ...xsB].filter((x) => typeof x === "number");
+      if (allX.length) {
+        uLo = Math.min(...allX);
+        uHi = Math.max(...allX);
+      }
+    }
+    if (uHi <= uLo) uHi = uLo + 1;
+    return { uLo, uHi };
+  };
 
+  // Y 轴刻度：与 toY 一致，按数据值 0 / 0.33 / 0.67 / 1 标在对应像素位置
   ctx.textAlign = "right";
   ctx.fillStyle = "rgba(255,255,255,0.55)";
-  const numTicks = 4;
-  for (let i = 0; i < numTicks; i++) {
-    const p = i / (numTicks - 1);
-    const y = marginT + p * plotH;
-    const t = Math.pow(1 - p, 1 / gammaY);
-    const v = uLo + t * (uHi - uLo);
-    const label = Math.round(v).toString();
+  const tickValues = [1, 0.67, 0.33, 0];
+  for (const v01 of tickValues) {
+    const y = toY(v01);
+    const label = v01.toFixed(2).replace(/\.00$/, "");
     ctx.fillText(label, marginL - 6, y + 4);
   }
 
@@ -197,93 +221,76 @@ function drawViolinRow(canvas, gkde, skde, channelNames, colors, message, selCou
 
   ctx.lineWidth = 1;
   for (let i = 0; i < C; i++) {
-    const xsG = Array.isArray(gkde?.xs?.[i]) ? gkde.xs[i] : [];
-    const ysG = Array.isArray(gkde?.ys?.[i]) ? gkde.ys[i] : [];
-    const maxYG = Math.max(1e-6, ...(ysG || []));
-    const nG = Array.isArray(gkde?.n) && typeof gkde.n[i] === "number" ? gkde.n[i] : 0;
-    const dg = {
-      lo: Array.isArray(xsG) && xsG.length ? xsG[0] : 0,
-      hi: Array.isArray(xsG) && xsG.length ? xsG[xsG.length - 1] : 1,
-      xs: xsG,
-      ys: (ysG || []).map((v) => v / maxYG),
-      n: nG,
-    };
-    const xsS = Array.isArray(skde?.xs?.[i]) ? skde.xs[i] : [];
-    const ysS = Array.isArray(skde?.ys?.[i]) ? skde.ys[i] : [];
-    const maxYS = Math.max(1e-6, ...(ysS || []));
-    const nS = Array.isArray(skde?.n) && typeof skde.n[i] === "number" ? skde.n[i] : 0;
-    const ds = {
-      lo: Array.isArray(xsS) && xsS.length ? xsS[0] : 0,
-      hi: Array.isArray(xsS) && xsS.length ? xsS[xsS.length - 1] : 1,
-      xs: xsS,
-      ys: (ysS || []).map((v) => v / maxYS),
-      n: nS,
-    };
+    const { uLo, uHi } = unionRangeForChannel(i);
+    const mapToUnion01 = (v) => (v - uLo) / (uHi - uLo + 1e-6);
+
+    const xsA = Array.isArray(kdeA?.xs?.[i]) ? kdeA.xs[i] : [];
+    const ysA = Array.isArray(kdeA?.ys?.[i]) ? kdeA.ys[i] : [];
+    const maxYA = Math.max(1e-6, ...(ysA || []));
+    const d1 = { xs: xsA, ys: (ysA || []).map((v) => v / maxYA) };
+
+    const xsB = Array.isArray(kdeB?.xs?.[i]) ? kdeB.xs[i] : [];
+    const ysB = Array.isArray(kdeB?.ys?.[i]) ? kdeB.ys[i] : [];
+    const maxYB = Math.max(1e-6, ...(ysB || []));
+    const d2 = { xs: xsB, ys: (ysB || []).map((v) => v / maxYB) };
+
     const cx = marginL + i * colW + colW * 0.5;
-    const halfW = Math.max(8, Math.min(22, colW * 0.35));
-    // For selection, keep a mostly constant visual width so that
-    // the shape reflects intensity distribution rather than being
-    // dominated by absolute sample count. We still encode relative
-    // count very softly (0.4–1.0) so tiny selections don't look
-    // identical to huge ones.
-    const denomSel =
-      selCountMaxPerChannel && typeof selCountMaxPerChannel[i] === "number"
-        ? Math.max(1, selCountMaxPerChannel[i])
-        : Math.max(1, nG);
-    const rawScale = Math.max(0, Math.min(1, nS / denomSel));
-    const selScale = 0.4 + 0.6 * rawScale; // clamp to [0.4, 1.0]
-    const halfW_sel = halfW * selScale;
+    // 宽度严格按密度，不加最小比例，避免变成等宽柱状图；halfW 稍大让“肚子”可见
+    const halfW = Math.max(20, Math.min(30, colW * 0.45));
+    const minPx = 1;
 
-    ctx.fillStyle = COLOR_GLOBAL;
+    // 轮廓点：宽度 = 密度×halfW（仅 2px 下限防断线），再插值一次使轮廓圆滑
+    const buildOutline = (xs, ys, sign) => {
+      const raw = [];
+      for (let b = 0; b < (xs?.length || 0); b++) {
+        const y = toY(mapToUnion01(xs[b]));
+        const w = Math.max((ys[b] || 0) * halfW, minPx) * (sign === "left" ? -1 : 1);
+        raw.push({ y, w });
+      }
+      if (raw.length === 0) return raw;
+      raw.sort((a, b) => a.y - b.y);
+      const out = [];
+      for (let j = 0; j < raw.length; j++) {
+        out.push(raw[j]);
+        if (j < raw.length - 1)
+          out.push({ y: (raw[j].y + raw[j + 1].y) / 2, w: (raw[j].w + raw[j + 1].w) / 2 });
+      }
+      return out;
+    };
+
+    const pts1 = buildOutline(d1.xs, d1.ys, "left");
+    const pts2 = buildOutline(d2.xs, d2.ys, "right");
+
+    // Region 1：左侧提琴
+    ctx.fillStyle = COLOR_REGION1;
     ctx.beginPath();
-    for (let b = 0; b < (dg.xs?.length || 0); b++) {
-      const v = dg.xs[b];
-      const tUnion = mapToUnion01(v);
-      const y = toY(tUnion);
-      const wLeft = (dg.ys[b] || 0) * halfW;
-      if (b === 0) ctx.moveTo(cx, y);
-      ctx.lineTo(cx - wLeft, y);
-    }
-    for (let b = (dg.xs?.length || 0) - 1; b >= 0; b--) {
-      const v = dg.xs[b];
-      const tUnion = mapToUnion01(v);
-      const y = toY(tUnion);
-      ctx.lineTo(cx, y);
-    }
+    if (pts1.length) ctx.moveTo(cx, pts1[0].y);
+    for (let j = 0; j < pts1.length; j++) ctx.lineTo(cx + pts1[j].w, pts1[j].y);
+    for (let j = pts1.length - 1; j >= 0; j--) ctx.lineTo(cx, pts1[j].y);
     ctx.closePath();
-    ctx.globalAlpha = 0.85;
+    ctx.globalAlpha = 0.88;
     ctx.fill();
     ctx.globalAlpha = 1.0;
-    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.fillStyle = COLOR_SEL;
+    // Region 2：右侧提琴
+    ctx.fillStyle = COLOR_REGION2;
     ctx.beginPath();
-    for (let b = 0; b < (ds.xs?.length || 0); b++) {
-      const v = ds.xs[b];
-      const tUnion = mapToUnion01(v);
-      const y = toY(tUnion);
-      const wRight = (ds.ys[b] || 0) * halfW_sel;
-      if (b === 0) ctx.moveTo(cx, y);
-      ctx.lineTo(cx + wRight, y);
-    }
-    for (let b = (ds.xs?.length || 0) - 1; b >= 0; b--) {
-      const v = ds.xs[b];
-      const tUnion = mapToUnion01(v);
-      const y = toY(tUnion);
-      ctx.lineTo(cx, y);
-    }
+    if (pts2.length) ctx.moveTo(cx, pts2[0].y);
+    for (let j = 0; j < pts2.length; j++) ctx.lineTo(cx + pts2[j].w, pts2[j].y);
+    for (let j = pts2.length - 1; j >= 0; j--) ctx.lineTo(cx, pts2[j].y);
     ctx.closePath();
-    ctx.globalAlpha = 0.85;
+    ctx.globalAlpha = 0.88;
     ctx.fill();
     ctx.globalAlpha = 1.0;
-    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.strokeStyle = "rgba(255,255,255,0.35)";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(cx, marginT);
     ctx.lineTo(cx, marginT + plotH);
@@ -309,59 +316,41 @@ export default function CompareFeaturePanel({
     for (const p of points) m.set(p.id, p);
     return m;
   }, [points]);
-  const row1Ref = useRef(null);
-  const row2Ref = useRef(null);
+
+  const violinRef = useRef(null);
 
   const regionA = data?.regions?.[0] || {};
   const regionB = data?.regions?.[1] || {};
-  const gkde = data?.global_kde;
-
-  const selCountsA = Array.isArray(regionA?.sel_kde?.n) ? regionA.sel_kde.n : [];
-  const selCountsB = Array.isArray(regionB?.sel_kde?.n) ? regionB.sel_kde.n : [];
-  const selCountMaxPerChannel = useMemo(() => {
-    const len = Math.max(selCountsA.length, selCountsB.length);
-    const out = new Array(len);
-    for (let i = 0; i < len; i++) {
-      const a = typeof selCountsA[i] === "number" ? selCountsA[i] : 0;
-      const b = typeof selCountsB[i] === "number" ? selCountsB[i] : 0;
-      out[i] = Math.max(a, b);
-    }
-    return out;
-  }, [selCountsA, selCountsB]);
 
   useEffect(() => {
     drawViolinRow(
-      row1Ref.current,
-      gkde,
+      violinRef.current,
       regionA?.sel_kde,
-      channelNames,
-      colors,
-      "Region 1: no data",
-      selCountMaxPerChannel
-    );
-  }, [gkde, regionA, channelNames, colors, selCountMaxPerChannel]);
-
-  useEffect(() => {
-    drawViolinRow(
-      row2Ref.current,
-      gkde,
       regionB?.sel_kde,
       channelNames,
       colors,
-      "Region 2: no data",
-      selCountMaxPerChannel
+      "No intensity data for the two regions"
     );
-  }, [gkde, regionB, channelNames, colors, selCountMaxPerChannel]);
+  }, [regionA, regionB, channelNames, colors]);
 
   if (!data) {
     return <div className="loading">No comparison data</div>;
   }
 
   return (
-    <div>
-      <div className="feature-section">
-        <div className="feature-title">Representative cells</div>
-        <div className="compare-reps">
+    <div className="feature-section">
+      <div className="gfp-header gfp-header--center">
+        <div className="feature-title">Comparative Analysis of the Two Selected Regions</div>
+      </div>
+
+      {/* 第二行：左侧小标题 + 右侧两个代表性细胞缩略图 */}
+      <div className="compare-reps-row">
+        <div className="compare-reps-title">
+          <span>Representative</span>
+          <br />
+          <span>images</span>
+        </div>
+        <div className="compare-reps compare-reps-inline">
           <div className="compare-rep-item">
             <RegionThumb
               repId={regionA?.representative}
@@ -395,33 +384,24 @@ export default function CompareFeaturePanel({
         </div>
       </div>
 
-      <div className="feature-section">
-        <div className="gfp-header">
-          <div className="feature-title">Two-region comparison</div>
+      <div className="compare-violin-stack">
+        <div className="compare-violin-caption-row">
+          <div className="compare-violin-caption">
+          Distribution of Intensity Values 
+          in Two Regions
+          </div>
           <div className="gfp-legend">
             <div className="gfp-legend-item">
               <span className="gfp-swatch gfp-swatch--global" />
-              <span className="gfp-legend-label">Global</span>
+              <span className="gfp-legend-label region1-label">Region 1</span>
             </div>
             <div className="gfp-legend-item">
               <span className="gfp-swatch gfp-swatch--selection" />
-              <span className="gfp-legend-label">Selection</span>
+              <span className="gfp-legend-label region2-label">Region 2</span>
             </div>
           </div>
         </div>
-
-        <div className="compare-violin-stack">
-          <div className="compare-row-head">
-            <span className="region1-label">Region 1</span>
-            <span className="compare-row-sub">cells: {regionA?.size ?? regionA?.ids?.length ?? 0}</span>
-          </div>
-          <canvas ref={row1Ref} className="compare-violin-canvas" />
-          <div className="compare-row-head">
-            <span className="region2-label">Region 2</span>
-            <span className="compare-row-sub">cells: {regionB?.size ?? regionB?.ids?.length ?? 0}</span>
-          </div>
-          <canvas ref={row2Ref} className="compare-violin-canvas" />
-        </div>
+        <canvas ref={violinRef} className="compare-violin-canvas" />
       </div>
     </div>
   );

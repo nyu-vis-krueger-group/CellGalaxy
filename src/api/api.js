@@ -187,6 +187,34 @@ export async function fetchViolinSelectionKDE(ids, max = 30000, perc = 99.0, thr
   }
 }
 
+// KDE over **per-cell mean intensities** for a selection.
+// This is used for Region‑vs‑Region comparison, so that
+// the curves directly reflect "how bright are the cells"
+// in each region for a given channel.
+export async function fetchViolinSelectionCellKDE(
+  ids,
+  maxCells = 400,
+  channels = null,
+  grid = 192,
+  signal
+) {
+  try {
+    const body = { ids, max_cells: maxCells, grid };
+    if (Array.isArray(channels) && channels.length > 0) body.channels = channels;
+    const res = await fetch(`${API_BASE}/violin/selection_kde_cell`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!res.ok) throw new Error(await safeReadText(res));
+    return await res.json();
+  } catch (e) {
+    console.error("fetchViolinSelectionCellKDE failed", e);
+    return { error: "Failed to fetch violin selection KDE (cell means)" };
+  }
+}
+
 // ===== LLM / precomputation helpers =====
 export async function runLLMClusterChannelAvg(signal) {
   try {
