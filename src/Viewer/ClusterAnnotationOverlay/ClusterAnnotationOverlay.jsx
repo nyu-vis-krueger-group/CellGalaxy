@@ -26,7 +26,6 @@ export default function ClusterAnnotationOverlay({
     const { label, title, description, x, y } = ann;
     if (!title) return null;
     const rgb = clusterColor(label);
-    // 将聚类颜色整体压暗一些，避免背景过亮导致文字不清晰
     const darkBg = [
       Math.round(rgb[0] * 0.6),
       Math.round(rgb[1] * 0.6),

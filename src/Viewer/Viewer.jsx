@@ -54,6 +54,7 @@ const Viewer = ({
   renderMode = "sprites",
   is3D = false,
   imageSize = 4,
+  rawImageSize,
   setImageSize = () => {},
   // In single-view mode: whether UMAP is currently shown
   useUMAP = false,
@@ -86,6 +87,8 @@ const Viewer = ({
 }) => {
   const isUMAPView =
     viewerId === "umap" || (viewerId === "single" && !!useUMAP);
+  // Size control slider only affects UMAP; raw view uses rawImageSize (from tile+range).
+  const effectiveImageSize = isUMAPView ? imageSize : (rawImageSize ?? imageSize);
   const {
     viewState,
     setViewState,
@@ -99,7 +102,7 @@ const Viewer = ({
     sharedZoom,
     setSharedZoom,
     initialZoom: 8,
-    imageSize,
+    imageSize: effectiveImageSize,
     transitionsEnabled,
   });
 

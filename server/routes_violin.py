@@ -175,8 +175,6 @@ def _sample_channel_selection_cell_means(arr, channel_idx: int, sel_ids: np.ndar
             # Flatten to [n_cells_in_chunk, H*W]
             flat2d = block_sel.reshape(block_sel.shape[0], -1)
             # Use a **high but not extreme percentile (95th)** per cell as the
-            # summary intensity. Compared with pure mean,这会把真正亮的细胞
-            # 拉得更开，但又不会像 99/100 分位那样被单点噪声主导。
             per_cell = np.percentile(flat2d, 95.0, axis=1).astype(np.float32)
             vals.append(per_cell)
         except Exception:
@@ -369,7 +367,6 @@ def violin_selection_kde(payload: Dict = Body(...)):
         ids_arr = np.array([int(x) for x in ids], dtype=np.int64)
         # Downsample selected cell ids to an upper bound; this keeps the KDE
         # cost roughly constant once the region is large enough.
-        # 默认上限从 1500 收紧到 400，避免在超大选区上读取过多 chunk。
         max_ids = int(payload.get("max_ids", 400))
         if ids_arr.size > max_ids:
             idx = np.random.choice(ids_arr.size, size=max_ids, replace=False)

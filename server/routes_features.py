@@ -358,7 +358,6 @@ def _coords_for_ids(ids: List[int]) -> List[Dict]:
 @router.get("/features/t1")
 def features_t1(
     q: int = Query(..., description="query id"),
-    # 默认邻居数量从 30 调整为 8，使局部直方图与上方图库一致（仅展示前 8 个最近邻）
     k: int = Query(8, ge=1, le=2000),
     metric: str = Query("cosine", regex="^(cosine|cosine_centered)$"),
 ):
@@ -369,17 +368,12 @@ def features_t1(
         n = feats_repr.shape[0]
         if not (0 <= q < n):
             raise HTTPException(status_code=400, detail=f"q out of range (0..{n-1})")
-        # 1) 在 UMAP 2D 空间（umap2_x, umap2_y）里用欧氏距离选出 top-k 邻居，
-        #    这样「示例图 / UMAP 上的黄色编号」和用户视觉上的“谁在附近”是一致的；
-        # 2) 然后回到高维特征表征 feats_repr 上，对这些邻居计算 cosine 相似度，
-        #    同时在归一化 feature 空间里计算 compactness / difference 等指标。
         try:
             neigh_ids = _topk_umap_l2(q, k)
             q_vec = feats_repr[q]
             sims = (feats_repr[neigh_ids] @ q_vec).astype(np.float32)
             np.clip(sims, -1.0, 1.0, out=sims)
         except Exception:
-            # 如果 UMAP 坐标不可用，就回退到原来的 cosine 邻居逻辑，避免整个接口报错。
             neigh_ids, sims = _topk_cosine(q, k, metric=metric)
         comp = _compactness(neigh_ids)
         diff = _difference_magnitude(q, neigh_ids)

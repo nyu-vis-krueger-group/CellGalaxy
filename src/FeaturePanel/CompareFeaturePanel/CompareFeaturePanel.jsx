@@ -4,10 +4,8 @@ import "./CompareFeaturePanel.css";
 import { drawCellPreviewToCanvas } from "../../Viewer/HoverPreview/HoverPreview";
 import { API_BASE } from "../../api/api";
 
-// Violin 形状本身仍然用中性白/灰两色区分 Region 1 / Region 2，
-// 颜色提示通过文字（Region 1 橙色 / Region 2 青色）来表达。
-const COLOR_REGION1 = "rgba(230,230,230,0.95)"; // Region 1 → 较亮的白
-const COLOR_REGION2 = "rgba(130,130,130,0.95)"; // Region 2 → 较深的灰
+const COLOR_REGION1 = "rgba(230,230,230,0.95)"; // Region 1 → light white
+const COLOR_REGION2 = "rgba(130,130,130,0.95)"; // Region 2 → dark gray
 
 function RegionThumb({
   repId,
@@ -103,6 +101,40 @@ function useChannelNames() {
   return channelNames;
 }
 
+const U_HI = 65535;
+
+function rawKdeToLogSpaceOnLinearAxis(xs, ys) {
+  if (!Array.isArray(xs) || !Array.isArray(ys) || xs.length === 0) return { xs: [], ys: [] };
+  const n = 200;
+  const xsOut = [];
+  const ysOut = [];
+  for (let i = 0; i <= n; i++) {
+    const x = (i / n) * U_HI;
+    xsOut.push(x);
+    let densityX = 0;
+    for (let j = 0; j < xs.length - 1; j++) {
+      if (x >= xs[j] && x <= xs[j + 1]) {
+        const frac = (x - xs[j]) / (xs[j + 1] - xs[j] + 1e-12);
+        densityX = (ys[j] ?? 0) * (1 - frac) + (ys[j + 1] ?? 0) * frac;
+        break;
+      }
+      if (j === 0 && x < xs[0]) break;
+      // x > max(xs): do not extrapolate — leave densityX 0 so violin tapers at high intensity
+    }
+    ysOut.push(densityX * (x + 1));
+  }
+  const maxD = Math.max(1e-12, ...ysOut);
+  const out = { xs: xsOut, ys: ysOut.map((d) => d / maxD) };
+  const rampThr = 0.02;
+  let k = 0;
+  while (k < out.ys.length && out.ys[k] < rampThr) k++;
+  if (k > 0 && k < out.ys.length) {
+    const yk = out.ys[k];
+    for (let j = 0; j <= k; j++) out.ys[j] = (j / k) * yk;
+  }
+  return out;
+}
+
 function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
   if (!canvas) return;
   const chs = Array.isArray(kdeA?.channels)
@@ -166,7 +198,6 @@ function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
   ctx.fillRect(0, 0, w, h);
 
   const colW = plotW / C;
-  // 低值很多时压缩底部、拉伸高值区，让上方分布可见。gammaY > 1 时高值占更多纵轴
   const gammaY = 0.5;
   const toY = (t01) => {
     const u = Math.max(0, Math.min(1, t01));
@@ -174,38 +205,16 @@ function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
     return marginT + (1 - nonlin) * plotH;
   };
 
-  // 每通道用两区域实际数据范围 [lo,hi] 的并集映射 Y，避免整条压到底部
-  const unionRangeForChannel = (i) => {
-    const loA = Array.isArray(kdeA?.lo) ? kdeA.lo[i] : undefined;
-    const hiA = Array.isArray(kdeA?.hi) ? kdeA.hi[i] : undefined;
-    const loB = Array.isArray(kdeB?.lo) ? kdeB.lo[i] : undefined;
-    const hiB = Array.isArray(kdeB?.hi) ? kdeB.hi[i] : undefined;
-    let uLo = 0;
-    let uHi = 65535;
-    if (typeof loA === "number" && typeof hiA === "number" && typeof loB === "number" && typeof hiB === "number") {
-      uLo = Math.min(loA, loB);
-      uHi = Math.max(hiA, hiB);
-    } else {
-      const xsA = Array.isArray(kdeA?.xs?.[i]) ? kdeA.xs[i] : [];
-      const xsB = Array.isArray(kdeB?.xs?.[i]) ? kdeB.xs[i] : [];
-      const allX = [...xsA, ...xsB].filter((x) => typeof x === "number");
-      if (allX.length) {
-        uLo = Math.min(...allX);
-        uHi = Math.max(...allX);
-      }
-    }
-    if (uHi <= uLo) uHi = uLo + 1;
-    return { uLo, uHi };
-  };
+  const mapToUnion01 = (v) => (v - 0) / (U_HI + 1e-6);
 
-  // Y 轴刻度：与 toY 一致，按数据值 0 / 0.33 / 0.67 / 1 标在对应像素位置
   ctx.textAlign = "right";
   ctx.fillStyle = "rgba(255,255,255,0.55)";
-  const tickValues = [1, 0.67, 0.33, 0];
-  for (const v01 of tickValues) {
-    const y = toY(v01);
-    const label = v01.toFixed(2).replace(/\.00$/, "");
-    ctx.fillText(label, marginL - 6, y + 4);
+  const numTicks = 4;
+  for (let i = 0; i < numTicks; i++) {
+    const f = i / (numTicks - 1);
+    const y = marginT + (1 - f) * plotH;
+    const v = Math.round((i / (numTicks - 1)) * U_HI);
+    ctx.fillText(v.toString(), marginL - 6, y + 4);
   }
 
   ctx.textAlign = "center";
@@ -221,25 +230,20 @@ function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
 
   ctx.lineWidth = 1;
   for (let i = 0; i < C; i++) {
-    const { uLo, uHi } = unionRangeForChannel(i);
-    const mapToUnion01 = (v) => (v - uLo) / (uHi - uLo + 1e-6);
-
     const xsA = Array.isArray(kdeA?.xs?.[i]) ? kdeA.xs[i] : [];
     const ysA = Array.isArray(kdeA?.ys?.[i]) ? kdeA.ys[i] : [];
     const maxYA = Math.max(1e-6, ...(ysA || []));
-    const d1 = { xs: xsA, ys: (ysA || []).map((v) => v / maxYA) };
-
     const xsB = Array.isArray(kdeB?.xs?.[i]) ? kdeB.xs[i] : [];
     const ysB = Array.isArray(kdeB?.ys?.[i]) ? kdeB.ys[i] : [];
     const maxYB = Math.max(1e-6, ...(ysB || []));
-    const d2 = { xs: xsB, ys: (ysB || []).map((v) => v / maxYB) };
+
+    const d1 = rawKdeToLogSpaceOnLinearAxis(xsA, (ysA || []).map((v) => v / maxYA));
+    const d2 = rawKdeToLogSpaceOnLinearAxis(xsB, (ysB || []).map((v) => v / maxYB));
 
     const cx = marginL + i * colW + colW * 0.5;
-    // 宽度严格按密度，不加最小比例，避免变成等宽柱状图；halfW 稍大让“肚子”可见
-    const halfW = Math.max(20, Math.min(30, colW * 0.45));
+    const halfW = Math.max(10, Math.min(18, colW * 0.28));
     const minPx = 1;
 
-    // 轮廓点：宽度 = 密度×halfW（仅 2px 下限防断线），再插值一次使轮廓圆滑
     const buildOutline = (xs, ys, sign) => {
       const raw = [];
       for (let b = 0; b < (xs?.length || 0); b++) {
@@ -261,7 +265,7 @@ function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
     const pts1 = buildOutline(d1.xs, d1.ys, "left");
     const pts2 = buildOutline(d2.xs, d2.ys, "right");
 
-    // Region 1：左侧提琴
+    // Region 1：left violin
     ctx.fillStyle = COLOR_REGION1;
     ctx.beginPath();
     if (pts1.length) ctx.moveTo(cx, pts1[0].y);
@@ -275,7 +279,7 @@ function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Region 2：右侧提琴
+    // Region 2：right violin
     ctx.fillStyle = COLOR_REGION2;
     ctx.beginPath();
     if (pts2.length) ctx.moveTo(cx, pts2[0].y);
@@ -343,7 +347,6 @@ export default function CompareFeaturePanel({
         <div className="feature-title">Comparative Analysis of the Two Selected Regions</div>
       </div>
 
-      {/* 第二行：左侧小标题 + 右侧两个代表性细胞缩略图 */}
       <div className="compare-reps-row">
         <div className="compare-reps-title">
           <span>Representative</span>
@@ -387,8 +390,7 @@ export default function CompareFeaturePanel({
       <div className="compare-violin-stack">
         <div className="compare-violin-caption-row">
           <div className="compare-violin-caption">
-          Distribution of Intensity Values 
-          in Two Regions
+            Distribution of Intensity Values in Two Regions
           </div>
           <div className="gfp-legend">
             <div className="gfp-legend-item">

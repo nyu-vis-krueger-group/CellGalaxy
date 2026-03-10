@@ -11,7 +11,7 @@ export default function GroupFeaturePanel({
 
 }) {
   // ============== Violin (Global vs Selection) ==============
-  const [violinData, setViolinData] = useState(null); // { global:{channels,values}, sel:{channels,values} }
+  const [violinData, setViolinData] = useState(null);
   const [violinMsg, setViolinMsg] = useState("Loading...");
   const violinRef = useRef(null);
   const [channelNames, setChannelNames] = useState(new Map()); // id -> name (from channel_info.json)
@@ -143,7 +143,6 @@ export default function GroupFeaturePanel({
     // x-axis layout for each channel (x-axis layout for each channel)
     const colW = plotW / C;
 
-    // 与双区域对比一致：Y 轴 gamma 略低，压缩低值区、拉伸高值区，让分布更不均匀、高值区更易见
     const gammaY = 0.5;
     const toY = (t01) => {
       const u = Math.max(0, Math.min(1, t01));
@@ -156,23 +155,48 @@ export default function GroupFeaturePanel({
 
     ctx.lineWidth = 1;
 
-    // Use a fixed 16-bit range [0, 65535] for the intensity axis,
-    // so tick labels are linear and comparable across channels.
-    let uLo = 0;
-    let uHi = 65535;
+    const uLo = 0;
+    const uHi = 65535;
+    const rawKdeToLogSpaceOnLinearAxis = (xs, ys) => {
+      if (!Array.isArray(xs) || !Array.isArray(ys) || xs.length === 0) return { xs: [], ys: [] };
+      const n = 200;
+      const xsOut = [];
+      const ysOut = [];
+      for (let i = 0; i <= n; i++) {
+        const x = (i / n) * uHi;
+        xsOut.push(x);
+        let densityX = 0;
+        for (let j = 0; j < xs.length - 1; j++) {
+          if (x >= xs[j] && x <= xs[j + 1]) {
+            const frac = (x - xs[j]) / (xs[j + 1] - xs[j] + 1e-12);
+            densityX = (ys[j] ?? 0) * (1 - frac) + (ys[j + 1] ?? 0) * frac;
+            break;
+          }
+          if (j === 0 && x < xs[0]) break;
+          // x > max(xs): do not extrapolate — leave densityX 0 so violin tapers at high intensity
+        }
+        ysOut.push(densityX * (x + 1));
+      }
+      const maxD = Math.max(1e-12, ...ysOut);
+      const out = { xs: xsOut, ys: ysOut.map((d) => d / maxD) };
+      const rampThr = 0.02;
+      let k = 0;
+      while (k < out.ys.length && out.ys[k] < rampThr) k++;
+      if (k > 0 && k < out.ys.length) {
+        const yk = out.ys[k];
+        for (let j = 0; j <= k; j++) out.ys[j] = (j / k) * yk;
+      }
+      return out;
+    };
     const mapToUnion01 = (v) => (v - uLo) / (uHi - uLo + 1e-6);
-    // left y-axis ticks (real intensity values, linearly spaced)
     ctx.textAlign = "right";
     ctx.fillStyle = "rgba(255,255,255,0.55)";
-    const numTicks = 4; // display 3~4 ticks
+    const numTicks = 4;
     for (let i = 0; i < numTicks; i++) {
-      // f: 0 -> bottom (min), 1 -> top (max), evenly spaced in value
       const f = i / (numTicks - 1);
       const y = marginT + (1 - f) * plotH;
       const v = uLo + f * (uHi - uLo);
-      // render tick labels as integers (previous behavior), avoid trailing decimals like '0.00'
-      const label = Math.round(v).toString();
-      ctx.fillText(label, marginL - 6, y + 4);
+      ctx.fillText(Math.round(v).toString(), marginL - 6, y + 4);
     }
     // x-axis channel names (using channel colors + displaying real channel names from channel_info.json)
     ctx.textAlign = "center";
@@ -185,76 +209,51 @@ export default function GroupFeaturePanel({
       ctx.fillStyle = `rgba(${col[0] ?? 230},${col[1] ?? 230},${col[2] ?? 235},0.95)`;
       ctx.fillText(label, cx, h - 10);
     }
-    // calculate density and draw (global/selection both use backend KDE)
     for (let i = 0; i < C; i++) {
       const xsG = Array.isArray(gkde?.xs?.[i]) ? gkde.xs[i] : [];
       const ysG = Array.isArray(gkde?.ys?.[i]) ? gkde.ys[i] : [];
       const maxYG = Math.max(1e-6, ...(ysG || []));
       const nG = (Array.isArray(gkde?.n) && typeof gkde.n[i] === "number") ? gkde.n[i] : 0;
-      const dg = {
-        lo: Array.isArray(xsG) && xsG.length ? xsG[0] : 0,
-        hi: Array.isArray(xsG) && xsG.length ? xsG[xsG.length - 1] : 1,
-        xs: xsG,
-        ys: (ysG || []).map(v => v / maxYG),
-      };
       const xsS = Array.isArray(skde?.xs?.[i]) ? skde.xs[i] : [];
       const ysS = Array.isArray(skde?.ys?.[i]) ? skde.ys[i] : [];
       const maxYS = Math.max(1e-6, ...(ysS || []));
       const nS = (Array.isArray(skde?.n) && typeof skde.n[i] === "number") ? skde.n[i] : 0;
-      const ds = {
-        lo: Array.isArray(xsS) && xsS.length ? xsS[0] : 0,
-        hi: Array.isArray(xsS) && xsS.length ? xsS[xsS.length - 1] : 1,
-        xs: xsS,
-        ys: (ysS || []).map(v => v / maxYS),
-      };
+      const dg = rawKdeToLogSpaceOnLinearAxis(xsG, (ysG || []).map((v) => v / maxYG));
+      const ds = rawKdeToLogSpaceOnLinearAxis(xsS, (ysS || []).map((v) => v / maxYS));
       const cx = marginL + i * colW + colW * 0.5;
       const halfW = Math.max(8, Math.min(22, colW * 0.35));
-      const denom = Math.max(1, nG);
-      const selScale = Math.max(0, Math.min(1, nS / denom)); // sample size ratio relative to global
+      const selScale = Math.max(0, Math.min(1, nS / Math.max(1, nG)));
       const halfW_sel = halfW * selScale;
-      // global (left)
+      const pointsG = dg.xs?.length ?? 0;
+      const pointsS = ds.xs?.length ?? 0;
+      const getYG = (b) => toY(mapToUnion01(dg.xs[b]));
+      const getWG = (b) => (dg.ys[b] ?? 0) * halfW;
+      const getYS = (b) => toY(mapToUnion01(ds.xs[b]));
+      const getWS = (b) => (ds.ys[b] ?? 0) * halfW_sel;
       ctx.fillStyle = colorGlobal;
       ctx.beginPath();
-      for (let b = 0; b < (dg.xs?.length || 0); b++) {
-        const v = dg.xs[b];
-        const tUnion = mapToUnion01(v);
-        const y = toY(tUnion);
-        const wLeft = (dg.ys[b] || 0) * halfW;
+      for (let b = 0; b < pointsG; b++) {
+        const y = getYG(b);
         if (b === 0) ctx.moveTo(cx, y);
-        ctx.lineTo(cx - wLeft, y);
+        ctx.lineTo(cx - (getWG(b) ?? 0), y);
       }
-      for (let b = (dg.xs?.length || 0) - 1; b >= 0; b--) {
-        const v = dg.xs[b];
-        const tUnion = mapToUnion01(v);
-        const y = toY(tUnion);
-        ctx.lineTo(cx, y);
-      }
+      for (let b = pointsG - 1; b >= 0; b--) ctx.lineTo(cx, getYG(b));
       ctx.closePath();
       ctx.globalAlpha = 0.85;
       ctx.fill();
-      // outer border (enhanced contrast)
       ctx.globalAlpha = 1.0;
       ctx.strokeStyle = "rgba(255,255,255,0.2)";
       ctx.lineWidth = 1;
       ctx.stroke();
       ctx.globalAlpha = 1.0;
-      // selection (right)
       ctx.fillStyle = colorSel;
       ctx.beginPath();
-      for (let b = 0; b < (ds.xs?.length || 0); b++) {
-        const v = ds.xs[b];
-        const tUnion = mapToUnion01(v);
-        const y = toY(tUnion);
-        const wRight = (ds.ys[b] || 0) * halfW_sel;
+      for (let b = 0; b < pointsS; b++) {
+        const y = getYS(b);
         if (b === 0) ctx.moveTo(cx, y);
-        ctx.lineTo(cx + wRight, y);
+        ctx.lineTo(cx + (getWS(b) ?? 0), y);
       }
-      for (let b = (ds.xs?.length || 0) - 1; b >= 0; b--) {
-        const v = ds.xs[b];
-        const tUnion = mapToUnion01(v);
-        const y = toY(tUnion);
-        ctx.lineTo(cx, y);
-      }
+      for (let b = pointsS - 1; b >= 0; b--) ctx.lineTo(cx, getYS(b));
       ctx.closePath();
       ctx.globalAlpha = 0.85;
       ctx.fill();
@@ -263,7 +262,6 @@ export default function GroupFeaturePanel({
       ctx.lineWidth = 1;
       ctx.stroke();
       ctx.globalAlpha = 1.0;
-      // middle line (slightly thicker)
       ctx.strokeStyle = "rgba(255,255,255,0.35)";
       ctx.lineWidth = 2;
       ctx.beginPath();

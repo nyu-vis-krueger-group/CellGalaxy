@@ -1,115 +1,333 @@
 # Multi-scale Image Projection
 
-A multi-scale image projection visualization system based on FastAPI and React, supporting interactive browsing and analysis of large-scale image data.
+A **multi-scale image projection visualization system** based on **FastAPI (backend)** and **React (frontend)**.  
+The system supports interactive browsing and analysis of large-scale image datasets.
 
-## System Requirements
+---
 
-- Python 3.11+
-- Node.js 18+
+# System Requirements
+
+- Python **3.11+**
+- Node.js **18+**
 - Conda (recommended) or pip
 
-## Installation
+---
 
-### Backend Installation (Python)
+# Installation
 
-#### Method: Using Conda (Recommended)
+## Backend Installation (Python)
 
-1. **Install Conda**
-   - Download and install [Anaconda](https://www.anaconda.com/products/distribution) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
+### Using Conda (Recommended)
 
-2. **Create and activate environment**
-   ```bash
-   # Create conda environment
-   conda env create -f environment.yml
-   
-   # Activate environment
-   conda activate multiscale
-   ```
+1. Install Conda
 
-### Frontend Installation (Node.js)
-1. **Install node.js**
-https://nodejs.org/en/download
+Download and install:
 
+- https://www.anaconda.com/products/distribution
+- https://docs.conda.io/en/latest/miniconda.html
 
-2. **Install Node.js dependencies**
-   ```bash
-   npm install
-   ```
-
-## Running the Project
-
-### 1. Start Backend Service
+2. Create environment
 
 ```bash
-# Make sure conda environment is activated
-conda activate multiscale
+conda env create -f environment.yml
+```
 
-# Start FastAPI server
+3. Activate environment
+
+```bash
+conda activate multiscale
+```
+
+---
+
+## Frontend Installation (Node.js)
+
+### Install Node.js
+
+Download from:
+
+https://nodejs.org/en/download
+
+### Install dependencies
+
+```bash
+npm install
+```
+
+---
+
+# Running the Project
+
+## 1. Start Backend
+
+```bash
+conda activate multiscale
 python main.py
 ```
 
-Backend service will start at `http://localhost:8000`
+Backend will run at:
 
-### 2. Start Frontend Service
+```
+http://localhost:8000
+```
 
-In a new terminal window:
+---
+
+## 2. Start Frontend
+
+Open a **new terminal** and run:
 
 ```bash
-# Start React development server
 npm start
 ```
 
-Frontend application will start at `http://localhost:3000`
+Frontend will run at:
 
-### 3. Access the Application
+```
+http://localhost:3000
+```
 
-- **Frontend Interface**: http://localhost:3000
-- **Backend API**: http://localhost:8000
+---
 
-## Data Preparation
+## 3. Access the System
 
-Before using the application, you need to prepare the following data files:
-An example here: 
+Frontend Interface:
 
-1. **Zarr data file**: Compressed(zip) file containing image data.
-2. **Raw data(csv)**: File containing spatial and umap position, clustering infomation for each tiles.
-3. **Zooming Cluster(csv)**: File containing hierarchical clustering information.
-4. **Channel List(csv)**: File containing the channels in order.
-5. **Features(npy)**: High dim features from model.
-6. **Meta Data(csv)**: Meta Data for each tile.
+```
+http://localhost:3000
+```
 
-### Zarr Image (Zip): named as output.zarr.zip 
+Backend API:
 
-### Raw Data and Zooming Cluster
+```
+http://localhost:8000
+```
 
-In Raw Data, upload 'data_raw.csv'
-In Zooming cluster, upload 'cluster_multilevel_hierarchy.csv' 
+---
 
-To generate 'data_raw.csv' and 'cluster_multilevel_hierarchy.csv', you can run the python script `build_multilevel_clusters.py`. The input csv file for the python script should contain the following columns in order:
+# Data Preparation
 
-- `cellid`: Unique identifier for each cell
-- `X_centroid`: X coordinate of cell centroid
-- `Y_centroid`: Y coordinate of cell centroid  
-- `clustering`: Clusters for the whole data 
-- `umap2_x`: UMAP 2D X coordinate
-- `umap2_y`: UMAP 2D Y coordinate
-- `umap3_x`: UMAP 3D X coordinate
-- `umap3_y`: UMAP 3D Y coordinate
-- `umap3_z`: UMAP 3D Z coordinate
+Before using the system, you need to prepare the following data files.
 
-### Channel List (CSV)
-Two columns: `channel_id`, `channel_name`
+| File | Description |
+|-----|-------------|
+| Zarr Image | Image tiles stored in Zarr format |
+| Raw Data | Spatial coordinates and embeddings for each tile |
+| Zooming Cluster | Multi-level hierarchical clustering |
+| Channel List | Channel names |
+| Features | High-dimensional features |
+| Meta Data | Optional metadata |
 
-### Features (npy)
-High-dim features from vit(or other) model, each tile is a high-dimensional vector, and the tiles are stored sequentially.
+---
 
-## LLM 
-A request template is provided below the prompt. Please adapt the data description in the template to make it appropriate. 
+# Data Upload Order
 
-Also, to use llm, you should add 'hf_token.txt' under the folder 'server/secrets' which include the token to request llm.
+Please upload files in the following order:
 
-We give an example result formated as 'json' file called 'cluster_labels.json' under folder 'public'. If you don't have access to llm, you can just put it under the public.
+1. `output.zarr.zip`
+2. `data_raw.csv`
+3. `cluster_multilevel_hierarchy.csv`
+4. `channel_list.csv`
+5. `features.npy`
+6. `metadata.csv` (optional)
 
-## License
+---
+
+# Zarr Image
+
+Upload a compressed Zarr file:
+
+```
+output.zarr.zip
+```
+
+Requirements:
+
+- Zarr must be **compressed as a ZIP file**
+- Zarr version must be **zarr_format = 2**
+- Data layout must follow:
+
+```
+[channel, image_num, size, size]
+```
+
+Example:
+
+- **18 channels**
+- **72,055 image tiles**
+- **64 × 64 pixels per tile**
+
+Example metadata:
+
+```
+shape = [18, 72055, 64, 64]
+chunks = [18, 2025, 64, 64]
+dtype = "<u2"
+order = "C"
+compressor = blosc + zstd
+zarr_format = 2
+```
+
+This means the dataset contains **18 channels**, **72,055 tiles**, and each tile has a size of **64×64 pixels**.
+
+---
+
+# Raw Data and Zooming Cluster
+
+Two files must be uploaded:
+
+```
+data_raw.csv
+cluster_multilevel_hierarchy.csv
+```
+
+These files are generated using the script:
+
+```
+build_multilevel_clusters.py
+```
+
+---
+
+# Generating data_raw.csv and cluster_multilevel_hierarchy.csv
+
+To generate the required files, first prepare an input file named:
+
+```
+data.csv
+```
+
+Each row represents **one tile (or cell)**.
+
+The file must contain the following columns:
+
+| Column | Description |
+|------|-------------|
+| cellid | Unique identifier for each tile |
+| X_centroid | X coordinate |
+| Y_centroid | Y coordinate |
+| clustering | Cluster label for the dataset |
+| umap2_x | UMAP 2D X coordinate |
+| umap2_y | UMAP 2D Y coordinate |
+| umap3_x | UMAP 3D X coordinate |
+| umap3_y | UMAP 3D Y coordinate |
+| umap3_z | UMAP 3D Z coordinate |
+
+Example format:
+
+```
+cellid,X_centroid,Y_centroid,clustering,umap2_x,umap2_y,umap3_x,umap3_y,umap3_z
+```
+
+---
+
+## Running the Script
+
+Place `data.csv` in the **same directory** as the script:
+
+```
+build_multilevel_clusters.py
+```
+
+Then run:
+
+```bash
+python build_multilevel_clusters.py
+```
+
+The script will generate:
+
+```
+data_raw.csv
+cluster_multilevel_hierarchy.csv
+```
+
+These two files are required by the visualization system.
+
+---
+
+# Channel List
+
+Upload a CSV file with two columns:
+
+```
+channel_id,channel_name
+```
+
+Example:
+
+```
+0,CD3
+1,CD4
+2,CD8
+```
+
+---
+
+# Features (Optional)
+
+File:
+
+```
+features.npy
+```
+
+Description:
+
+- High-dimensional features extracted from a model
+- Example models: **ViT or other embedding models**
+- Each tile corresponds to **one feature vector**
+- Tiles must be stored **in the same order as data_raw.csv**
+
+---
+
+# Meta Data (Optional)
+
+A CSV file containing metadata for each tile.
+
+---
+
+# LLM Support
+
+The system supports **LLM-based cluster annotation**.
+
+To enable LLM:
+
+Create the file:
+
+```
+server/secrets/hf_token.txt
+```
+
+The file should contain your **HuggingFace API token**.
+
+---
+
+## Prompt Template
+
+A request template is provided below the prompt in the interface.  
+You may adapt the data description in the template to match your dataset.
+
+---
+
+## Example Result
+
+If you do not have access to LLM, you can directly provide the annotation file:
+
+```
+public/cluster_labels.json
+```
+
+---
+
+# Interaction
+
+- Click to select a tile. You can also use lasso or box selection to select areas.
+- Hold **Shift** and use box or lasso, you can select two regions for comparison.
+- **Option + Hover (on cluster title)** — View the cluster description.
+
+
+# License
 
 MIT License
+

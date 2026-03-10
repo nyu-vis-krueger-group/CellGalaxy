@@ -140,7 +140,7 @@ def process_coord_row(row: pd.Series, idx: int, n_per_chunk: int) -> Dict[str, A
     
     # Extract hierarchical clustering fields if present
     extra = {}
-    # 支持 rank_L0..rank_L5 / cluster_L0..cluster_L5 共 6 个语义层级
+    # support 6 semantic levels: rank_L0..rank_L5 / cluster_L0..cluster_L5
     for level in range(6):
         rank_key = f"rank_L{level}"
         if rank_key in row:

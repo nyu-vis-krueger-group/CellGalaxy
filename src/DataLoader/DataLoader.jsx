@@ -32,6 +32,8 @@ export default function useDataLoader() {
   // New: per-channel window (min/max, unit consistent with backend: 0..65535)
   const [windows, setWindows] = useState({});
   const [imageSize, setImageSize] = useState(1.5);
+  // Raw view uses fixed size from tile+range (set on load only); slider only affects UMAP
+  const [rawImageSize, setRawImageSize] = useState(1.5);
 
   // Rendering mode settings
   const [renderMode, setRenderMode] = useState('sprites'); // 'sprites' | 'points'
@@ -119,6 +121,28 @@ export default function useDataLoader() {
     return minSize + ratio * (maxSize - minSize);
   }
 
+  // —— Utility: imageSize from real tile size and raw coordinate range (no overlap on grid) ——
+  // Raw coords (X_centroid, Y_centroid) and tile are in the same units. Normalized space is [-1,1].
+  // Use a small reference viewport and safety margin so tiles stay within one grid cell on typical
+  // viewports (avoid overlap when pane is smaller than reference).
+  const RAW_REFERENCE_VIEWPORT = 500;
+  const RAW_GRID_SAFETY = 0.88;
+  function imageSizeFromTileAndRawRange(tilePx, coords) {
+    if (!coords?.length || tilePx == null || tilePx <= 0) return null;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < coords.length; i++) {
+      const r = coords[i]?.raw;
+      if (r && typeof r.x === "number") { if (r.x < minX) minX = r.x; if (r.x > maxX) maxX = r.x; }
+      if (r && typeof r.y === "number") { if (r.y < minY) minY = r.y; if (r.y > maxY) maxY = r.y; }
+    }
+    const spanX = maxX - minX;
+    const spanY = maxY - minY;
+    if (!Number.isFinite(spanX) || spanX <= 0 || !Number.isFinite(spanY) || spanY <= 0) return null;
+    const sizeX = (tilePx * RAW_REFERENCE_VIEWPORT) / spanX;
+    const sizeY = (tilePx * RAW_REFERENCE_VIEWPORT) / spanY;
+    return Math.min(sizeX, sizeY) * RAW_GRID_SAFETY;
+  }
+
   // Build both projections (raw and UMAP) and normalize each set independently
   const applyAllProjections = () => {
     if (!allCoords || allCoords.length === 0) {
@@ -190,14 +214,27 @@ export default function useDataLoader() {
       let metaJson = await fetchMeta(abort.signal);
       setMeta(metaJson);
 
-      // Reset default size control value based on atlas tile size of current dataset
-      if (metaJson && metaJson.atlas && metaJson.atlas.tile) {
-        setImageSize(defaultImageSizeForTile(metaJson.atlas.tile));
-      }
-
       let coords = await fetchCoords(abort.signal);
       if (!Array.isArray(coords)) coords = [];
       setAllCoords(coords);
+
+      // Raw view: size from tile + range (no overlap). UMAP: same initial value, user adjusts via slider.
+      const tilePx = metaJson?.atlas?.tile;
+      const fromTileAndRange = tilePx != null && coords.length > 0
+        ? imageSizeFromTileAndRawRange(tilePx, coords)
+        : null;
+      const UMAP_SIZE_CAP = 6; // match Size Control (UMAP) slider max
+      if (fromTileAndRange != null) {
+        const byTile = defaultImageSizeForTile(tilePx);
+        const size = Math.min(byTile, fromTileAndRange);
+        setRawImageSize(size);
+        setImageSize(Math.min(UMAP_SIZE_CAP, size));
+      } else if (metaJson?.atlas?.tile != null) {
+        const size = defaultImageSizeForTile(metaJson.atlas.tile);
+        setRawImageSize(size);
+        setImageSize(Math.min(UMAP_SIZE_CAP, size));
+      }
+
       if (coords.length === 0) {
         setPoints([]);
         setChunkUV({});
@@ -401,7 +438,8 @@ export default function useDataLoader() {
     colors,
     windows,
     imageSize,
-    
+    rawImageSize,
+
     // Rendering mode
     renderMode,
     is3D,
