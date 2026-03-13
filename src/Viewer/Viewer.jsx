@@ -1,7 +1,7 @@
 // =============================
 // Viewer.jsx  (screen-space lasso overlay + accurate selection in 2D/3D)
 // =============================
-import React, { useMemo, useState, useRef, useEffect } from "react";
+import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import DeckGL from "@deck.gl/react";
 import AnalysisPopover from "../AnalysisPopover/AnalysisPopover";
 import SelectionOverlay from "../SelectionOverlay/SelectionOverlay";
@@ -181,6 +181,22 @@ const Viewer = ({
   // —— Selection (using screen coordinates) ——
   const deckRef = useRef(null);
   const containerRef = useRef(null);
+  // Defer DeckGL mount until container has valid size to avoid luma.gl resize path
+  // reading device.limits.maxTextureDimension2D before WebGL context is ready.
+  const [containerReady, setContainerReady] = useState(false);
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target !== el) continue;
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) setContainerReady(true);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [toolbar, setToolbar] = useState({ show: false, x: 0, y: 0, object: null });
   // Analysis popover state
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -540,6 +556,10 @@ const Viewer = ({
 
   return (
     <div className="viewer-root" ref={containerRef}>
+      {!containerReady ? (
+        <div style={{ width: "100%", height: "100%" }} aria-hidden="true" />
+      ) : (
+      <>
       <SelectionOverlay
         containerRef={containerRef}
         deckRef={deckRef}
@@ -829,6 +849,8 @@ const Viewer = ({
           isAuto={isSemanticAuto}
           setIsAuto={setIsSemanticAuto}
         />
+      )}
+      </>
       )}
     </div>
   );
