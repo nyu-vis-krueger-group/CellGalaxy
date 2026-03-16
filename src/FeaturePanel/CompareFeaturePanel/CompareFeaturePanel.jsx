@@ -265,7 +265,7 @@ function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
     const pts1 = buildOutline(d1.xs, d1.ys, "left");
     const pts2 = buildOutline(d2.xs, d2.ys, "right");
 
-    // Region 1：left violin
+    // Region 1: left violin
     ctx.fillStyle = COLOR_REGION1;
     ctx.beginPath();
     if (pts1.length) ctx.moveTo(cx, pts1[0].y);
@@ -279,7 +279,7 @@ function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Region 2：right violin
+    // Region 2: right violin
     ctx.fillStyle = COLOR_REGION2;
     ctx.beginPath();
     if (pts2.length) ctx.moveTo(cx, pts2[0].y);

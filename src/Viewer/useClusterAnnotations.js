@@ -2,10 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { TextLayer } from "@deck.gl/layers";
 import { clusterColor } from "../utils/clustering";
 
+const API_BASE =
+  typeof window !== "undefined" &&
+  window.location &&
+  window.location.port === "3000"
+    ? "http://localhost:8000"
+    : "";
+
 /**
  * Build cluster annotation TextLayer + lookup map for tooltips.
- * Depends only on outlineData (per-cluster centroid + label), viewState zoom,
- * and the selected annotation model.
+ * Optionally merges dominant celltype/neigh_names per cluster from backend.
  */
 export default function useClusterAnnotations({
   clusterAnnotationOn = false,
@@ -15,9 +21,10 @@ export default function useClusterAnnotations({
   is3D = false,
   screenOutlines3D = [],
   level = 0,
+  filteredDominantAnnotations = null,
 }) {
-  // Load static JSON once when annotation is enabled
   const [clusterLabelsJson, setClusterLabelsJson] = useState(null);
+  const [clusterDominantAnnotations, setClusterDominantAnnotations] = useState(null);
 
   useEffect(() => {
     if (!clusterAnnotationOn) return;
@@ -36,6 +43,22 @@ export default function useClusterAnnotations({
     return () => {
       cancelled = true;
     };
+  }, [clusterAnnotationOn]);
+
+  useEffect(() => {
+    if (!clusterAnnotationOn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/cluster_dominant_annotations`, { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled && data && data.levels) setClusterDominantAnnotations(data);
+      } catch (e) {
+        if (!cancelled) setClusterDominantAnnotations(null);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [clusterAnnotationOn]);
 
   // Text size that responds to zoom (bigger when zooming in)
@@ -58,6 +81,11 @@ export default function useClusterAnnotations({
     const levelData = levels[levelKey] || {};
     if (!clusterAnnotationModel) return [];
 
+    // When filter is active, use frontend-computed dominant from filtered cells; otherwise use backend
+    const dominantByLevel = (filteredDominantAnnotations && filteredDominantAnnotations.levels) ||
+      (clusterDominantAnnotations && clusterDominantAnnotations.levels) || {};
+    const dominantLevel = dominantByLevel[levelKey] || {};
+
     const result = [];
     for (const outline of source) {
       const labelKey = String(outline.label);
@@ -65,6 +93,9 @@ export default function useClusterAnnotations({
       const modelInfo =
         clusterEntry && clusterEntry.models && clusterEntry.models[clusterAnnotationModel];
       if (!modelInfo || !modelInfo.title) continue;
+      const dominant = dominantLevel[labelKey] || {};
+      const dominantCelltype = dominant.celltype != null && String(dominant.celltype).trim() ? String(dominant.celltype) : null;
+      const dominantNeighNames = dominant.neigh_names != null && String(dominant.neigh_names).trim() ? String(dominant.neigh_names) : null;
       const c = is3D
         ? outline.centroidWorld || [0, 0, 0]
         : outline.centroid || (outline.path && outline.path[0]) || [0, 0, 0];
@@ -84,6 +115,8 @@ export default function useClusterAnnotations({
         label: outline.label,
         title: modelInfo.title,
         description: modelInfo.description || "",
+        dominantCelltype,
+        dominantNeighNames,
         model: clusterAnnotationModel,
         kind: "cluster-annotation",
       });
@@ -92,11 +125,13 @@ export default function useClusterAnnotations({
   }, [
     clusterAnnotationOn,
     clusterLabelsJson,
+    clusterDominantAnnotations,
     outlineData,
     clusterAnnotationModel,
     is3D,
     screenOutlines3D,
     level,
+    filteredDominantAnnotations,
   ]);
 
   // Quick lookup: label -> annotation entry

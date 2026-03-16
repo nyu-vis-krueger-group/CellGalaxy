@@ -162,4 +162,22 @@
   text-align: right;
 }
 
+.clu-annotation-panel {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #2e3440;
+}
+.clu-annotation-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.clu-annotation-btn-label {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.clu-annotation-btn.on {
+  background: rgba(99,102,241,0.22);
+  border-color: rgba(99,102,241,0.55);
+}
+
 

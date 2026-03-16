@@ -30,4 +30,16 @@
   white-space: nowrap;
 }
 
+.cluster-annotation-dominant {
+  margin-top: 4px;
+  padding: 3px 8px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 3px;
+  white-space: normal;
+  word-break: break-word;
+  max-width: 360px;
+  line-height: 1.3;
+}
+
 

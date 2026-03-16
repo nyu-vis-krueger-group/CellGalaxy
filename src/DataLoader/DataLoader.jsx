@@ -46,12 +46,17 @@ export default function useDataLoader() {
   // opacity for color overlay [0..1]
   const [clusterOpacity, setClusterOpacity] = useState(1.0);
   // line width (px) for outline mode
-  const [clusterLineWidth, setClusterLineWidth] = useState(1.5);
+  const [clusterLineWidth, setClusterLineWidth] = useState(1);
   // cluster text annotation (LLM titles/descriptions)
   const [clusterAnnotationOn, setClusterAnnotationOn] = useState(false);
   const [clusterAnnotationModel, setClusterAnnotationModel] = useState("MedGemma");
   // Toggle for the visibility of fixed cluster preview images (off by default, enabled by user)
   const [clusterPreviewOn, setClusterPreviewOn] = useState(false);
+
+  // Raw annotation columns (celltype, neigh_names) — only set when raw.json exists and has those columns
+  const [rawAnnotationColumns, setRawAnnotationColumns] = useState({ celltype: false, neigh_names: false });
+  const [cellTypeAnnotationOn, setCellTypeAnnotationOn] = useState(false);
+  const [neighNamesAnnotationOn, setNeighNamesAnnotationOn] = useState(false);
   
   // UMAP mode settings (kept for compatibility, side-by-side uses both)
   const [useUMAP, setUseUMAP] = useState(false);
@@ -126,7 +131,8 @@ export default function useDataLoader() {
   // Use a small reference viewport and safety margin so tiles stay within one grid cell on typical
   // viewports (avoid overlap when pane is smaller than reference).
   const RAW_REFERENCE_VIEWPORT = 500;
-  const RAW_GRID_SAFETY = 0.88;
+  // Slight overlap so adjacent spatial tiles have no visible gap (1.03 ≈ 3% larger; 1 = no overlap, 0.97 = ~3% gap).
+  const RAW_GRID_SAFETY = 1.05;
   function imageSizeFromTileAndRawRange(tilePx, coords) {
     if (!coords?.length || tilePx == null || tilePx <= 0) return null;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -213,6 +219,17 @@ export default function useDataLoader() {
       const abort = new AbortController();
       let metaJson = await fetchMeta(abort.signal);
       setMeta(metaJson);
+
+      // Fetch upload status to know if raw has celltype/neigh_names for annotation panel
+      try {
+        const statusRes = await fetch(`/upload/status?ts=${Date.now()}`, { cache: "no-store", signal: abort.signal });
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          setRawAnnotationColumns(statusData?.raw_annotation_columns || { celltype: false, neigh_names: false });
+        }
+      } catch (_) {
+        setRawAnnotationColumns({ celltype: false, neigh_names: false });
+      }
 
       let coords = await fetchCoords(abort.signal);
       if (!Array.isArray(coords)) coords = [];
@@ -459,6 +476,12 @@ export default function useDataLoader() {
     setClusterAnnotationModel,
     clusterPreviewOn,
     setClusterPreviewOn,
+
+    rawAnnotationColumns,
+    cellTypeAnnotationOn,
+    setCellTypeAnnotationOn,
+    neighNamesAnnotationOn,
+    setNeighNamesAnnotationOn,
     
     // UMAP mode (kept for compatibility)
     useUMAP,

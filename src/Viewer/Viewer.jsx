@@ -1,7 +1,7 @@
 // =============================
 // Viewer.jsx  (screen-space lasso overlay + accurate selection in 2D/3D)
 // =============================
-import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
+import React, { useMemo, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import DeckGL from "@deck.gl/react";
 import AnalysisPopover from "../AnalysisPopover/AnalysisPopover";
 import SelectionOverlay from "../SelectionOverlay/SelectionOverlay";
@@ -20,6 +20,7 @@ import {
   getEventCoordinates,
   ease,
   projectItemsToScreen,
+  computeCenter,
 } from "../utils/utils";
 import { buildOutlineData2D, clusterColor } from "../utils/clustering";
 import "./Viewer.css";
@@ -37,6 +38,7 @@ import ClusterPreviewThumb from "./ClusterPreviewThumb/ClusterPreviewThumb";
 import ClusterAnnotationOverlay from "./ClusterAnnotationOverlay/ClusterAnnotationOverlay";
 import SimilarityRankingOverlay from "./SimilarityRankingOverlay/SimilarityRankingOverlay";
 import useGlobalCellFocusAndRanking from "./useGlobalCellFocusAndRanking";
+import AnnotationStatsPopover from "../AnnotationStatsPopover/AnnotationStatsPopover";
 
 const Viewer = ({
   viewerId = "viewer",
@@ -70,13 +72,17 @@ const Viewer = ({
   // Clustering overlay
   clusterColorOn = false,
   clusterOpacity = 0.25,
-  clusterLineWidth = 1.5,
+  clusterLineWidth = 1,
   clusterOutlineOn = false,
   // Cluster annotation (LLM titles/descriptions)
   clusterAnnotationOn = false,
   clusterAnnotationModel = "MedGemma",
   // Cluster preview (representative image per cluster, on UMAP view)
   clusterPreviewOn = true,
+  // Per-cell annotation from raw (celltype, neigh_names) — only when raw has those columns
+  cellTypeAnnotationOn = false,
+  neighNamesAnnotationOn = false,
+  rawAnnotationColumns = { celltype: false, neigh_names: false },
   // Shared zoom (optional): when provided, viewers sync zoom level
   sharedZoom,
   setSharedZoom,
@@ -181,8 +187,9 @@ const Viewer = ({
   // —— Selection (using screen coordinates) ——
   const deckRef = useRef(null);
   const containerRef = useRef(null);
-  // Defer DeckGL mount until container has valid size to avoid luma.gl resize path
-  // reading device.limits.maxTextureDimension2D before WebGL context is ready.
+  // Defer DeckGL mount until container has valid size, then one more frame, so that
+  // luma.gl's internal ResizeObserver does not fire before device.limits is ready
+  // (avoids "Cannot read properties of undefined (reading 'maxTextureDimension2D')" on slower machines).
   const [containerReady, setContainerReady] = useState(false);
   useLayoutEffect(() => {
     const el = containerRef.current;
@@ -191,7 +198,9 @@ const Viewer = ({
       for (const entry of entries) {
         if (entry.target !== el) continue;
         const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) setContainerReady(true);
+        if (width > 0 && height > 0) {
+          requestAnimationFrame(() => setContainerReady(true));
+        }
       }
     });
     ro.observe(el);
@@ -203,6 +212,9 @@ const Viewer = ({
   const [popoverCmd, setPopoverCmd] = useState(null);
   const [popoverPos, setPopoverPos] = useState({ x: 0, y: 0 });
   const [popoverBounds, setPopoverBounds] = useState(null);
+  const [annotationStatsOpen, setAnnotationStatsOpen] = useState(false);
+  // Zoom-to-selection: restore goes to default initial view (center + zoom 8), not a saved state
+  const [isZoomedToSelection, setIsZoomedToSelection] = useState(false);
   // Similarity ranking: Map of cell ID -> rank (0 for query, 1-N for neighbors)
   const [similarityRankings, setSimilarityRankings] = useState(new Map());
   // Distinct highlight colors for up to two regions
@@ -229,6 +241,48 @@ const Viewer = ({
       // ignore
     }
   };
+
+  // Zoom viewer to center on selected region
+  const zoomToSelection = useCallback(() => {
+    if (!points?.length || !selectedIds?.size) return;
+    const selected = points.filter((p) => selectedIds.has(p.id));
+    if (selected.length === 0) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const p of selected) {
+      const x = p.x ?? 0, y = p.y ?? 0, z = p.z ?? 0;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2;
+    setIsZoomedToSelection(true);
+    setViewState((prev) => ({
+      ...prev,
+      target: [cx, cy, cz],
+      zoom: 12,
+      transitionDuration: transitionsEnabled ? 600 : 0,
+      transitionEasing: transitionsEnabled ? ease : undefined,
+      transitionInterpolator: transitionsEnabled
+        ? new LinearInterpolator(["target", "zoom"])
+        : undefined,
+    }));
+  }, [points, selectedIds, setViewState, transitionsEnabled]);
+
+  // Restore to default initial view (data center + zoom 8), not a previously saved state
+  const initialTarget = useMemo(() => computeCenter(points || []), [points]);
+  const restoreView = useCallback(() => {
+    setViewState((prev) => ({
+      ...prev,
+      target: initialTarget,
+      zoom: 8,
+      transitionDuration: transitionsEnabled ? 600 : 0,
+      transitionEasing: transitionsEnabled ? ease : undefined,
+      transitionInterpolator: transitionsEnabled
+        ? new LinearInterpolator(["target", "zoom"])
+        : undefined,
+    }));
+    setIsZoomedToSelection(false);
+  }, [initialTarget, setViewState, transitionsEnabled]);
 
   const onClick = (info) => {
     // In box/lasso selection mode, completely disable click-based single selection/deselection;
@@ -356,6 +410,86 @@ const Viewer = ({
     setClusterPreviewScreens(result);
   }, [isUMAPView, clusterPreviewOn, clusterPreviewPoints, viewState, deckRef, containerRef]);
 
+  // Screen positions for cluster titles (DOM overlay at cluster centroid)
+  const [clusterAnnotationScreens, setClusterAnnotationScreens] = useState([]);
+
+  const [hoveredAnnotationLabel, setHoveredAnnotationLabel] = useState(null);
+  const descriptionRefs = useRef({});
+
+  // Load raw.json for per-cell annotation (celltype, neigh_names) when any annotation toggle is on
+  const [rawAnnotationById, setRawAnnotationById] = useState(() => new Map());
+  useEffect(() => {
+    if (!cellTypeAnnotationOn && !neighNamesAnnotationOn) {
+      setRawAnnotationById(new Map());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const base = typeof window !== "undefined" && window.location?.port === "3000" ? "http://localhost:8000" : "";
+        const res = await fetch(`${base}/public/raw.json?ts=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!Array.isArray(data) || cancelled) return;
+        const map = new Map();
+        for (let i = 1; i < data.length; i++) {
+          const row = data[i];
+          if (row && typeof row.id === "number" && row.raw && typeof row.raw === "object") {
+            const ct = row.raw.celltype;
+            const nn = row.raw.neigh_names;
+            if (ct != null || nn != null) {
+              map.set(row.id, { celltype: ct != null ? String(ct) : "", neigh_names: nn != null ? String(nn) : "" });
+            }
+          }
+        }
+        if (!cancelled) setRawAnnotationById(map);
+      } catch (e) {
+        if (!cancelled) setRawAnnotationById(new Map());
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cellTypeAnnotationOn, neighNamesAnnotationOn]);
+
+  // When filter is active: compute dominant celltype/neigh_names per cluster from filtered cells only
+  const filteredDominantAnnotations = useMemo(() => {
+    if (!filteredIds || filteredIds.size === 0 || !rawAnnotationById || rawAnnotationById.size === 0) return null;
+    if (!points || points.length === 0) return null;
+    const levels = {};
+    const mode = (arr) => {
+      if (!arr.length) return null;
+      const c = {};
+      for (const v of arr) c[v] = (c[v] || 0) + 1;
+      let best = "";
+      let bestN = 0;
+      for (const [v, n] of Object.entries(c)) if (n > bestN) { bestN = n; best = v; }
+      return best;
+    };
+    for (let level = 0; level < 6; level++) {
+      const clusterKey = `cluster_L${level}`;
+      const byCluster = {};
+      for (const p of points) {
+        if (!filteredIds.has(p.id)) continue;
+        const cid = p[clusterKey];
+        if (cid == null) continue;
+        const ann = rawAnnotationById.get(p.id);
+        if (!ann) continue;
+        const cidStr = String(cid);
+        if (!byCluster[cidStr]) byCluster[cidStr] = { celltype: [], neigh_names: [] };
+        if (ann.celltype != null && String(ann.celltype).trim()) byCluster[cidStr].celltype.push(String(ann.celltype).trim());
+        if (ann.neigh_names != null && String(ann.neigh_names).trim()) byCluster[cidStr].neigh_names.push(String(ann.neigh_names).trim());
+      }
+      const levelOut = {};
+      for (const [cid, arr] of Object.entries(byCluster)) {
+        levelOut[cid] = {
+          celltype: mode(arr.celltype),
+          neigh_names: mode(arr.neigh_names),
+        };
+      }
+      levels[String(level)] = levelOut;
+    }
+    return { levels };
+  }, [points, rawAnnotationById, filteredIds]);
+
   // Cluster annotation (text layer + tooltip data), derived from outlineData (2D) or projected screen outlines (3D)
   const { annotationLayer, clusterAnnotationData } = useClusterAnnotations({
     clusterAnnotationOn,
@@ -365,14 +499,11 @@ const Viewer = ({
     is3D,
     screenOutlines3D: screenOutlines,
     level: semanticLevel,
+    filteredDominantAnnotations,
   });
 
-  // We now always render titles/descriptions via DOM overlays instead of
-  // the original DeckGL TextLayer to avoid double‑drawing text.
+  // We now always render titles/descriptions via DOM overlays instead of the original DeckGL TextLayer
   const showAnnotationLayer = false;
-
-  // Screen positions for cluster titles (DOM overlay at cluster centroid)
-  const [clusterAnnotationScreens, setClusterAnnotationScreens] = useState([]);
 
   useEffect(() => {
     if (!isUMAPView || !clusterAnnotationOn) {
@@ -383,7 +514,6 @@ const Viewer = ({
       setClusterAnnotationScreens([]);
       return;
     }
-
     const result = projectItemsToScreen({
       deckRef,
       containerRef,
@@ -406,8 +536,86 @@ const Viewer = ({
     containerRef,
   ]);
 
-  const [hoveredAnnotationLabel, setHoveredAnnotationLabel] = useState(null);
-  const descriptionRefs = useRef({});
+  // Per-cell annotation labels: show at moderate zoom (lower threshold = show when less zoomed in)
+  const ZOOM_THRESHOLD_CELL_ANNOTATION = 11;
+  const MAX_CELL_ANNOTATIONS_VISIBLE = 400;
+  const ANNOTATION_GRID_SIZE = 16; // spatial sampling grid for even distribution
+  const [cellAnnotationScreens, setCellAnnotationScreens] = useState([]);
+  useEffect(() => {
+    if (!(cellTypeAnnotationOn || neighNamesAnnotationOn) || !visiblePoints?.length || !rawAnnotationById?.size) {
+      setCellAnnotationScreens([]);
+      return;
+    }
+    const z = typeof viewState?.zoom === "number" ? viewState.zoom : 0;
+    if (z < ZOOM_THRESHOLD_CELL_ANNOTATION) {
+      setCellAnnotationScreens([]);
+      return;
+    }
+    const projected = projectItemsToScreen({
+      deckRef,
+      containerRef,
+      items: visiblePoints,
+      getWorldPosition: (p) => [p.x, p.y, p.z ?? 0],
+      mapResult: (p, sx, sy, offsetX, offsetY) => ({ ...p, x: sx + offsetX, y: sy + offsetY }),
+    });
+    const containerEl = containerRef?.current;
+    const w = containerEl?.clientWidth ?? 2000;
+    const h = containerEl?.clientHeight ?? 2000;
+    const hasFilter = filteredIds && filteredIds.size > 0;
+    const inView = projected.filter((p) => {
+      if (hasFilter && !filteredIds.has(p.id)) return false;
+      const ann = rawAnnotationById.get(p.id);
+      if (!ann) return false;
+      const show = (cellTypeAnnotationOn && ann.celltype) || (neighNamesAnnotationOn && ann.neigh_names);
+      if (!show) return false;
+      return p.x >= -50 && p.x <= w + 50 && p.y >= -50 && p.y <= h + 50;
+    });
+    // When over limit: sample by viewport grid so labels are spread across the view, not clustered in one region
+    let limited;
+    if (inView.length <= MAX_CELL_ANNOTATIONS_VISIBLE) {
+      limited = inView;
+    } else {
+      const g = ANNOTATION_GRID_SIZE;
+      const cellW = (w + 100) / g;
+      const cellH = (h + 100) / g;
+      const byCell = new Map();
+      for (const p of inView) {
+        const cx = Math.max(0, Math.min(g - 1, Math.floor((p.x + 50) / cellW)));
+        const cy = Math.max(0, Math.min(g - 1, Math.floor((p.y + 50) / cellH)));
+        const key = `${cx},${cy}`;
+        if (!byCell.has(key)) byCell.set(key, []);
+        byCell.get(key).push(p);
+      }
+      const maxPerCell = Math.max(1, Math.ceil(MAX_CELL_ANNOTATIONS_VISIBLE / (g * g)));
+      limited = [];
+      const cellKeys = [...byCell.keys()].sort();
+      for (const key of cellKeys) {
+        const arr = byCell.get(key);
+        for (let i = 0; i < Math.min(maxPerCell, arr.length); i++) {
+          limited.push(arr[i]);
+          if (limited.length >= MAX_CELL_ANNOTATIONS_VISIBLE) break;
+        }
+        if (limited.length >= MAX_CELL_ANNOTATIONS_VISIBLE) break;
+      }
+    }
+    setCellAnnotationScreens(limited.map((p) => {
+      const ann = rawAnnotationById.get(p.id) || {};
+      let text = "";
+      if (cellTypeAnnotationOn && ann.celltype) text += ann.celltype;
+      if (cellTypeAnnotationOn && ann.celltype && neighNamesAnnotationOn && ann.neigh_names) text += " · ";
+      if (neighNamesAnnotationOn && ann.neigh_names) text += ann.neigh_names;
+      return { ...p, text };
+    }));
+  }, [
+    cellTypeAnnotationOn,
+    neighNamesAnnotationOn,
+    visiblePoints,
+    rawAnnotationById,
+    filteredIds,
+    viewState,
+    deckRef,
+    containerRef,
+  ]);
 
   // Screen positions for similarity ranking labels (DOM overlay)
   const [similarityRankingScreens, setSimilarityRankingScreens] = useState([]);
@@ -642,7 +850,13 @@ const Viewer = ({
               setPopoverBounds={setPopoverBounds}
               setPopoverOpen={setPopoverOpen}
               clearSelection={clearSelection}
-        clearSimilarityRankings={clearAllSimilarityRankings}
+              clearSimilarityRankings={clearAllSimilarityRankings}
+              rawAnnotationColumns={rawAnnotationColumns}
+              onShowAnnotationStats={() => setAnnotationStatsOpen(true)}
+              onCloseAnnotationStats={() => setAnnotationStatsOpen(false)}
+              onZoomToSelection={zoomToSelection}
+              onRestoreView={restoreView}
+              isZoomedToSelection={isZoomedToSelection}
             />
           </>
         )}
@@ -698,12 +912,29 @@ const Viewer = ({
             hoveredAnnotationLabel={hoveredAnnotationLabel}
             setHoveredAnnotationLabel={setHoveredAnnotationLabel}
             descriptionRefs={descriptionRefs}
+            cellTypeAnnotationOn={cellTypeAnnotationOn}
+            neighNamesAnnotationOn={neighNamesAnnotationOn}
           />
         )}
 
       {/* Similarity ranking labels (DOM overlay) */}
       {similarityRankingScreens && similarityRankingScreens.length > 0 && (
         <SimilarityRankingOverlay items={similarityRankingScreens} />
+      )}
+
+      {/* Per-cell annotation labels when zoomed in (celltype / neigh_names) */}
+      {cellAnnotationScreens && cellAnnotationScreens.length > 0 && (
+        <div className="cell-annotation-overlay" aria-hidden="true">
+          {cellAnnotationScreens.map((item) => (
+            <div
+              key={`cell-ann-${item.id}`}
+              className="cell-annotation-label"
+              style={{ left: item.x, top: item.y }}
+            >
+              {item.text}
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Click toolbar */}
@@ -796,6 +1027,12 @@ const Viewer = ({
         setSelectedIds={setSelectedIds}
       />
 
+      <AnnotationStatsPopover
+        open={annotationStatsOpen}
+        onClose={() => setAnnotationStatsOpen(false)}
+        selectedIds={selectedIds}
+      />
+
       <HoverPreview
         deckRef={deckRef}
         containerRef={containerRef}
@@ -807,9 +1044,12 @@ const Viewer = ({
         alphas={alphas}
         windows={windows}
         computedImageSize={computedImageSize}
-        // Disable hover preview in box/lasso selection modes
         hoverEnabled={selectionMode === SELECTION_NONE}
         selectedIds={selectedIds}
+        cellTypeAnnotationOn={cellTypeAnnotationOn}
+        neighNamesAnnotationOn={neighNamesAnnotationOn}
+        rawAnnotationById={rawAnnotationById}
+        filteredIds={filteredIds}
       />
 
       {/* Persistent selection outlines (slightly thinner than hover outline). */}

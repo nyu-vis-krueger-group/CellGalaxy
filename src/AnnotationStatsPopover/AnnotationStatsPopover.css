@@ -1,0 +1,218 @@
+.annotation-stats-popover {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 420px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: rgba(18, 20, 26, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  color: #e8eaed;
+  z-index: 210;
+}
+
+.annotation-stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.annotation-stats-drag-handle {
+  cursor: move;
+  user-select: none;
+}
+
+.annotation-stats-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.annotation-stats-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.annotation-stats-close:hover {
+  color: #ff9aa8;
+}
+
+.annotation-stats-close .material-icons {
+  font-size: 20px;
+}
+
+.annotation-stats-body {
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.annotation-stats-loading,
+.annotation-stats-error,
+.annotation-stats-empty {
+  padding: 24px 0;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.annotation-stats-error {
+  color: #f87171;
+}
+
+.annotation-stats-section {
+  margin-bottom: 18px;
+}
+
+.annotation-stats-section:last-child {
+  margin-bottom: 0;
+}
+
+.annotation-stats-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+  margin-bottom: 8px;
+}
+
+.annotation-stats-legend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.annotation-stats-legend-item.global::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 8px;
+  margin-right: 4px;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: rgba(99, 102, 241, 0.8);
+}
+
+.annotation-stats-legend-item.local::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 8px;
+  margin-right: 4px;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: rgba(34, 197, 94, 0.8);
+}
+
+.annotation-stats-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.annotation-stats-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.annotation-stats-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #e2e8f0;
+  min-width: 0;
+}
+
+/* Symmetric bar chart: center line, global grows left, selection grows right */
+.annotation-stats-bars-symmetric {
+  display: flex;
+  align-items: center;
+  min-height: 14px;
+  width: 100%;
+}
+
+.annotation-stats-bars-half {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 50%;
+}
+
+.annotation-stats-bars-half.left {
+  justify-content: flex-end;
+  padding-right: 2px;
+  gap: 4px;
+}
+
+.annotation-stats-bars-half.right {
+  justify-content: flex-start;
+  padding-left: 2px;
+  gap: 4px;
+}
+
+.annotation-stats-bar-center {
+  width: 2px;
+  height: 12px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 1px;
+}
+
+.annotation-stats-bar-wrap {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.annotation-stats-bar {
+  height: 10px;
+  width: 100%;
+  min-width: 0;
+  border-radius: 3px;
+  transition: width 0.15s ease;
+}
+
+.annotation-stats-bars-half.left .annotation-stats-bar.global {
+  background: rgba(99, 102, 241, 0.8);
+  border-radius: 3px 0 0 3px;
+}
+
+.annotation-stats-bars-half.right .annotation-stats-bar.local {
+  background: rgba(34, 197, 94, 0.8);
+  border-radius: 0 3px 3px 0;
+}
+
+.annotation-stats-pct-outside {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #94a3b8;
+  min-width: 32px;
+}
+
+.annotation-stats-pct-outside.left {
+  text-align: right;
+}
+
+.annotation-stats-pct-outside.right {
+  text-align: left;
+}

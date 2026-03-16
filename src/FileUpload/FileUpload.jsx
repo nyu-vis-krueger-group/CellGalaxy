@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import "./FileUpload.css";
 
 export default function FileUpload({ onRefresh = async () => {} }) {
-  const [status, setStatus] = useState({ zarr: false, csv: false, raw: false, feat: false, channels: false, zooming: false, generating: false });
+  const [status, setStatus] = useState({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, generating: false });
   const [busy, setBusy] = useState(false);
   const [processing, setProcessing] = useState({ zarr: false, csv: false, raw: false, feat: false, channels: false, zooming: false });
   const [open, setOpen] = useState(false);
@@ -13,7 +13,7 @@ export default function FileUpload({ onRefresh = async () => {} }) {
     try {
       const res = await fetch(`/upload/status?ts=${Date.now()}`, { cache: 'no-store' });
       if (!res.ok) {
-        setStatus({ zarr: false, csv: false, raw: false, feat: false });
+        setStatus({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, generating: false });
         return;
       }
       const data = await res.json();
@@ -21,6 +21,7 @@ export default function FileUpload({ onRefresh = async () => {} }) {
         zarr: Boolean(data?.zarr),
         csv: Boolean(data?.csv),
         raw: Boolean(data?.raw),
+        raw_annotation_columns: data?.raw_annotation_columns || { celltype: false, neigh_names: false },
         feat: Boolean(data?.feat),
         channels: Boolean(data?.channels),
         zooming: Boolean(data?.zooming),
@@ -28,7 +29,7 @@ export default function FileUpload({ onRefresh = async () => {} }) {
       });
     } catch (err) {
       console.error("status fetch failed", err);
-      setStatus({ zarr: false, csv: false, raw: false, feat: false, channels: false, zooming: false, generating: false });
+      setStatus({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, generating: false });
     }
   }, []);
 

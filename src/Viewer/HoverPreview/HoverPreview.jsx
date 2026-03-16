@@ -178,6 +178,10 @@ function HoverCellTooltip({
   colors,
   alphas,
   windows,
+  cellTypeAnnotationOn = false,
+  neighNamesAnnotationOn = false,
+  rawAnnotationById = new Map(),
+  filteredIds = null,
 }) {
   const canvasRef = useRef(null);
 
@@ -217,6 +221,8 @@ function HoverCellTooltip({
   if (!info || !info.object) return null;
 
   const { object } = info;
+  const ann = rawAnnotationById.get(object.id);
+  const passesFilter = !filteredIds || filteredIds.size === 0 || filteredIds.has(object.id);
 
   let left = info.x;
   let top = info.y;
@@ -226,6 +232,9 @@ function HoverCellTooltip({
     left = info.x - rect.left + 16;
     top = info.y - rect.top + 16;
   }
+
+  const showCellType = passesFilter && cellTypeAnnotationOn && ann && (ann.celltype != null && ann.celltype !== "");
+  const showNeighNames = passesFilter && neighNamesAnnotationOn && ann && (ann.neigh_names != null && ann.neigh_names !== "");
 
   return (
     <div
@@ -245,6 +254,12 @@ function HoverCellTooltip({
           className="hover-preview-canvas"
         />
       </div>
+      {(showCellType || showNeighNames) && (
+        <div className="hover-preview-annotation">
+          {showCellType && <div className="hover-preview-annotation-row"><span className="hover-preview-annotation-label">Cell type:</span> {ann.celltype}</div>}
+          {showNeighNames && <div className="hover-preview-annotation-row"><span className="hover-preview-annotation-label">Neigh names:</span> {ann.neigh_names}</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -261,12 +276,13 @@ export default function HoverPreview({
   colors,
   alphas,
   windows,
-  // Approximate on‑screen tile size in pixels; used for hover outline box.
   computedImageSize = 16,
-  // Whether hover preview should be enabled (e.g. disabled during box/lasso selection).
   hoverEnabled = true,
-  // When there is an active selection, we disable hover preview on other tiles.
   selectedIds = new Set(),
+  cellTypeAnnotationOn = false,
+  neighNamesAnnotationOn = false,
+  rawAnnotationById = new Map(),
+  filteredIds = null,
 }) {
   const [hoverInfo, setHoverInfo] = useState(null);
   const [outlineRect, setOutlineRect] = useState(null);
@@ -409,6 +425,10 @@ export default function HoverPreview({
         colors={colors}
         alphas={alphas}
         windows={windows}
+        cellTypeAnnotationOn={cellTypeAnnotationOn}
+        neighNamesAnnotationOn={neighNamesAnnotationOn}
+        rawAnnotationById={rawAnnotationById}
+        filteredIds={filteredIds}
       />
     </>
   );

@@ -16,8 +16,31 @@
   width: 128px;
   height: 128px;
   display: block;
-  /* Use default interpolation so scaled previews look smoother. */
   image-rendering: auto;
+}
+
+.hover-preview-annotation {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(15, 17, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #e2e8f0;
+  max-width: 200px;
+}
+.hover-preview-annotation-row {
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hover-preview-annotation-row:first-child {
+  margin-top: 0;
+}
+.hover-preview-annotation-label {
+  color: #94a3b8;
+  margin-right: 4px;
 }
 
 /* White outline for hovered tile (raw / UMAP view) */

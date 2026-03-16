@@ -43,7 +43,7 @@ export default function Control({
   setClusterOutlineOn = () => {},
   clusterOpacity = 0.25,
   setClusterOpacity = () => {},
-  clusterLineWidth = 1.5,
+  clusterLineWidth = 1,
   setClusterLineWidth = () => {},
   clusterAnnotationOn = false,
   setClusterAnnotationOn = () => {},
@@ -51,6 +51,11 @@ export default function Control({
   setClusterAnnotationModel = () => {},
   clusterPreviewOn = true,
   setClusterPreviewOn = () => {},
+  rawAnnotationColumns = { celltype: false, neigh_names: false },
+  cellTypeAnnotationOn = false,
+  setCellTypeAnnotationOn = () => {},
+  neighNamesAnnotationOn = false,
+  setNeighNamesAnnotationOn = () => {},
 }) {
   const [collapsed, setCollapsed] = useState(false);
   return (
@@ -126,6 +131,11 @@ export default function Control({
         setAnnotationModel={setClusterAnnotationModel}
         previewOn={clusterPreviewOn}
         setPreviewOn={setClusterPreviewOn}
+        rawAnnotationColumns={rawAnnotationColumns}
+        cellTypeAnnotationOn={cellTypeAnnotationOn}
+        setCellTypeAnnotationOn={setCellTypeAnnotationOn}
+        neighNamesAnnotationOn={neighNamesAnnotationOn}
+        setNeighNamesAnnotationOn={setNeighNamesAnnotationOn}
       />
     
       </div>

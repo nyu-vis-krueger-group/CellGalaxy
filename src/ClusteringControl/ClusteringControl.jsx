@@ -12,11 +12,18 @@ export default function ClusteringControl({
   setAnnotationModel = () => {},
   previewOn = true,
   setPreviewOn = () => {},
+  rawAnnotationColumns = { celltype: false, neigh_names: false },
+  cellTypeAnnotationOn = false,
+  setCellTypeAnnotationOn = () => {},
+  neighNamesAnnotationOn = false,
+  setNeighNamesAnnotationOn = () => {},
 }) {
   const [showModelPanel, setShowModelPanel] = useState(false);
   const [selectedModel, setSelectedModel] = useState(annotationModel || "Biomni");
   const [isLLMRunning, setIsLLMRunning] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const hasRawAnnotationColumns =
+    rawAnnotationColumns && rawAnnotationColumns.celltype && rawAnnotationColumns.neigh_names;
 
   return (
     <div className="clu-block">
@@ -185,6 +192,27 @@ export default function ClusteringControl({
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {hasRawAnnotationColumns && (
+        <div className="clu-annotation-panel">
+          <div className="clu-title clu-annotation-title">Annotation</div>
+          <div className="clu-buttons">
+            <button
+              className={`clu-btn clu-annotation-btn ${cellTypeAnnotationOn ? "on" : ""}`}
+              onClick={() => setCellTypeAnnotationOn(!cellTypeAnnotationOn)}
+              title="Show cell type on hover and when zoomed in"
+            >
+              <span className="clu-annotation-btn-label">Cell type</span>
+            </button>
+            <button
+              className={`clu-btn clu-annotation-btn ${neighNamesAnnotationOn ? "on" : ""}`}
+              onClick={() => setNeighNamesAnnotationOn(!neighNamesAnnotationOn)}
+              title="Show neigh_names on hover and when zoomed in"
+            >
+              <span className="clu-annotation-btn-label">Neigh names</span>
+            </button>
           </div>
         </div>
       )}

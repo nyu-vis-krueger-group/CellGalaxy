@@ -9,6 +9,8 @@ export default function ClusterAnnotationOverlay({
   hoveredAnnotationLabel,
   setHoveredAnnotationLabel,
   descriptionRefs,
+  cellTypeAnnotationOn = false,
+  neighNamesAnnotationOn = false,
 }) {
   if (
     !annotations ||
@@ -23,7 +25,7 @@ export default function ClusterAnnotationOverlay({
   const size = Math.max(10, Math.min(32, baseSize * scale));
 
   return annotations.map((ann) => {
-    const { label, title, description, x, y } = ann;
+    const { label, title, description, x, y, dominantCelltype, dominantNeighNames } = ann;
     if (!title) return null;
     const rgb = clusterColor(label);
     const darkBg = [
@@ -31,6 +33,9 @@ export default function ClusterAnnotationOverlay({
       Math.round(rgb[1] * 0.6),
       Math.round(rgb[2] * 0.6),
     ];
+    const showCelltype = cellTypeAnnotationOn && dominantCelltype && dominantCelltype.trim();
+    const showNeigh = neighNamesAnnotationOn && dominantNeighNames && dominantNeighNames.trim();
+    const hasDominant = showCelltype || showNeigh;
 
     return (
       <div
@@ -43,7 +48,6 @@ export default function ClusterAnnotationOverlay({
           zIndex: hoveredAnnotationLabel === label ? 100 : 10,
         }}
         onMouseEnter={(e) => {
-          // Only show description when Option (Alt) is pressed
           if (altPressed || e.altKey) {
             setHoveredAnnotationLabel(label);
           }
@@ -69,6 +73,13 @@ export default function ClusterAnnotationOverlay({
         >
           {title}
         </div>
+        {hasDominant && (
+          <div className="cluster-annotation-dominant" style={{ fontSize: `${Math.max(9, size - 2)}px` }}>
+            {showCelltype && <span>Cell type: {dominantCelltype}</span>}
+            {showCelltype && showNeigh && " · "}
+            {showNeigh && <span>Neigh: {dominantNeighNames}</span>}
+          </div>
+        )}
         {hoveredAnnotationLabel === label && description && altPressed && (
           <div
             className="deck-tooltip cluster-annotation-description"
