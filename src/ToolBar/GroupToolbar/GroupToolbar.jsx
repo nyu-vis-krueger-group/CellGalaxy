@@ -17,7 +17,10 @@ export default function GroupToolbar({
   const isCompare = mode === ANALYSIS_COMPARE;
   const icon = isCompare ? "compare_arrows" : "analytics";
   const title = isCompare ? "Compare two regions" : "Group analysis";
-  const canZoomToSelection = typeof onZoomToSelection === "function" && typeof onRestoreView === "function";
+  const canZoomToSelection =
+    !isCompare &&
+    typeof onZoomToSelection === "function" &&
+    typeof onRestoreView === "function";
   return (
     <div className={`group-toolbar${isCompare ? " compare" : ""}`}>
       {canZoomToSelection && (

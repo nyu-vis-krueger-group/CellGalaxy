@@ -289,6 +289,18 @@ export default function AnalysisPopover({
         } catch (_) {}
       }}
     >
+      <button
+        type="button"
+        className="analysis-close"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        aria-label="Close"
+      >
+        ×
+      </button>
       <div className="analysis-drag-handle" onMouseDown={handleDragMouseDown}>
         <div className="analysis-drag-pill" />
       </div>

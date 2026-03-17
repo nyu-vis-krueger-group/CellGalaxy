@@ -1031,6 +1031,7 @@ const Viewer = ({
         open={annotationStatsOpen}
         onClose={() => setAnnotationStatsOpen(false)}
         selectedIds={selectedIds}
+        selectedRegions={selectedRegions}
       />
 
       <HoverPreview

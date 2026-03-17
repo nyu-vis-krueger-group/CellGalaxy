@@ -6,27 +6,51 @@ const API_BASE =
     ? "http://localhost:8000"
     : "";
 
-function computeCounts(rawList, selectedIdSet) {
+function computeCounts(rawList, selectedIdSet, selectedRegions) {
   const globalByKey = {};
   const localByKey = {};
+  const region1ByKey = {};
+  const region2ByKey = {};
+  const set1 = Array.isArray(selectedRegions) && selectedRegions.length >= 1 && selectedRegions[0]?.has
+    ? selectedRegions[0]
+    : null;
+  const set2 = Array.isArray(selectedRegions) && selectedRegions.length >= 2 && selectedRegions[1]?.has
+    ? selectedRegions[1]
+    : null;
+  const twoRegions = set1 && set2;
+
   for (const item of rawList) {
     const id = item.id;
     const ct = item.raw?.celltype != null ? String(item.raw.celltype).trim() : null;
     const nn = item.raw?.neigh_names != null ? String(item.raw.neigh_names).trim() : null;
-    if (ct) {
+    if (ct && ct.toLowerCase() !== "unknown") {
       globalByKey[ct] = (globalByKey[ct] || 0) + 1;
       if (selectedIdSet && selectedIdSet.has(id)) {
         localByKey[ct] = (localByKey[ct] || 0) + 1;
       }
+      if (twoRegions) {
+        if (set1.has(id)) region1ByKey[ct] = (region1ByKey[ct] || 0) + 1;
+        if (set2.has(id)) region2ByKey[ct] = (region2ByKey[ct] || 0) + 1;
+      }
     }
     if (nn) {
-      globalByKey[`neigh:${nn}`] = (globalByKey[`neigh:${nn}`] || 0) + 1;
+      const key = `neigh:${nn}`;
+      globalByKey[key] = (globalByKey[key] || 0) + 1;
       if (selectedIdSet && selectedIdSet.has(id)) {
-        localByKey[`neigh:${nn}`] = (localByKey[`neigh:${nn}`] || 0) + 1;
+        localByKey[key] = (localByKey[key] || 0) + 1;
+      }
+      if (twoRegions) {
+        if (set1.has(id)) region1ByKey[key] = (region1ByKey[key] || 0) + 1;
+        if (set2.has(id)) region2ByKey[key] = (region2ByKey[key] || 0) + 1;
       }
     }
   }
-  return { globalByKey, localByKey };
+  return {
+    globalByKey,
+    localByKey,
+    region1ByKey: twoRegions ? region1ByKey : null,
+    region2ByKey: twoRegions ? region2ByKey : null,
+  };
 }
 
 function BarChartSection({ title, globalByKey, localByKey, prefix = "" }) {
@@ -105,10 +129,107 @@ function BarChartSection({ title, globalByKey, localByKey, prefix = "" }) {
   );
 }
 
+function GroupBarChartSection({ title, globalByKey, region1ByKey, region2ByKey, prefix = "" }) {
+  const keys = useMemo(() => {
+    const set = new Set([
+      ...Object.keys(globalByKey || {}).filter((k) => k.startsWith(prefix)),
+      ...Object.keys(region1ByKey || {}).filter((k) => k.startsWith(prefix)),
+      ...Object.keys(region2ByKey || {}).filter((k) => k.startsWith(prefix)),
+    ]);
+    return [...set]
+      .filter((k) => (region1ByKey?.[k] || 0) > 0 || (region2ByKey?.[k] || 0) > 0)
+      .sort();
+  }, [globalByKey, region1ByKey, region2ByKey, prefix]);
+
+  const totalGlobal = useMemo(
+    () => keys.reduce((s, k) => s + (globalByKey?.[k] || 0), 0),
+    [keys, globalByKey]
+  );
+  const totalR1 = useMemo(
+    () => keys.reduce((s, k) => s + (region1ByKey?.[k] || 0), 0),
+    [keys, region1ByKey]
+  );
+  const totalR2 = useMemo(
+    () => keys.reduce((s, k) => s + (region2ByKey?.[k] || 0), 0),
+    [keys, region2ByKey]
+  );
+
+  if (keys.length === 0) return null;
+  const label = (k) => (prefix ? k.replace(prefix, "") : k);
+
+  return (
+    <div className="annotation-stats-section">
+      <div className="annotation-stats-section-header-group">
+        <div className="annotation-stats-section-title">{title}</div>
+        <div className="annotation-stats-legend annotation-stats-legend-group">
+          <span className="annotation-stats-legend-item global">Global</span>
+          <span className="annotation-stats-legend-item region1">Region 1</span>
+          <span className="annotation-stats-legend-item region2">Region 2</span>
+        </div>
+      </div>
+      <div className="annotation-stats-chart-rows">
+        <div className="annotation-stats-rows">
+          {keys.map((key) => {
+            const g = globalByKey?.[key] || 0;
+            const r1 = region1ByKey?.[key] || 0;
+            const r2 = region2ByKey?.[key] || 0;
+            const gPct = totalGlobal > 0 ? (g / totalGlobal) * 100 : 0;
+            const r1Pct = totalR1 > 0 ? (r1 / totalR1) * 100 : 0;
+            const r2Pct = totalR2 > 0 ? (r2 / totalR2) * 100 : 0;
+            const gPctStr = totalGlobal > 0 ? `${(gPct).toFixed(1)}%` : "0%";
+            const r1PctStr = totalR1 > 0 ? `${(r1Pct).toFixed(1)}%` : "0%";
+            const r2PctStr = totalR2 > 0 ? `${(r2Pct).toFixed(1)}%` : "0%";
+            return (
+              <div key={key} className="annotation-stats-row-group">
+                <div className="annotation-stats-y-label" title={label(key)}>
+                  {label(key)}
+                </div>
+                <div className="annotation-stats-bar-group annotation-stats-bar-group-h">
+                  <div className="annotation-stats-bar-row-h">
+                    <div className="annotation-stats-bar-track-h">
+                      <div
+                        className="annotation-stats-bar-h global"
+                        style={{ width: g === 0 ? "0%" : `${Math.min(100, gPct)}%` }}
+                        title={`Global: ${g.toLocaleString()} (${gPctStr})`}
+                      />
+                      <span className="annotation-stats-bar-pct">{gPctStr}</span>
+                    </div>
+                  </div>
+                  <div className="annotation-stats-bar-row-h">
+                    <div className="annotation-stats-bar-track-h">
+                      <div
+                        className="annotation-stats-bar-h region1"
+                        style={{ width: r1 === 0 ? "0%" : `${Math.min(100, r1Pct)}%` }}
+                        title={`Region 1: ${r1.toLocaleString()} (${r1PctStr})`}
+                      />
+                      <span className="annotation-stats-bar-pct">{r1PctStr}</span>
+                    </div>
+                  </div>
+                  <div className="annotation-stats-bar-row-h">
+                    <div className="annotation-stats-bar-track-h">
+                      <div
+                        className="annotation-stats-bar-h region2"
+                        style={{ width: r2 === 0 ? "0%" : `${Math.min(100, r2Pct)}%` }}
+                        title={`Region 2: ${r2.toLocaleString()} (${r2PctStr})`}
+                      />
+                      <span className="annotation-stats-bar-pct">{r2PctStr}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AnnotationStatsPopover({
   open,
   onClose,
   selectedIds = new Set(),
+  selectedRegions = [],
 }) {
   const [rawList, setRawList] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -141,10 +262,12 @@ export default function AnnotationStatsPopover({
     return () => { cancelled = true; };
   }, [open]);
 
-  const { globalByKey, localByKey } = useMemo(() => {
+  const { globalByKey, localByKey, region1ByKey, region2ByKey } = useMemo(() => {
     const selectedSet = selectedIds && selectedIds.size > 0 ? selectedIds : null;
-    return computeCounts(rawList, selectedSet);
-  }, [rawList, selectedIds]);
+    return computeCounts(rawList, selectedSet, selectedRegions);
+  }, [rawList, selectedIds, selectedRegions]);
+
+  const isCompareMode = region1ByKey != null && region2ByKey != null;
 
   const cellTypeGlobal = useMemo(() => {
     const o = {};
@@ -160,6 +283,22 @@ export default function AnnotationStatsPopover({
     }
     return o;
   }, [localByKey]);
+  const cellTypeRegion1 = useMemo(() => {
+    if (!region1ByKey) return null;
+    const o = {};
+    for (const [k, v] of Object.entries(region1ByKey)) {
+      if (!k.startsWith("neigh:")) o[k] = v;
+    }
+    return o;
+  }, [region1ByKey]);
+  const cellTypeRegion2 = useMemo(() => {
+    if (!region2ByKey) return null;
+    const o = {};
+    for (const [k, v] of Object.entries(region2ByKey)) {
+      if (!k.startsWith("neigh:")) o[k] = v;
+    }
+    return o;
+  }, [region2ByKey]);
   const neighGlobal = useMemo(() => {
     const o = {};
     for (const [k, v] of Object.entries(globalByKey)) {
@@ -174,6 +313,22 @@ export default function AnnotationStatsPopover({
     }
     return o;
   }, [localByKey]);
+  const neighRegion1 = useMemo(() => {
+    if (!region1ByKey) return null;
+    const o = {};
+    for (const [k, v] of Object.entries(region1ByKey)) {
+      if (k.startsWith("neigh:")) o[k] = v;
+    }
+    return o;
+  }, [region1ByKey]);
+  const neighRegion2 = useMemo(() => {
+    if (!region2ByKey) return null;
+    const o = {};
+    for (const [k, v] of Object.entries(region2ByKey)) {
+      if (k.startsWith("neigh:")) o[k] = v;
+    }
+    return o;
+  }, [region2ByKey]);
 
   const [position, setPosition] = useState(null);
   const dragRef = useRef({ startX: 0, startY: 0, startLeft: 0, startTop: 0 });
@@ -238,17 +393,37 @@ export default function AnnotationStatsPopover({
         {error && <div className="annotation-stats-error">{error}</div>}
         {!loading && !error && rawList.length > 0 && (
           <>
-            <BarChartSection
-              title="Cell type"
-              globalByKey={cellTypeGlobal}
-              localByKey={cellTypeLocal}
-            />
-            <BarChartSection
-              title="Neigh names"
-              globalByKey={neighGlobal}
-              localByKey={neighLocal}
-              prefix="neigh:"
-            />
+            {isCompareMode ? (
+              <>
+                <GroupBarChartSection
+                  title="Cell type"
+                  globalByKey={cellTypeGlobal}
+                  region1ByKey={cellTypeRegion1}
+                  region2ByKey={cellTypeRegion2}
+                />
+                <GroupBarChartSection
+                  title="Neigh names"
+                  globalByKey={neighGlobal}
+                  region1ByKey={neighRegion1}
+                  region2ByKey={neighRegion2}
+                  prefix="neigh:"
+                />
+              </>
+            ) : (
+              <>
+                <BarChartSection
+                  title="Cell type"
+                  globalByKey={cellTypeGlobal}
+                  localByKey={cellTypeLocal}
+                />
+                <BarChartSection
+                  title="Neigh names"
+                  globalByKey={neighGlobal}
+                  localByKey={neighLocal}
+                  prefix="neigh:"
+                />
+              </>
+            )}
           </>
         )}
         {!loading && !error && rawList.length === 0 && (
