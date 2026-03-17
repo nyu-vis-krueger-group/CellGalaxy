@@ -372,7 +372,15 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  overflow: visible;
+}
+
+.annotation-stats-bar-fill-h {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .annotation-stats-bar-h {
@@ -381,6 +389,22 @@
   height: 100%;
   border-radius: 3px 0 0 3px;
   transition: width 0.2s ease;
+}
+
+.annotation-stats-bar-fill-h .annotation-stats-bar-pct {
+  position: absolute;
+  margin-left: 4px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.annotation-stats-bar-pct-spacer {
+  flex-shrink: 0;
+  width: 40px;
+  display: inline-block;
 }
 
 .annotation-stats-bar-h.global {
@@ -393,13 +417,4 @@
 
 .annotation-stats-bar-h.region2 {
   background: rgba(0, 200, 255, 0.95);
-}
-
-.annotation-stats-bar-track-h .annotation-stats-bar-pct {
-  flex-shrink: 0;
-  margin-left: 4px;
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  color: #94a3b8;
-  white-space: nowrap;
 }

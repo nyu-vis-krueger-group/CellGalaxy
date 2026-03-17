@@ -187,32 +187,41 @@ function GroupBarChartSection({ title, globalByKey, region1ByKey, region2ByKey, 
                 <div className="annotation-stats-bar-group annotation-stats-bar-group-h">
                   <div className="annotation-stats-bar-row-h">
                     <div className="annotation-stats-bar-track-h">
-                      <div
-                        className="annotation-stats-bar-h global"
-                        style={{ width: g === 0 ? "0%" : `${Math.min(100, gPct)}%` }}
-                        title={`Global: ${g.toLocaleString()} (${gPctStr})`}
-                      />
-                      <span className="annotation-stats-bar-pct">{gPctStr}</span>
+                      <div className="annotation-stats-bar-fill-h">
+                        <div
+                          className="annotation-stats-bar-h global"
+                          style={{ width: g === 0 ? "0%" : `${Math.min(100, gPct)}%` }}
+                          title={`Global: ${g.toLocaleString()} (${gPctStr})`}
+                        />
+                        <span className="annotation-stats-bar-pct" style={{ left: `${gPct}%` }}>{gPctStr}</span>
+                      </div>
+                      <span className="annotation-stats-bar-pct-spacer" aria-hidden="true" />
                     </div>
                   </div>
                   <div className="annotation-stats-bar-row-h">
                     <div className="annotation-stats-bar-track-h">
-                      <div
-                        className="annotation-stats-bar-h region1"
-                        style={{ width: r1 === 0 ? "0%" : `${Math.min(100, r1Pct)}%` }}
-                        title={`Region 1: ${r1.toLocaleString()} (${r1PctStr})`}
-                      />
-                      <span className="annotation-stats-bar-pct">{r1PctStr}</span>
+                      <div className="annotation-stats-bar-fill-h">
+                        <div
+                          className="annotation-stats-bar-h region1"
+                          style={{ width: r1 === 0 ? "0%" : `${Math.min(100, r1Pct)}%` }}
+                          title={`Region 1: ${r1.toLocaleString()} (${r1PctStr})`}
+                        />
+                        <span className="annotation-stats-bar-pct" style={{ left: `${r1Pct}%` }}>{r1PctStr}</span>
+                      </div>
+                      <span className="annotation-stats-bar-pct-spacer" aria-hidden="true" />
                     </div>
                   </div>
                   <div className="annotation-stats-bar-row-h">
                     <div className="annotation-stats-bar-track-h">
-                      <div
-                        className="annotation-stats-bar-h region2"
-                        style={{ width: r2 === 0 ? "0%" : `${Math.min(100, r2Pct)}%` }}
-                        title={`Region 2: ${r2.toLocaleString()} (${r2PctStr})`}
-                      />
-                      <span className="annotation-stats-bar-pct">{r2PctStr}</span>
+                      <div className="annotation-stats-bar-fill-h">
+                        <div
+                          className="annotation-stats-bar-h region2"
+                          style={{ width: r2 === 0 ? "0%" : `${Math.min(100, r2Pct)}%` }}
+                          title={`Region 2: ${r2.toLocaleString()} (${r2PctStr})`}
+                        />
+                        <span className="annotation-stats-bar-pct" style={{ left: `${r2Pct}%` }}>{r2PctStr}</span>
+                      </div>
+                      <span className="annotation-stats-bar-pct-spacer" aria-hidden="true" />
                     </div>
                   </div>
                 </div>

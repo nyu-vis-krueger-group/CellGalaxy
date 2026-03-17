@@ -187,10 +187,11 @@ const Viewer = ({
   // —— Selection (using screen coordinates) ——
   const deckRef = useRef(null);
   const containerRef = useRef(null);
-  // Defer DeckGL mount until container has valid size, then one more frame, so that
+  // Defer DeckGL mount until container has valid size, then multiple frames + short delay, so that
   // luma.gl's internal ResizeObserver does not fire before device.limits is ready
   // (avoids "Cannot read properties of undefined (reading 'maxTextureDimension2D')" on slower machines).
   const [containerReady, setContainerReady] = useState(false);
+  const readyTimeoutRef = useRef(null);
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -199,12 +200,21 @@ const Viewer = ({
         if (entry.target !== el) continue;
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
-          requestAnimationFrame(() => setContainerReady(true));
+          if (readyTimeoutRef.current) clearTimeout(readyTimeoutRef.current);
+          // Multiple frames + 80ms delay so device.limits is ready on slower machines / after channel switch
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              readyTimeoutRef.current = setTimeout(() => setContainerReady(true), 80);
+            });
+          });
         }
       }
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (readyTimeoutRef.current) clearTimeout(readyTimeoutRef.current);
+    };
   }, []);
   const [toolbar, setToolbar] = useState({ show: false, x: 0, y: 0, object: null });
   // Analysis popover state
