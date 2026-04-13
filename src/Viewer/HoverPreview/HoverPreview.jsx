@@ -2,10 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import "./HoverPreview.css";
 import { projectItemsToScreen } from "../../utils/utils";
 
-// Canvas‑based hover preview (apply intensity mapping according to current window).
-// Try to stay consistent with the WindowedIconLayer shader behavior.
-
-// Simple global Image cache to avoid re-loading the same atlas PNG.
+// Hover tile: windowing like WindowedIconLayer; cached atlas images.
 const _previewImageCache = new Map();
 
 function loadImageCached(src) {
@@ -67,7 +64,7 @@ export async function drawCellPreviewToCanvas({
   const bgX = mapping.x || 0;
   const bgY = mapping.y || 0;
 
-  // Offscreen canvas used to read grayscale values and accumulate channels
+  // Read gray tile offscreen
   const off = document.createElement("canvas");
   off.width = tile;
   off.height = tile;
@@ -76,7 +73,7 @@ export async function drawCellPreviewToCanvas({
 
   const outW = tile;
   const outH = tile;
-  const out = new Float32Array(outW * outH * 4); // RGBA float accumulation
+  const out = new Float32Array(outW * outH * 4);
 
   const chList =
     Array.isArray(channels) && channels.length > 0
@@ -85,8 +82,7 @@ export async function drawCellPreviewToCanvas({
 
   const byCh = atlasByChannel?.[chunkId] || {};
 
-  // Accumulate channel by channel:
-  // read grayscale → apply window clamp → multiply color and alpha → plus-lighter style sum
+  // Per ch: gray → window → tint × α, additive
   for (const ch of chList) {
     const src = byCh?.[ch];
     if (!src) continue;
@@ -96,7 +92,6 @@ export async function drawCellPreviewToCanvas({
     const col = colors?.[ch] || [255, 255, 255];
     const alpha01 = Math.min(1, Math.max(0, alphas?.[ch] ?? 1));
 
-    // window: raw 0..65535 converted to 0..1
     const w = windows?.[ch] || {};
     const rawMin = Number.isFinite(w.min) ? w.min : 0;
     const rawMax = Number.isFinite(w.max) ? w.max : 65535;
@@ -107,18 +102,18 @@ export async function drawCellPreviewToCanvas({
     octx.clearRect(0, 0, outW, outH);
     octx.drawImage(img, bgX, bgY, tile, tile, 0, 0, outW, outH);
     const imageData = octx.getImageData(0, 0, outW, outH);
-    const data = imageData.data; // RGBA, grayscale: R=G=B
+    const data = imageData.data;
 
     for (let y = 0; y < outH; y++) {
       for (let x = 0; x < outW; x++) {
         const idx = (y * outW + x) * 4;
-        const gray01 = data[idx] / 255; // 0..1
+        const gray01 = data[idx] / 255;
         let t;
         if (gray01 <= winMin01) t = 0;
         else if (gray01 >= winMax01) t = 1;
         else t = (gray01 - winMin01) / span;
 
-        const v = t * alpha01; // 0..1
+        const v = t * alpha01;
         if (v <= 0) continue;
         out[idx] += (col[0] ?? 255) * v;
         out[idx + 1] += (col[1] ?? 255) * v;
@@ -135,12 +130,12 @@ export async function drawCellPreviewToCanvas({
   canvas.height = previewSize * dpr;
   finalCtx.setTransform(1, 0, 0, 1, 0, 0);
   finalCtx.scale(dpr, dpr);
-  // Use browser built‑in interpolation so scaled previews look smoother
+  // imageSmoothing for scaled preview
   finalCtx.imageSmoothingEnabled = true;
 
   const outImg = octx.createImageData(outW, outH);
   const dst = outImg.data;
-  // Slight tone boost + clamp to avoid overall darkness
+  // Tone boost + clamp
   const toneGain = 1.35;
   for (let i = 0; i < outW * outH; i++) {
     const base = i * 4;
@@ -264,8 +259,7 @@ function HoverCellTooltip({
   );
 }
 
-// Composed component: manages internal hoverInfo state,
-// external callers only need to pass deckRef / containerRef and dependencies.
+// Wrapper: hover state from deckRef + containerRef
 export default function HoverPreview({
   deckRef,
   containerRef,
@@ -287,18 +281,15 @@ export default function HoverPreview({
   const [hoverInfo, setHoverInfo] = useState(null);
   const [outlineRect, setOutlineRect] = useState(null);
 
-  // Use pickObject to uniformly get hovered cells in Raw / UMAP views
   useEffect(() => {
     const containerEl = containerRef.current;
     if (!containerEl) return;
 
     const handleMove = (e) => {
-      // Disable hover entirely when hoverEnabled is false (e.g. box/lasso modes)
       if (!hoverEnabled) {
         setHoverInfo(null);
         return;
       }
-      // If there is any active selection, disable hover preview entirely
       if (
         selectedIds &&
         typeof selectedIds.size === "number" &&
@@ -307,8 +298,7 @@ export default function HoverPreview({
         setHoverInfo(null);
         return;
       }
-      // If the mouse is over the analysis popover, disable hover preview
-      // to avoid showing single‑cell preview on top of intensity panels.
+      // Over analysis popover → no hover tile
       const target = e.target;
       if (target && typeof target.closest === "function") {
         const inAnalysis = target.closest(".analysis-popover");
@@ -318,8 +308,7 @@ export default function HoverPreview({
         }
       }
 
-      // Similarly, when hovering over cluster representative previews / text labels,
-      // do not show hover preview.
+      // Over cluster preview/label → no hover
       const xClient = e.clientX;
       const yClient = e.clientY;
       try {
@@ -337,7 +326,6 @@ export default function HoverPreview({
           }
         }
       } catch {
-        // If querying DOM fails, continue normal logic
       }
       const deckInstance = deckRef.current && deckRef.current.deck;
       const canvas = deckInstance && deckInstance.canvas;
@@ -369,7 +357,7 @@ export default function HoverPreview({
     };
   }, [deckRef, containerRef, selectedIds, hoverEnabled]);
 
-  // Compute white outline rectangle around the hovered tile in screen space
+  // Hovered tile outline in screen px
   useEffect(() => {
     if (!hoverInfo || !hoverInfo.object) {
       setOutlineRect(null);
@@ -390,7 +378,7 @@ export default function HoverPreview({
       return;
     }
     const { x, y } = projected[0];
-    // Match the hover outline size directly to the current tile size; do not enlarge on selection
+    // Outline ≈ tile size
     const baseSize = computedImageSize;
     const size = Math.max(6, baseSize);
     setOutlineRect({

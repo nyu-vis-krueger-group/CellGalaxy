@@ -18,29 +18,20 @@ export default function ImageLayers({
   windows = {},
   is3D = false,
   filteredIds = new Set(),
-  // cluster overlay
   clusterColorOn = false,
   clusterOpacity = 0.25,
   clusterLineWidth = 1,
   clusterOutlineOn = false,
-  // outlines (2D)
   outlineData = [],
-  // size
   computedImageSize = 4,
-  // selection coloring
   getRegionIndexForId,
   regionColors,
-  // semantic zoom
   semanticLevel = 6.0,
   labelKey = "label",
-  // rankKey unused
   rankKey = null,
-  // Whether to enable size adjustment based on semanticLevel
   semanticSizeOn = false,
-  // GPU Sampling
   samplingThreshold = 1.0,
-  selectedIds = null, // Set of IDs that should always be shown
-  // Whether to enable transition animations for point positions / sizes
+  selectedIds = null,
   transitionsEnabled = true,
 }) {
 
@@ -78,39 +69,25 @@ export default function ImageLayers({
           getIcon: (d) => d.icon,
           getPosition: (d) => [d.x, d.y, d.z ?? 0],
           
-          // --- GPU Filtering for Sampling ---
           extensions: [new DataFilterExtension({ filterSize: 1 })],
           getFilterValue: (d) => {
-            // Always show selected items
             if (selectedIds && selectedIds.has(d.id)) return 0;
-            // Uniform hash
             return (d.id * 0.6180339887) % 1;
           },
           filterRange: [0, samplingThreshold],
-          // ----------------------------------
           getSize: (d) => {
-            // —— Semantic zoom size adjustment ——
-            // Raw view: semanticSizeOn=false, use the original size logic directly.
-            if (!semanticSizeOn) {
-              return computedImageSize;
-            }
-
-            // UMAP view: scale size piecewise based on semanticLevel.
-            // Adjusted rule (slightly smaller overall, but boost for Level < 1.7):
-            //   Level∈[0,1)    →  sizeFactor = 4.8  (larger representative images)
-            //   Level∈[1,1.7)  →  linear from 4.8 down to 2.4
-            //   Level∈[1.7,3)  →  linear from 2.4 down to 0.9 (rapidly shrinking as point count increases)
-            //   Level≥3       →  sizeFactor = 0.9
+            if (!semanticSizeOn) return computedImageSize;
+            // Piecewise size vs semantic level (coarse → large sprites)
             const lvl = Math.max(0, Math.min(6, semanticLevel));
             let sizeFactor;
             if (lvl < 1.0) {
               sizeFactor = 4.8;
             } else if (lvl < 1.7) {
-              const t = (lvl - 1.0) / 0.7;              // 0 → 1
-              sizeFactor = 4.8 + (2.4 - 4.8) * t;      // 4.8 → 2.4
+              const t = (lvl - 1.0) / 0.7;
+              sizeFactor = 4.8 + (2.4 - 4.8) * t;
             } else if (lvl < 3.0) {
-              const t = (lvl - 1.7) / (3.0 - 1.7);      // 0 → 1
-              sizeFactor = 2.4 + (0.9 - 2.4) * t;      // 2.4 → 0.9
+              const t = (lvl - 1.7) / (3.0 - 1.7);
+              sizeFactor = 2.4 + (0.9 - 2.4) * t;
             } else {
               sizeFactor = 0.9;
             }
@@ -125,11 +102,8 @@ export default function ImageLayers({
           sizeUnits: "pixels",
           billboard: true,
           pickable: true,
-          // Disable built‑in blue highlight; we draw a custom white outline on hover instead.
           autoHighlight: false,
-          // Use default Image loading (not ImageBitmap) so WebGL texture upload works reliably
-          // across browsers/GPUs; ImageBitmap can fail on some environments and cause sprites not to render.
-          // Only animate positions; do not interpolate size changes (e.g. zoom-driven computedImageSize)
+          // Image (not ImageBitmap) for texture reliability; animate position only
           transitions: transitionsEnabled
             ? {
                 getPosition: { duration: 600, easing: ease },
@@ -137,7 +111,7 @@ export default function ImageLayers({
             : undefined,
           updateTriggers: {
             getSize: [computedImageSize, selectedPoints.length, semanticLevel, semanticSizeOn],
-            getFilterValue: [selectedPoints.length], // re-eval if selection changes
+            getFilterValue: [selectedPoints.length],
           },
         };
         let addedGray = false;
@@ -163,16 +137,14 @@ export default function ImageLayers({
                 ...baseConfig,
                 id: `icon-ch${ch}-${chunkId}`,
                 iconAtlas: String(atlasGray),
-                // Use plus‑lighter (additive blending): RGB values are added,
-                // e.g. red+blue→magenta, red+green→yellow, mimicking
-                // multi‑channel fluorescence mixing in the preview.
+                // Additive blend (multi-channel fluorescence)
                 parameters: { depthTest: false, blend: true, blendFunc: [1, 1], blendEquation: 32774 },
                 windowMin: winMin01,
                 windowMax: winMax01,
                 premultiply: true,
                 getColor: (d) => {
                   const activeFilter = filteredIds && filteredIds.size > 0;
-                  // When filter is active, hide points that don't pass the filter (fully transparent)
+                  // Filter: hide non-matching
                   if (activeFilter && !filteredIds.has(d.id)) {
                     return [col[0] ?? 255, col[1] ?? 255, col[2] ?? 255, 0];
                   }
@@ -208,7 +180,7 @@ export default function ImageLayers({
                   if (activeFilter && !filteredIds.has(d.id)) {
                     return [255, 255, 255, 0];
                   }
-                  // Do not change brightness based on selection; express selection only via the white outline
+                  // Selection = outline only, not brightness
                   return [255, 255, 255, 255];
                 },
                 updateTriggers: {
@@ -242,9 +214,7 @@ export default function ImageLayers({
                   const activeFilter = filteredIds && filteredIds.size > 0;
                   if (activeFilter && !filteredIds.has(d.id)) return [0, 0, 0, 0];
 
-                  // Use the labelKey corresponding to the current semantic level,
-                  // instead of always using the original d.label, so colors track
-                  // the active semantic clustering level.
+                  // Color by labelKey (semantic level)
                   const val = d[labelKey];
                   const l = Number.isFinite(val) ? val : (d.label ?? 0);
                   const rgb = clusterColor(l);
@@ -266,21 +236,18 @@ export default function ImageLayers({
                 data: arr,
                 getPosition: (d) => [d.x, d.y, d.z ?? 0],
                 stroked: false,
-                // --- GPU Filtering ---
                 extensions: [new DataFilterExtension({ filterSize: 1 })],
                 getFilterValue: (d) => {
                   if (selectedIds && selectedIds.has(d.id)) return 0;
                   return (d.id * 0.6180339887) % 1;
                 },
                 filterRange: [0, samplingThreshold],
-                // ---------------------
                 getFillColor: (d) => {
                   const rIdx = getRegionIndexForId?.(d.id);
                   if (hasSelection && !(typeof rIdx === "number" && rIdx >= 0)) return [0, 0, 0, 0];
                   const activeFilter = filteredIds && filteredIds.size > 0;
                   if (activeFilter && !filteredIds.has(d.id)) return [0, 0, 0, 0];
                   
-                // Dynamic cluster coloring based on current level
                   const val = d[labelKey];
                   const l = Number.isFinite(val) ? val : (d.label ?? 0);
                   const rgb = clusterColor(l);
@@ -319,7 +286,6 @@ export default function ImageLayers({
             rounded: true,
             jointRounded: true,
             miterLimit: 2,
-                // Make PathLayer automatically close paths to avoid outline gaps
             loop: true,
             updateTriggers: { getColor: [outlineData.length], getWidth: [clusterLineWidth] },
           })
@@ -338,36 +304,29 @@ export default function ImageLayers({
           data: points ?? [],
           getPosition: (d) => [d.x, d.y, d.z ?? 0],
           stroked: false,
-          // --- GPU Filtering ---
           extensions: [new DataFilterExtension({ filterSize: 1 })],
           getFilterValue: (d) => {
             if (selectedIds && selectedIds.has(d.id)) return 0;
             return (d.id * 0.6180339887) % 1;
           },
           filterRange: [0, samplingThreshold],
-          // ---------------------
           getFillColor: (d) => {
             const rIdx = getRegionIndexForId?.(d.id);
             if (hasSelection && !(typeof rIdx === "number" && rIdx >= 0)) return [0, 0, 0, 0];
             const activeFilter = filteredIds && filteredIds.size > 0;
             if (activeFilter && !filteredIds.has(d.id)) return [0, 0, 0, 0];
 
-            // Dynamic cluster coloring
             const val = d[labelKey];
             const l = Number.isFinite(val) ? val : (d.label ?? 0);
             const rgb = clusterColor(l);
             
             return [rgb[0], rgb[1], rgb[2], a];
           },
-                getRadius: (d) => {
-                  // Do not enlarge points when selected; selection is indicated only by the white outline
-            return computedImageSize * 0.72;
-          },
+          getRadius: () => computedImageSize * 0.72,
           radiusUnits: "pixels",
           pickable: true,
           autoHighlight: true,
           parameters: { depthTest: true, blend: false },
-          // Only animate positions; do not interpolate radius changes (zoom or parameter adjustments)
           transitions: transitionsEnabled
             ? {
                 getPosition: { duration: 600, easing: ease },
@@ -386,34 +345,26 @@ export default function ImageLayers({
           id: "scatter",
           data: points ?? [],
           getPosition: (d) => [d.x, d.y, d.z ?? 0],
-          // --- GPU Filtering ---
           extensions: [new DataFilterExtension({ filterSize: 1 })],
           getFilterValue: (d) => {
             if (selectedIds && selectedIds.has(d.id)) return 0;
             return (d.id * 0.6180339887) % 1;
           },
           filterRange: [0, samplingThreshold],
-          // ---------------------
           getFillColor: (d) => {
             const activeFilter = filteredIds && filteredIds.size > 0;
             if (activeFilter && !filteredIds.has(d.id)) {
               return [0, 0, 0, 0];
             }
-            // Do not dim non-selected points; keep them uniformly white
             return [255, 255, 255, 255];
           },
           stroked: false,
-          getRadius: (d) => {
-            // Do not enlarge scatter points due to selection
-            return computedImageSize * 0.75;
-          },
+          getRadius: () => computedImageSize * 0.75,
           radiusScale: 1,
           radiusUnits: "pixels",
           pickable: true,
-          // Disable built‑in highlight; we use a DOM outline instead.
           autoHighlight: false,
           parameters: { depthTest: true },
-          // Only animate positions; do not interpolate radius changes
           transitions: transitionsEnabled
             ? {
                 getPosition: { duration: 600, easing: ease },
@@ -441,7 +392,6 @@ export default function ImageLayers({
           rounded: true,
           jointRounded: true,
           miterLimit: 2,
-          // Also close cluster outlines in scatter mode
           loop: true,
           updateTriggers: { getColor: [outlineData.length], getWidth: [clusterLineWidth] },
         })

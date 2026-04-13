@@ -28,7 +28,6 @@ export default function Control({
   refreshData,
   dataVersion,
 
-  // —— New: selection state and operations ——
   selectionMode = "none",
   setSelectionMode = () => {},
   selectedIds = new Set(),
@@ -38,7 +37,6 @@ export default function Control({
   viewMode = "dual",
   setViewMode = () => {},
   
-  // —— clustering overlay props ——
   clusterOutlineOn = false,
   setClusterOutlineOn = () => {},
   clusterOpacity = 0.25,

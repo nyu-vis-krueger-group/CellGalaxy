@@ -1,6 +1,3 @@
-// =============================
-// api.js - centralized API helpers
-// =============================
 /* eslint-disable no-console */
 
 export const API_BASE =
@@ -35,8 +32,6 @@ export async function fetchMeta(signal) {
   }
 }
 
-// ===== Violin density (backend KDE) =====
-// NOTE: max/grid kept moderate to avoid heavy I/O when called interactively.
 export async function fetchViolinGlobalKDE(max = 80000, perc = 99.0, thr = 0.1, channels = null, grid = 256, signal) {
   try {
     const chParam = Array.isArray(channels) && channels.length > 0 ? `&channels=${channels.join(",")}` : "";
@@ -96,12 +91,14 @@ export function prewarm(channel, tile) {
   } catch {}
 }
 
-// ===== Features (T1/T2) =====
-// By default, use only the top 8 nearest neighbors to match local similarity
-// histogram / gallery displays.
-export async function fetchT1(queryId, k = 8, signal) {
+/** T1 neighbors; neighborSpace: umap | embedding */
+export async function fetchT1(queryId, k = 8, signal, neighborSpace = "umap") {
   try {
-    return await fetchJSON(`${API_BASE}/features/t1?q=${queryId}&k=${k}`, { signal });
+    const sp = neighborSpace === "embedding" ? "embedding" : "umap";
+    return await fetchJSON(
+      `${API_BASE}/features/t1?q=${queryId}&k=${k}&neighbor_space=${encodeURIComponent(sp)}`,
+      { signal }
+    );
   } catch (e) {
     console.error("fetchT1 failed", e);
     return { error: "Failed to fetch T1" };
@@ -142,11 +139,7 @@ export async function fetchRegionRepresentatives(regions, metric = "cosine_cente
 
 export async function fetchViolinSelectionKDE(ids, max = 30000, perc = 99.0, thr = 0.1, channels = null, grid = 192, signal) {
   try {
-    // Adaptive downsampling for very large selections:
-    // - small selections (≤2k): keep more ids for higher detail
-    // - medium selections (2k~1w): keep a subset
-    // - very large selections (>1w): keep only a small number of representative ids,
-    //   so computation time is almost independent of selection size.
+    // Cap ids sent to KDE so cost stays bounded (800 / 400 / 200 by selection size).
     const rawIds = Array.isArray(ids) ? ids : [];
     const total = rawIds.length;
     let idLimit;
@@ -160,7 +153,7 @@ export async function fetchViolinSelectionKDE(ids, max = 30000, perc = 99.0, thr
 
     let effectiveIds = rawIds;
     if (effectiveIds.length > idLimit) {
-      // Fisher–Yates shuffle then take first idLimit to avoid always picking front ids
+      // Shuffle then take first idLimit (avoid always using prefix of list).
       const temp = effectiveIds.slice();
       for (let i = temp.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -187,10 +180,6 @@ export async function fetchViolinSelectionKDE(ids, max = 30000, perc = 99.0, thr
   }
 }
 
-// KDE over **per-cell mean intensities** for a selection.
-// This is used for Region‑vs‑Region comparison, so that
-// the curves directly reflect "how bright are the cells"
-// in each region for a given channel.
 export async function fetchViolinSelectionCellKDE(
   ids,
   maxCells = 400,
@@ -215,7 +204,6 @@ export async function fetchViolinSelectionCellKDE(
   }
 }
 
-// ===== LLM / precomputation helpers =====
 export async function runLLMClusterChannelAvg(signal) {
   try {
     const res = await fetch(`${API_BASE}/llm/compute_cluster_channel_avg`, {

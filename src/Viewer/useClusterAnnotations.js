@@ -61,7 +61,7 @@ export default function useClusterAnnotations({
     return () => { cancelled = true; };
   }, [clusterAnnotationOn]);
 
-  // Text size that responds to zoom (bigger when zooming in)
+  // Title scale vs zoom
   const clusterTextSize = useMemo(() => {
     const z = typeof viewState?.zoom === "number" ? viewState.zoom : 0;
     const base = 14;
@@ -70,7 +70,7 @@ export default function useClusterAnnotations({
     return Math.max(10, Math.min(32, size));
   }, [viewState]);
 
-  // Build annotation data (cluster centroid + title/description for selected model)
+  // Centroid + LLM title/desc per cluster
   const clusterAnnotationData = useMemo(() => {
     if (!clusterAnnotationOn) return [];
     if (!clusterLabelsJson) return [];
@@ -81,7 +81,7 @@ export default function useClusterAnnotations({
     const levelData = levels[levelKey] || {};
     if (!clusterAnnotationModel) return [];
 
-    // When filter is active, use frontend-computed dominant from filtered cells; otherwise use backend
+    // Filter on: use filteredDominantAnnotations; else backend
     const dominantByLevel = (filteredDominantAnnotations && filteredDominantAnnotations.levels) ||
       (clusterDominantAnnotations && clusterDominantAnnotations.levels) || {};
     const dominantLevel = dominantByLevel[levelKey] || {};
@@ -134,7 +134,6 @@ export default function useClusterAnnotations({
     filteredDominantAnnotations,
   ]);
 
-  // Quick lookup: label -> annotation entry
   const clusterAnnotationByLabel = useMemo(() => {
     if (!clusterAnnotationData || clusterAnnotationData.length === 0) return new Map();
     const m = new Map();

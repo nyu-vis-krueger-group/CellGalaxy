@@ -1,4 +1,4 @@
-// deck.gl v9 style shader module for WindowedIconLayer (windowing uniforms)
+// Window uniforms for WindowedIconLayer (deck v9)
 const uniformBlock = `\
 uniform windowUniforms {
   float windowMin;

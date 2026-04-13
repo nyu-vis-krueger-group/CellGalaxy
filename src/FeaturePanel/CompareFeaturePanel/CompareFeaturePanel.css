@@ -145,8 +145,8 @@
 }
 
 .compare-thumb {
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.4);
   overflow: hidden;

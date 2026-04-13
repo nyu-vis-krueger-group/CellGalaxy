@@ -19,8 +19,6 @@ _GLOBAL_HIST: Dict[str, object] | None = None
 _PCTL_CACHE: Dict[str, object] | None = None
 _GLOBAL_CENTER: np.ndarray | None = None
 _GLOBAL_DIFFS_SORTED: np.ndarray | None = None
-_GLOBAL_CENTER: np.ndarray | None = None
-_GLOBAL_DIFFS_SORTED: np.ndarray | None = None
 _UMAP2: np.ndarray | None = None
 
 
@@ -87,7 +85,6 @@ def _ensure_umap2() -> np.ndarray:
 
 def _topk_cosine(idx: int, k: int, metric: str = "cosine") -> Tuple[np.ndarray, np.ndarray]:
     """Return neighbor indices and similarities (exclude self)."""
-    feats, feats_n = _ensure_features()
     feats_n = _get_repr(metric)
     n = feats_n.shape[0]
     if not (0 <= idx < n):
@@ -155,36 +152,39 @@ def _difference_magnitude(q_id: int, neigh_ids: np.ndarray) -> float:
     fN = feats_n[neigh_ids].mean(axis=0)
     return float(np.linalg.norm(fq - fN))
 
-def _compute_metrics_for(idx: int, k: int, metric: str = "cosine") -> Tuple[float, float]:
+def _compute_metrics_for(
+    idx: int, k: int, metric: str = "cosine", neighbor_space: str = "umap"
+) -> Tuple[float, float]:
     """
     Return (compactness, difference) for one query index.
 
-    Neighbor set is selected in UMAP 2D space (Euclidean distance) so that
-    the local structure matches what is visible on the UMAP plot.
-    Metrics themselves are still computed in the normalized feature space.
+    Neighbor set follows neighbor_space (umap vs embedding); compactness and
+    difference are always computed in normalized feature space.
     """
-    feats, feats_n = _ensure_features()
-    _ = feats  # keep reference for potential future use
     feats_repr = _get_repr(metric)
     n = feats_repr.shape[0]
     if not (0 <= idx < n):
         idx = int(max(0, min(idx, n - 1)))
-    try:
-        neigh_ids = _topk_umap_l2(idx, k)
-    except Exception:
-        # Fallback: if UMAP coordinates are unavailable, revert to cosine-based neighbors
+    if neighbor_space == "embedding":
         neigh_ids, _ = _topk_cosine(idx, k, metric=metric)
+    else:
+        try:
+            neigh_ids = _topk_umap_l2(idx, k)
+        except Exception:
+            neigh_ids, _ = _topk_cosine(idx, k, metric=metric)
     comp = _compactness(neigh_ids)
     diff = _difference_magnitude(idx, neigh_ids)
     return comp, diff
 
-def _ensure_percentiles(k: int, metric: str = "cosine", sample_size: int = 200) -> Tuple[np.ndarray, np.ndarray]:
+def _ensure_percentiles(
+    k: int, metric: str = "cosine", sample_size: int = 200, neighbor_space: str = "umap"
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute and cache approximate percentile reference arrays for compactness and difference.
     Returns sorted arrays (compacts_sorted, diffs_sorted).
     """
     global _PCTL_CACHE
-    key = f"k{k}_m{metric}_s{sample_size}"
+    key = f"k{k}_m{metric}_s{sample_size}_ns{neighbor_space}"
     if _PCTL_CACHE and _PCTL_CACHE.get("key") == key:
         return _PCTL_CACHE["compacts"], _PCTL_CACHE["diffs"]
     # build by sampling queries uniformly
@@ -196,7 +196,7 @@ def _ensure_percentiles(k: int, metric: str = "cosine", sample_size: int = 200) 
     comps = np.empty(m, dtype=np.float32)
     diffs = np.empty(m, dtype=np.float32)
     for i, idx in enumerate(sample_ids):
-        c, d = _compute_metrics_for(int(idx), k, metric=metric)
+        c, d = _compute_metrics_for(int(idx), k, metric=metric, neighbor_space=neighbor_space)
         comps[i] = c
         diffs[i] = d
     comps.sort()
@@ -234,27 +234,6 @@ def _ensure_global_diffs_sorted() -> np.ndarray:
         _GLOBAL_DIFFS_SORTED = np.sort(diffs)
     return _GLOBAL_DIFFS_SORTED  # type: ignore
 
-def _ensure_global_center() -> np.ndarray:
-    """Return global centroid (on normalized features) as a unit vector."""
-    global _GLOBAL_CENTER
-    if _GLOBAL_CENTER is None:
-        _, feats_n = _ensure_features()
-        c = feats_n.mean(axis=0)
-        n = np.linalg.norm(c)
-        _GLOBAL_CENTER = c / n if n != 0 else np.zeros_like(c)
-    return _GLOBAL_CENTER  # type: ignore
-
-def _ensure_global_diffs_sorted() -> np.ndarray:
-    """Return sorted distances of all cells to global centroid: 1 - cosine(feat_i, c_global)."""
-    global _GLOBAL_DIFFS_SORTED
-    if _GLOBAL_DIFFS_SORTED is None:
-        _, feats_n = _ensure_features()
-        cg = _ensure_global_center()
-        sims = (feats_n @ cg).astype(np.float32)
-        np.clip(sims, -1.0, 1.0, out=sims)
-        diffs = 1.0 - sims
-        _GLOBAL_DIFFS_SORTED = np.sort(diffs)
-    return _GLOBAL_DIFFS_SORTED  # type: ignore
 
 def _spectral_seriation(Xg: np.ndarray) -> np.ndarray:
     """
@@ -303,20 +282,16 @@ def _safe_int_label(value, fallback: int) -> int:
         if _pd.isna(value):
             return int(fallback)
     except Exception:
-        # if pandas is not available or check fails, continue with generic logic
         pass
-    # already an int
     if isinstance(value, int):
         return value
-    # direct int cast
     try:
         return int(value)
     except Exception:
         pass
-    # try via float (e.g. "1.0")
     try:
         f = float(value)
-        if not (f == f):  # NaN check without importing math
+        if not (f == f):
             return int(fallback)
         return int(f)
     except Exception:
@@ -328,14 +303,11 @@ def _coords_for_ids(ids: List[int]) -> List[Dict]:
     df = _load_coords_df()
     out: List[Dict] = []
     if df is None:
-        # still return ids so frontend can highlight
         return [{"id": int(i)} for i in ids]
     n = len(df)
     for i in ids:
         if 0 <= i < n:
             row = df.iloc[int(i)]
-            # For label / chunk_id / local_index fields, guard against NaN or invalid
-            # values so that int() does not raise and break the entire response.
             base_label = row.get("label", row.get("clustering", int(i) % 11))
             label_val = _safe_int_label(base_label, fallback=int(i) % 11)
             chunk_id_val = _safe_int_label(row.get("chunk_id", int(i)), fallback=int(i))
@@ -360,25 +332,34 @@ def features_t1(
     q: int = Query(..., description="query id"),
     k: int = Query(8, ge=1, le=2000),
     metric: str = Query("cosine", regex="^(cosine|cosine_centered)$"),
+    neighbor_space: str = Query(
+        "umap",
+        regex="^(umap|embedding)$",
+        description="umap: kNN in 2D UMAP plot space; embedding: kNN by cosine in feature space",
+    ),
 ):
     """T1: for a single query cell, return neighbors and local structure stats."""
     try:
-        feats, feats_n = _ensure_features()
         feats_repr = _get_repr(metric)
         n = feats_repr.shape[0]
         if not (0 <= q < n):
             raise HTTPException(status_code=400, detail=f"q out of range (0..{n-1})")
-        try:
-            neigh_ids = _topk_umap_l2(q, k)
-            q_vec = feats_repr[q]
-            sims = (feats_repr[neigh_ids] @ q_vec).astype(np.float32)
-            np.clip(sims, -1.0, 1.0, out=sims)
-        except Exception:
+        if neighbor_space == "embedding":
             neigh_ids, sims = _topk_cosine(q, k, metric=metric)
+        else:
+            try:
+                neigh_ids = _topk_umap_l2(q, k)
+                q_vec = feats_repr[q]
+                sims = (feats_repr[neigh_ids] @ q_vec).astype(np.float32)
+                np.clip(sims, -1.0, 1.0, out=sims)
+            except Exception:
+                neigh_ids, sims = _topk_cosine(q, k, metric=metric)
         comp = _compactness(neigh_ids)
         diff = _difference_magnitude(q, neigh_ids)
         # Percentiles (approximate via cached sampling)
-        ref_comps, ref_diffs = _ensure_percentiles(k=k, metric=metric, sample_size=200)
+        ref_comps, ref_diffs = _ensure_percentiles(
+            k=k, metric=metric, sample_size=200, neighbor_space=neighbor_space
+        )
         comp_p = _percentile_from_sorted(ref_comps, comp)
         diff_p = _percentile_from_sorted(ref_diffs, diff)
         # include sims list for histogram; frontend can bin
@@ -398,6 +379,7 @@ def features_t1(
                 "similarities": hist_vals,
                 "coords": _coords_for_ids([int(q)] + [int(i) for i in neigh_ids.tolist()]),
                 "metric": metric,
+                "neighbor_space": neighbor_space,
             }
         )
     except FileNotFoundError as e:
@@ -419,7 +401,6 @@ def features_t2(payload: Dict = Body(...)):
         if not isinstance(ids, list) or len(ids) == 0:
             raise HTTPException(status_code=400, detail="ids must be a non-empty list")
         ids_arr = np.array([int(x) for x in ids], dtype=np.int64)
-        _, feats_n = _ensure_features()
         feats_repr = _get_repr(metric)  # possibly centered representation
         n = feats_repr.shape[0]
         ids_arr = ids_arr[(ids_arr >= 0) & (ids_arr < n)]
@@ -464,9 +445,7 @@ def features_t2(payload: Dict = Body(...)):
             seriation_order_ids = ids_arr.tolist()
         # global y baseline: similarity to this group's centroid (y01=(s+1)/2)
         try:
-            _, feats_all = _ensure_features()
-            feats_all = feats_repr  # use same representation for consistency
-            sims_all = (feats_all @ c).astype(np.float32)
+            sims_all = (feats_repr @ c).astype(np.float32)
             np.clip(sims_all, -1.0, 1.0, out=sims_all)
             y01 = (sims_all + 1.0) * 0.5
             bins_y = 60
@@ -477,13 +456,11 @@ def features_t2(payload: Dict = Body(...)):
             global_y_hist = {"centers": [], "counts": []}
         # global sims histogram vs global centroid (legacy, kept for compatibility)
         try:
-            _, feats_all = _ensure_features()
-            feats_all = feats_repr
-            n_all = feats_all.shape[0]
+            n_all = feats_repr.shape[0]
             sample = int(min(20000, n_all))
             rng = np.random.default_rng(2025)
             idx = rng.choice(n_all, size=sample, replace=False)
-            sims_g = (feats_all[idx] @ cglob).astype(np.float32)
+            sims_g = (feats_repr[idx] @ cglob).astype(np.float32)
             np.clip(sims_g, -1.0, 1.0, out=sims_g)
             sims_g = (sims_g + 1.0) * 0.5
             bins = 40
@@ -499,9 +476,7 @@ def features_t2(payload: Dict = Body(...)):
         except Exception:
             group_y_median = None
         try:
-            _, feats_all = _ensure_features()
-            feats_all = feats_repr
-            sims_all2 = (feats_all @ c).astype(np.float32)
+            sims_all2 = (feats_repr @ c).astype(np.float32)
             np.clip(sims_all2, -1.0, 1.0, out=sims_all2)
             y01_all = (sims_all2 + 1.0) * 0.5
             global_y_median = float(np.median(y01_all))
@@ -665,7 +640,6 @@ def global_hist(
             _GLOBAL_HIST = {"key": key, **res}
             return JSONResponse(res)
         # anchor mode
-        _, feats_n = _ensure_features()
         feats_n = _get_repr("cosine")  # default anchor on normalized cosine
         n = feats_n.shape[0]
         if q is None or not (0 <= int(q) < n):

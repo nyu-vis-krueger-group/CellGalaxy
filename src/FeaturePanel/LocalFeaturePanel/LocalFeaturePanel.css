@@ -22,4 +22,43 @@
   padding-right: 8px;
 }
 
+.gallery-space-shell {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 2px;
+  margin: 0 -4px;
+}
+
+.gallery-space-inner {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.gallery-space-arrow {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 26px;
+  min-height: 72px;
+  margin: 0;
+  padding: 0 2px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.gallery-space-arrow:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.gallery-space-arrow:focus-visible {
+  outline: 2px solid rgba(127, 195, 255, 0.7);
+  outline-offset: 2px;
+}
 

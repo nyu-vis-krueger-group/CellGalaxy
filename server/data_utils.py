@@ -41,17 +41,13 @@ def _safe_int(val: Any) -> Optional[int]:
         if _pd.isna(val):
             return None
     except Exception:
-        # If we cannot rely on pandas for the check, fall back to the logic below
         pass
-    # Already an int
     if isinstance(val, int):
         return val
-    # Try direct int() conversion
     try:
         return int(val)
     except Exception:
         pass
-    # Then try converting via float first, e.g. "1.0"
     try:
         f = float(val)
         return int(f)

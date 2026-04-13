@@ -1,6 +1,4 @@
-// WindowedIconLayer: extends IconLayer to apply per-layer windowing (min/max)
-// on the sampled texture intensity in the fragment shader, without reloading images.
-// deck.gl v9: use shader module (windowUniforms) + shaderInputs.setProps to pass uniforms.
+// IconLayer + intensity window in FS (windowUniforms, v9 shaderInputs).
 import { IconLayer } from '@deck.gl/layers';
 import { windowUniforms } from './windowUniforms';
 
@@ -14,7 +12,6 @@ export default class WindowedIconLayer extends IconLayer {
       ...shaders,
       modules: [...(shaders.modules || []), windowUniforms],
       inject: {
-        // Apply windowing and intensity in fragment (uniforms from windowUniforms module)
         'fs:DECKGL_FILTER_COLOR': `
 float t = color.a;
 if (window.flatColor < 0.5) {

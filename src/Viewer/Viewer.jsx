@@ -1,6 +1,4 @@
-// =============================
-// Viewer.jsx  (screen-space lasso overlay + accurate selection in 2D/3D)
-// =============================
+// Main deck view: lasso/box selection, overlays, 2D/3D.
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import DeckGL from "@deck.gl/react";
 import AnalysisPopover from "../AnalysisPopover/AnalysisPopover";
@@ -51,14 +49,14 @@ const Viewer = ({
   channels = [],
   colors = {},
   alphas = {},
-  // Window (min/max for each channel, unit: raw values, e.g. 0..65535)
+  // Per-channel window in raw units (~0..65535)
   windows = {},
   renderMode = "sprites",
   is3D = false,
   imageSize = 4,
   rawImageSize,
   setImageSize = () => {},
-  // In single-view mode: whether UMAP is currently shown
+  // Single view: UMAP vs raw
   useUMAP = false,
 
   // Selection
@@ -74,26 +72,28 @@ const Viewer = ({
   clusterOpacity = 0.25,
   clusterLineWidth = 1,
   clusterOutlineOn = false,
-  // Cluster annotation (LLM titles/descriptions)
+  // LLM cluster titles/descriptions
   clusterAnnotationOn = false,
   clusterAnnotationModel = "MedGemma",
-  // Cluster preview (representative image per cluster, on UMAP view)
+  // UMAP: per-cluster preview thumb
   clusterPreviewOn = true,
-  // Per-cell annotation from raw (celltype, neigh_names) — only when raw has those columns
+  // Raw columns celltype / neigh_names when present
   cellTypeAnnotationOn = false,
   neighNamesAnnotationOn = false,
   rawAnnotationColumns = { celltype: false, neigh_names: false },
-  // Shared zoom (optional): when provided, viewers sync zoom level
+  // Optional synced zoom across viewers
   sharedZoom,
   setSharedZoom,
-  // Zoom sensitivity (how strong scroll wheel changes camera distance)
+  // Scroll zoom strength
   zoomSpeed = 0.01,
-  // Control view and point transition animations (from App)
+  // Camera/point transition animations
   transitionsEnabled = true,
 }) => {
   const isUMAPView =
     viewerId === "umap" || (viewerId === "single" && !!useUMAP);
-  // Size control slider only affects UMAP; raw view uses rawImageSize (from tile+range).
+  // Raw space is always 2D; only UMAP respects the global 3D toggle.
+  const viewIs3D = isUMAPView && is3D;
+  // Slider size: UMAP only; raw uses rawImageSize from tile/range.
   const effectiveImageSize = isUMAPView ? imageSize : (rawImageSize ?? imageSize);
   const {
     viewState,
@@ -104,7 +104,7 @@ const Viewer = ({
     autoRotate,
   } = DeckViewState({
     points,
-    is3D,
+    is3D: viewIs3D,
     sharedZoom,
     setSharedZoom,
     initialZoom: 8,
@@ -112,18 +112,18 @@ const Viewer = ({
     transitionsEnabled,
   });
 
-  const [semanticLevel, setSemanticLevel] = useState(6); // Default to finest level (1..6)
+  const [semanticLevel, setSemanticLevel] = useState(6); // 1..6, finest default
   const [isSemanticAuto, setIsSemanticAuto] = useState(true);
-  // UMAP view: use multi-level cluster columns (cluster_L0...), raw view: use original label
+  // UMAP: cluster_L*; raw: label
   const clusterLabelKey = isUMAPView
     ? `cluster_L${semanticLevel - 1}`
     : "label";
-  // In UMAP view, representative cell ranking fields per level (rank_L0...rank_L5)
+  // UMAP: rank_L* for rep cell per level
   const clusterRankKey = isUMAPView
     ? `rank_L${semanticLevel - 1}`
     : null;
 
-  // Auto-update semantic level based on zoom (only enabled in UMAP view), mapping zoom→level(1..6)
+  // UMAP + auto: map zoom → semantic level 1..6
   useEffect(() => {
     if (!isUMAPView || !isSemanticAuto || !viewState) return;
     const z = typeof viewState.zoom === 'number' ? viewState.zoom : 8;
@@ -138,7 +138,7 @@ const Viewer = ({
     setSemanticLevel(lvl);
   }, [isUMAPView, isSemanticAuto, viewState?.zoom]);
 
-  // Sampling budget per semantic level (1..6): level 1 = 5k, level 6 = 100k, levels 2–5 scale linearly.
+  // Max visible points per level (5k..100k linear).
   const SAMPLING_BUDGETS = useMemo(
     () => [5000, 24000, 43000, 62000, 81000, 100000],
     []
@@ -154,9 +154,7 @@ const Viewer = ({
     return Math.min(1.0, budget / total);
   }, [isUMAPView, semanticLevel, SAMPLING_BUDGETS, points]);
 
-  // For outline/selection/interaction logic, we still want a "visible" subset for CPU calculations,
-  // but for rendering (ImageLayers) we pass ALL points and use GPU filtering.
-  // ClusterOutlines and interaction still rely on this visiblePoints subset to match visuals.
+  // CPU subset for outlines/selection; full `points` go to GPU sampling in ImageLayers.
   const visiblePoints = useMemo(() => {
     if (!points || points.length === 0) return [];
     if (samplingThreshold >= 1.0) return points;
@@ -180,16 +178,14 @@ const Viewer = ({
     setSelectedRegions,
     setSelectedIds,
     viewerId,
-    // Use the same dynamic label key as outlines/colors so Alt+click selects the whole cluster at the current semantic level
+    // Same label key as outlines for Alt+click cluster select
     labelKey: clusterLabelKey,
   });
 
-  // —— Selection (using screen coordinates) ——
+  // Screen-space selection
   const deckRef = useRef(null);
   const containerRef = useRef(null);
-  // Defer DeckGL mount until container has valid size, then multiple frames + short delay, so that
-  // luma.gl's internal ResizeObserver does not fire before device.limits is ready
-  // (avoids "Cannot read properties of undefined (reading 'maxTextureDimension2D')" on slower machines).
+  // Defer DeckGL until layout + rAF×2 + 80ms so WebGL limits exist (avoids maxTextureDimension2D errors).
   const [containerReady, setContainerReady] = useState(false);
   const readyTimeoutRef = useRef(null);
   useLayoutEffect(() => {
@@ -201,7 +197,7 @@ const Viewer = ({
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
           if (readyTimeoutRef.current) clearTimeout(readyTimeoutRef.current);
-          // Multiple frames + 80ms delay so device.limits is ready on slower machines / after channel switch
+          // rAF×2 + 80ms before showing canvas
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               readyTimeoutRef.current = setTimeout(() => setContainerReady(true), 80);
@@ -217,25 +213,24 @@ const Viewer = ({
     };
   }, []);
   const [toolbar, setToolbar] = useState({ show: false, x: 0, y: 0, object: null });
-  // Analysis popover state
+  // Analysis popover
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [popoverCmd, setPopoverCmd] = useState(null);
   const [popoverPos, setPopoverPos] = useState({ x: 0, y: 0 });
   const [popoverBounds, setPopoverBounds] = useState(null);
   const [annotationStatsOpen, setAnnotationStatsOpen] = useState(false);
-  // Zoom-to-selection: restore goes to default initial view (center + zoom 8), not a saved state
+  // Zoom-to-selection vs default center+zoom 8
   const [isZoomedToSelection, setIsZoomedToSelection] = useState(false);
-  // Similarity ranking: Map of cell ID -> rank (0 for query, 1-N for neighbors)
+  // cell id → rank (0 = query)
   const [similarityRankings, setSimilarityRankings] = useState(new Map());
-  // Distinct highlight colors for up to two regions
+  // Up to 2 region highlight colors
   const regionColors = defaultRegionColors;
   const getRegionIndexForId = useMemo(
     () => makeRegionIndexGetter(selectedRegions),
     [selectedRegions]
   );
 
-  // Helper: clear similarity ranking labels in this viewer and, via global
-  // helpers, in the paired viewer as well (Raw / UMAP).
+  // Clear similarity ranks here + paired Raw/UMAP via window helpers.
   const clearAllSimilarityRankings = () => {
     setSimilarityRankings(new Map());
     try {
@@ -252,7 +247,7 @@ const Viewer = ({
     }
   };
 
-  // Zoom viewer to center on selected region
+  // Fit camera to selection bbox
   const zoomToSelection = useCallback(() => {
     if (!points?.length || !selectedIds?.size) return;
     const selected = points.filter((p) => selectedIds.has(p.id));
@@ -278,7 +273,7 @@ const Viewer = ({
     }));
   }, [points, selectedIds, setViewState, transitionsEnabled]);
 
-  // Restore to default initial view (data center + zoom 8), not a previously saved state
+  // Back to data center + zoom 8
   const initialTarget = useMemo(() => computeCenter(points || []), [points]);
   const restoreView = useCallback(() => {
     setViewState((prev) => ({
@@ -295,14 +290,12 @@ const Viewer = ({
   }, [initialTarget, setViewState, transitionsEnabled]);
 
   const onClick = (info) => {
-    // In box/lasso selection mode, completely disable click-based single selection/deselection;
-    // selection can only be changed via box/lasso drag.
+    // Box/lasso mode: no click pick/clear
     if (selectionMode !== SELECTION_NONE) {
       return;
     }
 
-    // If there are already selected IDs, forbid changing anything via clicks (including clicking empty space to clear);
-    // the selection can only be cleared via the toolbar close (X) button.
+    // With selection: clicks don't change it (clear via toolbar X).
     if (selectedIds && selectedIds.size > 0) {
       return;
     }
@@ -310,11 +303,11 @@ const Viewer = ({
       if (toolbar.show) setToolbar({ show: false, x: 0, y: 0, object: null });
       setPopoverOpen(false);
       setPopoverBounds(null);
-      clearAllSimilarityRankings(); // clear similarity ranking labels
+      clearAllSimilarityRankings();
       return;
     }
     if (altPressed) {
-      // Use dynamic label key for selection
+      // Cluster by current level key
       const val = info?.object?.[clusterLabelKey];
       const lbl = Number.isFinite(val) ? val : info?.object?.label;
       if (selectClusterByLabel(lbl)) {
@@ -323,18 +316,18 @@ const Viewer = ({
     }
 
     selectSingleById(info?.object?.id);
-    // Keep the lightweight toolbar (can be closed)
+    // Toolbar for single-cell actions
     const { x, y } = getEventCoordinates(info, containerRef);
     setToolbar({ show: true, x, y, object: info.object });
 
-    // Auto-focus to selected cell if current zoom is small (view is far out)
+    // If zoomed out, focus clicked cell
     const currentZoom = typeof viewState?.zoom === "number" ? viewState.zoom : 8;
-    const zoomThreshold = 9; // treat zoom < 9 as "small view"
+    const zoomThreshold = 9;
     if (currentZoom < zoomThreshold && info?.object) {
       const cellX = info.object.x ?? 0;
       const cellY = info.object.y ?? 0;
       const cellZ = info.object.z ?? 0;
-      const targetZoom = 14; // target zoom level when focusing
+      const targetZoom = 14;
       
       setViewState((prev) => ({
         ...prev,
@@ -349,15 +342,14 @@ const Viewer = ({
     }
   };
 
-  // Lazily build clustering outlines (convex hulls)
+  // 2D cluster hull outlines
   const outlineData = useMemo(() => {
-    if (is3D || !visiblePoints || visiblePoints.length < 3) return [];
-    // Pass dynamic label key
+    if (viewIs3D || !visiblePoints || visiblePoints.length < 3) return [];
     return buildOutlineData2D(visiblePoints, clusterLabelKey);
-  }, [is3D, visiblePoints, clusterLabelKey]);
+  }, [viewIs3D, visiblePoints, clusterLabelKey]);
 
   const screenOutlines = ClusterOutlines({
-    is3D,
+    is3D: viewIs3D,
     clusterOutlineOn,
     forceCompute: clusterAnnotationOn,
     points: visiblePoints,
@@ -367,12 +359,12 @@ const Viewer = ({
     labelKey: clusterLabelKey,
   });
 
-  // —— Choose one representative cell per cluster (minimum rank) for fixed preview cards ——
+  // One rep point per cluster (min rank_L*) for preview cards
   const clusterPreviewPoints = useMemo(() => {
     if (!isUMAPView) return [];
     if (!clusterPreviewOn) return [];
     if (!points || points.length === 0) return [];
-    // Only show cluster previews at level 1–5 (coarse to mid levels)
+    // Previews for semantic levels 1–5 only
     if (!clusterRankKey || semanticLevel < 1 || semanticLevel > 5) return [];
 
     const byLabel = new Map();
@@ -390,7 +382,7 @@ const Viewer = ({
     return Array.from(byLabel.values()).map((v) => v.point);
   }, [isUMAPView, clusterPreviewOn, points, clusterLabelKey, clusterRankKey, semanticLevel]);
 
-  // Project representative cell positions into screen coordinates for DOM preview card placement
+  // Rep cells → screen for DOM thumbs
   const [clusterPreviewScreens, setClusterPreviewScreens] = useState([]);
 
   useEffect(() => {
@@ -420,13 +412,13 @@ const Viewer = ({
     setClusterPreviewScreens(result);
   }, [isUMAPView, clusterPreviewOn, clusterPreviewPoints, viewState, deckRef, containerRef]);
 
-  // Screen positions for cluster titles (DOM overlay at cluster centroid)
+  // Cluster title DOM positions
   const [clusterAnnotationScreens, setClusterAnnotationScreens] = useState([]);
 
   const [hoveredAnnotationLabel, setHoveredAnnotationLabel] = useState(null);
   const descriptionRefs = useRef({});
 
-  // Load raw.json for per-cell annotation (celltype, neigh_names) when any annotation toggle is on
+  // raw.json → per-id celltype/neigh_names when toggles on
   const [rawAnnotationById, setRawAnnotationById] = useState(() => new Map());
   useEffect(() => {
     if (!cellTypeAnnotationOn && !neighNamesAnnotationOn) {
@@ -460,7 +452,7 @@ const Viewer = ({
     return () => { cancelled = true; };
   }, [cellTypeAnnotationOn, neighNamesAnnotationOn]);
 
-  // When filter is active: compute dominant celltype/neigh_names per cluster from filtered cells only
+  // Filter on: mode celltype/neigh per cluster per level
   const filteredDominantAnnotations = useMemo(() => {
     if (!filteredIds || filteredIds.size === 0 || !rawAnnotationById || rawAnnotationById.size === 0) return null;
     if (!points || points.length === 0) return null;
@@ -500,19 +492,19 @@ const Viewer = ({
     return { levels };
   }, [points, rawAnnotationById, filteredIds]);
 
-  // Cluster annotation (text layer + tooltip data), derived from outlineData (2D) or projected screen outlines (3D)
+  // LLM annotation props from 2D hulls or 3D screen outlines
   const { annotationLayer, clusterAnnotationData } = useClusterAnnotations({
     clusterAnnotationOn,
     clusterAnnotationModel,
     outlineData,
     viewState,
-    is3D,
+    is3D: viewIs3D,
     screenOutlines3D: screenOutlines,
     level: semanticLevel,
     filteredDominantAnnotations,
   });
 
-  // We now always render titles/descriptions via DOM overlays instead of the original DeckGL TextLayer
+  // Titles via DOM, not Deck TextLayer
   const showAnnotationLayer = false;
 
   useEffect(() => {
@@ -546,10 +538,10 @@ const Viewer = ({
     containerRef,
   ]);
 
-  // Per-cell annotation labels: show at moderate zoom (lower threshold = show when less zoomed in)
+  // Per-cell labels when zoom ≥ threshold
   const ZOOM_THRESHOLD_CELL_ANNOTATION = 11;
   const MAX_CELL_ANNOTATIONS_VISIBLE = 400;
-  const ANNOTATION_GRID_SIZE = 16; // spatial sampling grid for even distribution
+  const ANNOTATION_GRID_SIZE = 16; // grid cap for label spread
   const [cellAnnotationScreens, setCellAnnotationScreens] = useState([]);
   useEffect(() => {
     if (!(cellTypeAnnotationOn || neighNamesAnnotationOn) || !visiblePoints?.length || !rawAnnotationById?.size) {
@@ -580,7 +572,7 @@ const Viewer = ({
       if (!show) return false;
       return p.x >= -50 && p.x <= w + 50 && p.y >= -50 && p.y <= h + 50;
     });
-    // When over limit: sample by viewport grid so labels are spread across the view, not clustered in one region
+    // Over cap: sample by viewport grid
     let limited;
     if (inView.length <= MAX_CELL_ANNOTATIONS_VISIBLE) {
       limited = inView;
@@ -627,11 +619,10 @@ const Viewer = ({
     containerRef,
   ]);
 
-  // Screen positions for similarity ranking labels (DOM overlay)
+  // Similarity rank label positions
   const [similarityRankingScreens, setSimilarityRankingScreens] = useState([]);
 
-  // Register global focus and similarity ranking handlers,
-  // used by similarity gallery or other modules to focus cells across viewers
+  // window.__focusCell* + similarity for cross-viewer APIs
   useGlobalCellFocusAndRanking({
     viewerId,
     useUMAP,
@@ -641,7 +632,7 @@ const Viewer = ({
     setSimilarityRankings,
   });
 
-  // Screen-space positions for currently selected tiles (white outlines).
+  // Selected tile outline DOM positions
   const [selectedTileScreens, setSelectedTileScreens] = useState([]);
 
   useEffect(() => {
@@ -689,7 +680,6 @@ const Viewer = ({
       setSimilarityRankingScreens([]);
       return;
     }
-    // Find all points that should display ranking labels
     const rankedPoints = points.filter((p) => similarityRankings.has(p.id));
     if (rankedPoints.length === 0) {
       setSimilarityRankingScreens([]);
@@ -715,7 +705,7 @@ const Viewer = ({
   const layers = ImageLayers({
     meta,
     renderMode,
-    points,  // Pass ALL points to ImageLayers for GPU filtering
+    points,
     atlasURL,
     atlasByChannel,
     iconMappingsByChunk,
@@ -723,7 +713,7 @@ const Viewer = ({
     colors,
     alphas,
     windows,
-    is3D,
+    is3D: viewIs3D,
     filteredIds,
     clusterColorOn,
     clusterOpacity,
@@ -734,39 +724,33 @@ const Viewer = ({
     getRegionIndexForId,
     regionColors,
     labelKey: clusterLabelKey,
-    samplingThreshold,  // New prop for GPU filtering
-    selectedIds,        // Needed to exclude selected items from filtering
+    samplingThreshold,
+    selectedIds,
     transitionsEnabled,
   });
 
   const controller =
     selectionMode === SELECTION_NONE
-      ? is3D
+      ? viewIs3D
         ? { 
             type: OrbitController,
-            // Improved trackpad support
             scrollZoom: true,
             doubleClickZoom: true,
             inertia: true,
             inertiaFriction: 0.95,
             inertiaDeceleration: 0.95,
-            // Trackpad zoom sensitivity
             scrollZoomSpeed: zoomSpeed,
-            // Smooth zoom
             smoothZoom: true,
             smoothZoomDuration: 200
           }
         : { 
             type: OrthographicController,
-            // Improved trackpad support
             scrollZoom: true,
             doubleClickZoom: true,
             inertia: true,
             inertiaFriction: 0.95,
             inertiaDeceleration: 0.95,
-            // Trackpad zoom sensitivity
             scrollZoomSpeed: zoomSpeed,
-            // Smooth zoom
             smoothZoom: true,
             smoothZoomDuration: 200
           }
@@ -796,7 +780,7 @@ const Viewer = ({
           <>
             <ClusterHoverMask
               outlineData={outlineData}
-              is3D={is3D}
+              is3D={viewIs3D}
               deckRef={deckRef}
               containerRef={containerRef}
               active={hoverMaskEnabled && clusterOutlineOn}
@@ -807,7 +791,7 @@ const Viewer = ({
                 <DeckGL
                   ref={deckRef}
                   views={
-                    is3D
+                    viewIs3D
                       ? [new OrbitView({ id: "3d", orbitAxis: "Y", flipY: false })]
                       : [new OrthographicView({ id: "2d", flipY: false })]
                   }
@@ -829,8 +813,8 @@ const Viewer = ({
               )}
             </ClusterHoverMask>
 
-            {/* 3D mode clustering outlines: screen-space SVG overlay */}
-            {is3D && clusterOutlineOn && screenOutlines.length > 0 && (
+            {/* 3D cluster outlines (SVG) */}
+            {viewIs3D && clusterOutlineOn && screenOutlines.length > 0 && (
               <svg className="cluster-outline-svg">
                 {screenOutlines.map((s, i) => (
                   <path key={i} d={s.d} fill="none" stroke={s.color} strokeWidth={clusterLineWidth} />
@@ -838,14 +822,14 @@ const Viewer = ({
               </svg>
             )}
 
-            {/* 3D mode: spacebar toggles auto-rotate hint */}
-            {is3D && (
+            {/* Space: auto-rotate */}
+            {viewIs3D && (
               <div className="viewer-3d-autorotate-hint" aria-hidden="true">
                 Space: auto-rotate {autoRotate ? "On" : "Off"}
               </div>
             )}
 
-            {/* Group analysis toolbar */}
+            {/* Group toolbar */}
             <GroupToolbarContainer
               viewerId={viewerId}
               isSelecting={isSelecting}
@@ -872,7 +856,7 @@ const Viewer = ({
         )}
       </SelectionOverlay>
 
-      {/* Fixed cluster representative previews (levels 1–4), reusing hover tooltip styles */}
+      {/* Cluster rep previews (L1–L5) */}
       {isUMAPView &&
         clusterPreviewOn &&
         semanticLevel >= 1 &&
@@ -881,8 +865,8 @@ const Viewer = ({
         clusterPreviewScreens.length > 0 &&
         clusterPreviewScreens.map(({ point, x, y }) => {
           if (!point) return null;
-          // Fixed preview size to avoid recomputing thumbnails during zoom for smoother interaction.
-          const previewSize = 64;
+          // Fixed thumb size (avoid resize on zoom)
+          const previewSize = 48;
           const val = point?.[clusterLabelKey];
           const lbl = Number.isFinite(val) ? val : (point.label ?? 0);
           const rgb = clusterColor(lbl);
@@ -907,7 +891,7 @@ const Viewer = ({
           );
         })}
 
-      {/* Cluster titles: rendered at cluster centers (DOM); description is only shown on hover */}
+      {/* Cluster titles DOM; description on hover */}
       {isUMAPView &&
         clusterAnnotationOn &&
         semanticLevel >= 1 &&
@@ -927,12 +911,12 @@ const Viewer = ({
           />
         )}
 
-      {/* Similarity ranking labels (DOM overlay) */}
+      {/* Similarity ranks */}
       {similarityRankingScreens && similarityRankingScreens.length > 0 && (
         <SimilarityRankingOverlay items={similarityRankingScreens} />
       )}
 
-      {/* Per-cell annotation labels when zoomed in (celltype / neigh_names) */}
+      {/* Per-cell labels (zoomed) */}
       {cellAnnotationScreens && cellAnnotationScreens.length > 0 && (
         <div className="cell-annotation-overlay" aria-hidden="true">
           {cellAnnotationScreens.map((item) => (
@@ -947,7 +931,7 @@ const Viewer = ({
         </div>
       )}
 
-      {/* Click toolbar */}
+      {/* Cell toolbar */}
       <ClickToolbar
         show={toolbar.show}
         x={toolbar.x}
@@ -955,31 +939,27 @@ const Viewer = ({
         onClose={() => {
           setToolbar({ show: false, x: 0, y: 0, object: null });
           clearSelection();
-          clearAllSimilarityRankings(); // clear similarity ranking labels
+          clearAllSimilarityRankings();
         }}
-        // In "single" mode, disable the navigation button that jumps to the other view:
-        // do not pass onViewRaw so ClickToolbar renders the button as disabled.
+        // Single view: omit onViewRaw → eye disabled
         onViewRaw={
           viewerId === "single"
             ? undefined
             : () => {
-                // When clicking the "eye" button, ask the other projection view (Raw/UMAP)
-                // to focus by id using its own projection coordinates.
+                // Eye: focus same id in other projection
                 const obj = toolbar.object;
                 if (!obj || typeof window === "undefined") return;
 
                 if (isUMAPView) {
-                  // Currently in UMAP view → notify Raw view to focus by id
                   if (typeof window.__focusCell === "function") {
                     window.__focusCell({ id: obj.id });
                   }
                 } else {
-                  // Currently in Raw view → notify UMAP view to focus by id
                   if (typeof window.__focusCellUMAP === "function") {
                     window.__focusCellUMAP({ id: obj.id });
                   }
                 }
-                // Note: do not hide the toolbar here so the user can still click the X to clear selection
+                // Keep toolbar until X clears selection
               }
         }
         onFindTopK={() => {
@@ -987,8 +967,7 @@ const Viewer = ({
             const id = toolbar.object?.id;
             if (id != null) {
               setPopoverCmd({ type: ANALYSIS_SINGLE, q: id });
-              // Convert internal viewer coordinates to global viewport coordinates
-              // so the popover can span across the two viewers.
+              // Viewer-local → viewport for split popover
               const container = containerRef.current;
               const rect = container?.getBoundingClientRect
                 ? container.getBoundingClientRect()
@@ -1010,7 +989,7 @@ const Viewer = ({
           }
         }}
       />
-      {/* Analysis popover (floating window near selection) */}
+      {/* Analysis popover */}
       <AnalysisPopover
         open={popoverOpen}
         command={popoverCmd}
@@ -1020,6 +999,8 @@ const Viewer = ({
         onClose={() => {
           setPopoverOpen(false);
           setPopoverBounds(null);
+          setPopoverCmd(null);
+          clearAllSimilarityRankings();
         }}
         meta={meta}
         chunkUV={chunkUV}
@@ -1063,11 +1044,11 @@ const Viewer = ({
         filteredIds={filteredIds}
       />
 
-      {/* Persistent selection outlines (slightly thinner than hover outline). */}
+      {/* Selection outlines */}
       {selectedTileScreens &&
         selectedTileScreens.length > 0 &&
         selectedTileScreens.map(({ id, x, y, color }) => {
-          // Match the actual tile size; do not enlarge on selection
+          // Outline ~ tile size
           const size = Math.max(6, computedImageSize);
           let borderColor = "rgba(255, 255, 255, 0.9)";
           if (Array.isArray(color) && color.length >= 3) {
@@ -1091,7 +1072,7 @@ const Viewer = ({
           );
         })}
 
-      {/* Semantic Zoom Slider (Manual Control) */}
+      {/* Semantic zoom slider */}
       {isUMAPView && (
         <SemanticZoomControl
           level={semanticLevel}

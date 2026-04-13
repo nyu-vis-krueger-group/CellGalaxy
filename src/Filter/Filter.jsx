@@ -1,15 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./Filter.css";
 
-// Align with DataLoader: use backend base on dev (port 3000)
+// Dev: API on :8000
 const API = (typeof window !== 'undefined' && window.location && window.location.port === '3000')
   ? 'http://localhost:8000'
   : '';
-// CRA injects PUBLIC_URL at build time; use as an additional hint
+// CRA PUBLIC_URL fallback for raw.json
 // eslint-disable-next-line no-undef
 const PUBLIC_URL = (typeof process !== 'undefined' && process.env && process.env.PUBLIC_URL) ? process.env.PUBLIC_URL : '';
 
-// Build a safe JS identifier alias from a column name
+// Column name → safe alias
 function baseNameOf(name) {
   const s = String(name || "");
   const i = s.indexOf("(");
@@ -23,19 +23,18 @@ function aliasOf(name) {
   return a || "col";
 }
 
-// Guard: only allow safe characters/operators
+// Whitelist expr chars
 function isExpressionSafe(expr) {
   // eslint-disable-next-line no-useless-escape
   return /^[\s\w\d_"'().,!<>=&|+\-/*%\[\]]+$/.test(expr);
 }
 
-// Infer basic stats for hinting
+// Parse "(...)" tail for hints
 function parseDescriptorFromName(name) {
   const s = String(name || "");
   const m = s.match(/\((.*)\)\s*$/);
   if (!m) return { base: baseNameOf(s), choices: null, unit: null, desc: null };
   const inside = m[1].trim();
-  // Try parse comma-separated label:value
   const parts = inside.split(/\s*,\s*/);
   const choices = [];
   let choiceLike = true;
@@ -53,7 +52,6 @@ function parseDescriptorFromName(name) {
     }
   }
   if (choiceLike && choices.length) return { base: baseNameOf(s), choices, unit: null, desc: inside };
-  // Otherwise treat as unit text
   return { base: baseNameOf(s), choices: null, unit: inside, desc: inside };
 }
 
@@ -71,7 +69,6 @@ function buildMetaFromFirstRow(rawObj) {
       baseName: desc.base,
       alias: al,
       isNumeric: Number.isFinite(num),
-      // We only peek the first row, so no min/max; keep undefined
       min: undefined,
       max: undefined,
       examples: [v],
@@ -142,7 +139,7 @@ export default function Filter({ setFilteredIds = () => {} }) {
   const [showPopover, setShowPopover] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
 
-  // Load raw.json lazily when first needed
+  // Lazy-load raw.json
   const ensureMeta = useRef(null);
   ensureMeta.current = async () => {
     if (loadingMeta || metaList.length > 0) return;
@@ -151,27 +148,23 @@ export default function Filter({ setFilteredIds = () => {} }) {
     try {
       setLoadingMeta(true);
       const ts = Date.now();
-      // Align with DataLoader: prefer backend static path first
       const tries = [
-        `${API}/public/raw.json?ts=${ts}`,        // FastAPI static (works in dev with API base)
-        `/public/raw.json?ts=${ts}`,              // same-origin public
-        `/raw.json?ts=${ts}`,                     // CRA maps public/raw.json to root
-        `${PUBLIC_URL}/raw.json?ts=${ts}`,        // CRA public base (if defined)
+        `${API}/public/raw.json?ts=${ts}`,
+        `/public/raw.json?ts=${ts}`,
+        `/raw.json?ts=${ts}`,
+        `${PUBLIC_URL}/raw.json?ts=${ts}`,
       ];
       let data = null;
       for (const url of tries) {
         try {
-          // Surface to devtools which URL we are trying
           // eslint-disable-next-line no-console
           console.debug('Filter: fetch', url);
           const r = await fetch(url, { cache: 'no-store' });
           if (!r.ok) continue;
-          // Read as text first to handle non-strict JSON (NaN/Infinity)
           const txt = await r.text();
           try {
             data = JSON.parse(txt);
           } catch (e) {
-            // Tolerate NaN/Infinity emitted by some generators; replace with null
             const sanitized = txt
               .replace(/\bNaN\b/g, 'null')
               .replace(/\bInfinity\b/g, 'null')
@@ -200,7 +193,7 @@ export default function Filter({ setFilteredIds = () => {} }) {
         done();
         return;
       }
-      const firstRaw = first.raw || first.RAW || first.Raw || first; // tolerate bare raw object
+      const firstRaw = first.raw || first.RAW || first.Raw || first;
       const { list, aliasIndex } = buildMetaFromFirstRow(firstRaw || {});
       setMetaList(list.sort((a,b)=>a.baseName.localeCompare(b.baseName)));
       setAliasIndex(aliasIndex);
@@ -214,12 +207,12 @@ export default function Filter({ setFilteredIds = () => {} }) {
     }
   };
 
-  // Try preloading on mount so the first focus is faster (if it fails, it will retry on focus)
+  // Preload meta on mount
   useEffect(() => { ensureMeta.current(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const columns = useMemo(() => metaList.map((m)=>m.rawName), [metaList]);
 
-  // Tokens used in the expression (whole word matches)
+  // Columns referenced in expr
   const usedColumns = useMemo(() => {
     if (!metaList.length || !expr) return new Set();
     const set = new Set();
@@ -230,7 +223,6 @@ export default function Filter({ setFilteredIds = () => {} }) {
     return set;
   }, [expr, metaList, columns]);
 
-  // Current word prefix at caret
   const caretPrefix = useMemo(() => {
     const el = inputRef.current;
     const pos = el ? el.selectionStart : expr.length;
@@ -239,13 +231,11 @@ export default function Filter({ setFilteredIds = () => {} }) {
     return m ? m[1] : "";
   }, [expr]);
 
-  // Suggest columns by typed prefix; grey out those already used
-  // Detect context: if an operator is present after a full alias, switch to value suggestions
+  // Autocomplete: column / op / value by caret context
   const context = useMemo(() => {
     const el = inputRef.current;
     const pos = el ? el.selectionStart : expr.length;
     const upto = expr.slice(0, pos);
-    // match patterns around caret: <alias> [spaces] [op or partial op] [spaces]
     const m = upto.match(/([A-Za-z_][A-Za-z0-9_]*)\s*(?:([=!<>]{1,2})|\b(i|in)\b)?\s*$/i);
     if (!m) return { mode: 'column' };
     const token = m[1];
@@ -255,7 +245,6 @@ export default function Filter({ setFilteredIds = () => {} }) {
     const meta = aliasIndex[token];
     const exactOps = new Set(['==','!=','>=','<=','>','<','in']);
     if (meta && op && exactOps.has(op)) return { mode: 'value', alias: token, op, meta };
-    // If alias typed with trailing spaces OR partial operator ('=', '!', '>', '<', or word 'i') → suggest operators
     if (meta && (!op || !exactOps.has(op)) ) return { mode: 'op', alias: token, meta };
     return { mode: 'column' };
   }, [expr, aliasIndex]);
@@ -280,12 +269,11 @@ export default function Filter({ setFilteredIds = () => {} }) {
       const ops = ['==', '!=', '>', '<', '>=', '<=', 'in'];
       return ops.map((op) => ({ type: 'op', insert: op, label: op }));
     }
-    // Column suggestions
     const p = caretPrefix.toLowerCase();
     const ordered = [...metaList].sort((a,b)=>{
       const au = usedColumns.has(a.rawName) ? 1 : 0;
       const bu = usedColumns.has(b.rawName) ? 1 : 0;
-      if (au !== bu) return au - bu; // unused first
+      if (au !== bu) return au - bu;
       return a.baseName.localeCompare(b.baseName);
     });
     return ordered
@@ -294,7 +282,7 @@ export default function Filter({ setFilteredIds = () => {} }) {
       .map((m) => ({ type: 'column', meta: m }));
   }, [context, caretPrefix, metaList, usedColumns]);
 
-  // Contextual hint when a full column alias is just typed
+  // Hint after alias token
   const columnHint = useMemo(() => {
     const el = inputRef.current;
     const pos = el ? el.selectionStart : expr.length;
@@ -323,7 +311,6 @@ export default function Filter({ setFilteredIds = () => {} }) {
     const end = el.selectionEnd;
     const next = expr.slice(0, start) + text + expr.slice(end);
     setExpr(next);
-    // restore caret
     requestAnimationFrame(() => {
       const pos = start + text.length;
       el.setSelectionRange(pos, pos);
@@ -338,8 +325,7 @@ export default function Filter({ setFilteredIds = () => {} }) {
     }
     if (sug.type === 'op') {
       insertTextAtCaret(sug.insert);
-      // Keep the popover open and move focus back to input so that
-      // value suggestions appear immediately after operator insertion
+      // Re-focus for value suggestions after op
       setShowPopover(true);
       setActiveIdx(0);
       requestAnimationFrame(() => { try { inputRef.current && inputRef.current.focus(); } catch {} });
@@ -361,7 +347,6 @@ export default function Filter({ setFilteredIds = () => {} }) {
       if (!exp) { setError("Expression is empty"); setFilteredIds(new Set()); setCount(0); return; }
       if (!isExpressionSafe(exp)) { setError("Expression contains unsupported characters"); setFilteredIds(new Set()); setCount(0); return; }
 
-      // Build param aliases from known columns (by aliasIndex order)
       const uniqueAliases = Object.keys(aliasIndex);
       let fn;
       try {
@@ -374,7 +359,7 @@ export default function Filter({ setFilteredIds = () => {} }) {
         return;
       }
 
-      // Quick dry-run to catch ReferenceError (unknown identifiers) etc.
+      // Dry-run fn(0,...) for ref errors
       try {
         const zeros = new Array(uniqueAliases.length).fill(0);
         void fn(...zeros);
@@ -412,13 +397,11 @@ export default function Filter({ setFilteredIds = () => {} }) {
     if (!text) return null;
     const n = text.length;
     let s = pos, epos = pos;
-    // If caret is between chars, expand both sides
     while (s > 0 && isWord(text[s-1])) s--;
     while (epos < n && isWord(text[epos])) epos++;
-    if (s === epos) return null; // not within a word
+    if (s === epos) return null;
     const token = text.slice(s, epos);
     if (aliasIndex[token]) {
-      // Ensure word boundaries
       const leftOk = s === 0 || !isWord(text[s-1]);
       const rightOk = epos === n || !isWord(text[epos]);
       if (leftOk && rightOk) return { start: s, end: epos, token };
@@ -427,12 +410,11 @@ export default function Filter({ setFilteredIds = () => {} }) {
   };
 
   const onKeyDown = (e) => {
-    // Whole-token deletion when caret is inside a full alias
+    // Backspace/Delete whole alias token
     if ((e.key === 'Backspace' || e.key === 'Delete') && inputRef.current) {
       const el = inputRef.current;
-      if (el.selectionStart === el.selectionEnd) { // no selection
+      if (el.selectionStart === el.selectionEnd) {
         const pos = el.selectionStart;
-        // For Delete, when at token start, treat as inside
         const probePos = e.key === 'Backspace' ? Math.max(0, pos-1) : pos;
         const hit = findAliasTokenAt(expr, probePos);
         if (hit) {
@@ -452,7 +434,7 @@ export default function Filter({ setFilteredIds = () => {} }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); applyFilter(); }
   };
 
-  // ===== Inline highlighting in the input (overlay) =====
+  // Syntax highlight overlay
   const escapeHtml = (str) =>
     String(str)
       .replace(/&/g, '&amp;')
@@ -467,7 +449,6 @@ export default function Filter({ setFilteredIds = () => {} }) {
     let html = escapeHtml(expr || "");
     const aliases = Object.keys(aliasIndex);
     if (aliases.length === 0) return html;
-    // Sort long → short to avoid partial overlaps
     const ordered = [...aliases].sort((a,b)=>b.length-a.length).map(escRegex);
     const re = new RegExp(`\\b(${ordered.join('|')})\\b`, 'gi');
     html = html.replace(re, '<span class="hl-attr">$1</span>');
@@ -518,7 +499,7 @@ export default function Filter({ setFilteredIds = () => {} }) {
         </button>
       </div>
 
-      {/* Live suggestions popover (on focus and while typing) */}
+      {/* Suggestions */}
       {showPopover && (
         <div className="filter-popover">
           {loadingMeta && (
@@ -531,7 +512,6 @@ export default function Filter({ setFilteredIds = () => {} }) {
             <div className="filter-popover-empty">no matching columns (continue typing)</div>
           )}
           {!loadingMeta && suggestions.length > 0 && suggestions.map((s, i) => {
-            // normalize key/label for all types
             let key;
             let label;
             if (s.type === 'value') {
@@ -541,7 +521,6 @@ export default function Filter({ setFilteredIds = () => {} }) {
               key = `op-${i}-${s.label}`;
               label = s.label;
             } else {
-              // column suggestion (has meta)
               key = `c-${s.meta?.alias ?? i}`;
               label = s.meta?.rawName ?? '';
             }

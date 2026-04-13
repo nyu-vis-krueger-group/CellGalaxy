@@ -14,7 +14,7 @@ export default function FeatureDock({
   colors,
   alphas,
   windows,
-  // points for two projections (used to locate thumbnails metadata)
+  // pointsRaw / pointsUMAP for thumbs
   pointsRaw = [],
   pointsUMAP = [],
   useUMAP = false,
@@ -29,6 +29,7 @@ export default function FeatureDock({
 
   const [mode, setMode] = useState("none"); // 'none' | 't1' | 't2'
   const [t1, setT1] = useState(null);
+  const [t1NeighborSpace, setT1NeighborSpace] = useState("umap");
   const [t2, setT2] = useState(null);
   const activeQueryRef = useRef(null);
 
@@ -40,7 +41,8 @@ export default function FeatureDock({
         const q = Number(analysisCommand.q);
         setMode("t1");
         setT2(null);
-        const res = await fetchT1(q, 30, undefined);
+        setT1NeighborSpace("umap");
+        const res = await fetchT1(q, 30, undefined, "umap");
         if (!res || res.error) return;
         setT1(res);
         activeQueryRef.current = q;
@@ -76,13 +78,25 @@ export default function FeatureDock({
           iconMappingsByChunk={iconMappingsByChunk}
           chunkUV={chunkUV}
           atlasByChannel={atlasByChannel}
-          atlasURL={atlasURL}
           channels={channels}
           colors={colors}
           alphas={alphas}
           windows={windows}
           points={useUMAP ? pointsUMAP : pointsRaw}
           viewerId={useUMAP ? "umap" : "raw"}
+          similarityNeighborSpace={t1NeighborSpace}
+          onSimilarityNeighborSpaceChange={async (next) => {
+            const q = activeQueryRef.current;
+            if (!Number.isFinite(q)) return;
+            setT1NeighborSpace(next);
+            const res = await fetchT1(q, 30, undefined, next);
+            if (!res || res.error) return;
+            setT1(res);
+            try {
+              const neighborIds = (res.neighbors || []).map((n) => n.id);
+              setSelectedIds(new Set([q, ...neighborIds]));
+            } catch {}
+          }}
         />
       )}
       {mode === "t2" && t2 && (

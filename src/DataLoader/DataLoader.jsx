@@ -1,6 +1,4 @@
-// =============================
-// useDataLoader.js  (with selection states)
-// =============================
+// Loads meta/coords/atlas; selection + render state.
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
   API_BASE,
@@ -14,61 +12,57 @@ import {
   prewarm as prewarmAPI,
 } from "../api/api";
 
-// API base is centralized in ../api/api
 const API = API_BASE;
 
 export default function useDataLoader() {
   const [meta, setMeta] = useState(null);
-  const [points, setPoints] = useState([]); // legacy single set (kept for compatibility)
-  const [pointsRaw, setPointsRaw] = useState([]); // raw projection
-  const [pointsUMAP, setPointsUMAP] = useState([]); // UMAP projection (2D/3D depending on is3D)
+  const [points, setPoints] = useState([]); // legacy default raw
+  const [pointsRaw, setPointsRaw] = useState([]);
+  const [pointsUMAP, setPointsUMAP] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Rendering parameters (can be bound to UI)
+  // Render params (UI-bound)
   const [channels, setChannels] = useState([]);
   const [weights, setWeights] = useState({});
   const [alphas, setAlphas] = useState({});
   const [colors, setColors] = useState({});
-  // New: per-channel window (min/max, unit consistent with backend: 0..65535)
+  // Per-channel window 0..65535
   const [windows, setWindows] = useState({});
   const [imageSize, setImageSize] = useState(1.5);
-  // Raw view uses fixed size from tile+range (set on load only); slider only affects UMAP
+  // Raw size from tile/range; slider → UMAP only
   const [rawImageSize, setRawImageSize] = useState(1.5);
 
-  // Rendering mode settings
-  const [renderMode, setRenderMode] = useState('sprites'); // 'sprites' | 'points'
-  const [is3D, setIs3D] = useState(false); // 2D/3D toggle
+  const [renderMode, setRenderMode] = useState('sprites');
+  const [is3D, setIs3D] = useState(false);
   
-  // —— Clustering overlay settings ——
-  // two independent toggles: color overlay & outline
+  // Cluster overlay: fill + outline
   const [clusterColorOn, setClusterColorOn] = useState(false);
   const [clusterOutlineOn, setClusterOutlineOn] = useState(false);
-  // opacity for color overlay [0..1]
+  // Fill opacity 0..1
   const [clusterOpacity, setClusterOpacity] = useState(1.0);
-  // line width (px) for outline mode
+  // Outline width (px)
   const [clusterLineWidth, setClusterLineWidth] = useState(1);
-  // cluster text annotation (LLM titles/descriptions)
+  // LLM cluster text
   const [clusterAnnotationOn, setClusterAnnotationOn] = useState(false);
   const [clusterAnnotationModel, setClusterAnnotationModel] = useState("MedGemma");
-  // Toggle for the visibility of fixed cluster preview images (off by default, enabled by user)
+  // UMAP cluster preview thumbs
   const [clusterPreviewOn, setClusterPreviewOn] = useState(false);
 
-  // Raw annotation columns (celltype, neigh_names) — only set when raw.json exists and has those columns
+  // raw.json has celltype/neigh_names flags
   const [rawAnnotationColumns, setRawAnnotationColumns] = useState({ celltype: false, neigh_names: false });
   const [cellTypeAnnotationOn, setCellTypeAnnotationOn] = useState(false);
   const [neighNamesAnnotationOn, setNeighNamesAnnotationOn] = useState(false);
   
-  // UMAP mode settings (kept for compatibility, side-by-side uses both)
+  // Single-view UMAP toggle
   const [useUMAP, setUseUMAP] = useState(false);
 
-  // UV mapping and atlas URL for each chunk
   const [chunkUV, setChunkUV] = useState({});
-  const [atlasURL, setAtlasURL] = useState({}); // Old: single atlas synthesized by server (kept for compatibility)
-  const [atlasByChannel, setAtlasByChannel] = useState({}); // New: grayscale atlas per channel
+  const [atlasURL, setAtlasURL] = useState({}); // legacy merged atlas
+  const [atlasByChannel, setAtlasByChannel] = useState({}); // per-ch grayscale
   const [fetchingChunks, setFetchingChunks] = useState(new Set());
   const [dataVersion, setDataVersion] = useState(0);
 
-  // Simple concurrency limiter (default max 6 concurrent requests)
+  // Request queue, max 6 parallel
   const limiterRef = useRef({ max: 6, inFlight: 0, queue: [] });
   const runWithLimit = (task) => new Promise((resolve) => {
     const run = async () => {
@@ -77,7 +71,6 @@ export default function useDataLoader() {
         const result = await task();
         resolve(result);
       } catch (e) {
-        // Avoid unhandled rejection bubbling up
         try {
           console.error("runWithLimit task error", e);
         } catch {}
@@ -92,46 +85,39 @@ export default function useDataLoader() {
     else limiterRef.current.queue.push(run);
   });
 
-  // Store all coordinate data (raw/UMAP2D/UMAP3D)
+  // coords.json rows
   const [allCoords, setAllCoords] = useState([]);
 
-  // —— Selection related (new) ——
-  const [selectionMode, setSelectionMode] = useState('none'); // 'none' | 'box' | 'lasso'
+  const [selectionMode, setSelectionMode] = useState('none');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [selectedRegions, setSelectedRegions] = useState(() => []); // array of Set<number>
+  const [selectedRegions, setSelectedRegions] = useState(() => []);
   const clearSelection = () => {
     setSelectedIds(new Set());
     setSelectedRegions([]);
   };
-  // —— Filtered ids (dim non-matching) ——
+  // Dim points not in filter
   const [filteredIds, setFilteredIds] = useState(() => new Set());
 
-  // —— Utility: safe normalization, avoid division by 0 ——
   function safeScale(v, minV, maxV) {
     const span = maxV - minV;
     if (!isFinite(span) || span === 0) return 0;
     return 2 * (v - minV) / span - 1;
   }
 
-  // —— Utility: derive a reasonable default imageSize from atlas tile size —— 
-  // Requirements: tile=64 → default 1.5; tile=16 → default 0.3; linear interpolation in between.
+  // Default sprite size from tile (16→0.3, 64→1.5, linear).
   function defaultImageSizeForTile(tile) {
     const t = Number(tile) || 16;
     const minTile = 16;
     const maxTile = 64;
     const clamped = Math.max(minTile, Math.min(maxTile, t));
-    const ratio = (clamped - minTile) / (maxTile - minTile); // 0..1
+    const ratio = (clamped - minTile) / (maxTile - minTile);
     const minSize = 0.3;
     const maxSize = 1.5;
     return minSize + ratio * (maxSize - minSize);
   }
 
-  // —— Utility: imageSize from real tile size and raw coordinate range (no overlap on grid) ——
-  // Raw coords (X_centroid, Y_centroid) and tile are in the same units. Normalized space is [-1,1].
-  // Use a small reference viewport and safety margin so tiles stay within one grid cell on typical
-  // viewports (avoid overlap when pane is smaller than reference).
+  // Raw view: sprite size from tile + raw span (ref viewport 500px, small overlap).
   const RAW_REFERENCE_VIEWPORT = 500;
-  // Slight overlap so adjacent spatial tiles have no visible gap (1.03 ≈ 3% larger; 1 = no overlap, 0.97 = ~3% gap).
   const RAW_GRID_SAFETY = 1.05;
   function imageSizeFromTileAndRawRange(tilePx, coords) {
     if (!coords?.length || tilePx == null || tilePx <= 0) return null;
@@ -149,7 +135,7 @@ export default function useDataLoader() {
     return Math.min(sizeX, sizeY) * RAW_GRID_SAFETY;
   }
 
-  // Build both projections (raw and UMAP) and normalize each set independently
+  // Project raw + UMAP, normalize each separately
   const applyAllProjections = () => {
     if (!allCoords || allCoords.length === 0) {
       setPoints([]);
@@ -158,9 +144,8 @@ export default function useDataLoader() {
       return;
     }
 
-    // Helper: project and normalize
     const projectAndNormalize = (getter) => {
-      // First pass: project points and compute min/max without spreading large arrays
+      // Pass 1: project + bbox
       const projected = new Array(allCoords.length);
       let minX = Infinity, maxX = -Infinity;
       let minY = Infinity, maxY = -Infinity;
@@ -180,7 +165,7 @@ export default function useDataLoader() {
         if (vz < minZ) minZ = vz; if (vz > maxZ) maxZ = vz;
       }
 
-      // Second pass: normalize
+      // Pass 2: normalize to [-1,1]-ish
       for (let i = 0; i < projected.length; i++) {
         const p = projected[i];
         projected[i] = {
@@ -194,13 +179,11 @@ export default function useDataLoader() {
       return projected;
     };
 
-    // Raw (2D)
     const rawGetter = (p) =>
       p?.raw ? { x: p.raw.x, y: p.raw.y, z: 0 } : { x: 0, y: 0, z: 0 };
     const scaledRaw = projectAndNormalize(rawGetter);
     setPointsRaw(scaledRaw);
 
-    // UMAP (2D/3D depending on is3D)
     const umapGetter = (p) => {
       if (is3D && p.umap3d) return { x: p.umap3d.x, y: p.umap3d.y, z: p.umap3d.z ?? 0 };
       if (!is3D && p.umap2d) return { x: p.umap2d.x, y: p.umap2d.y, z: 0 };
@@ -209,7 +192,7 @@ export default function useDataLoader() {
     const scaledUMAP = projectAndNormalize(umapGetter);
     setPointsUMAP(scaledUMAP);
 
-    // Keep legacy `points` for compatibility (default to raw)
+    // Legacy `points` = raw
     setPoints(scaledRaw);
   };
 
@@ -220,7 +203,7 @@ export default function useDataLoader() {
       let metaJson = await fetchMeta(abort.signal);
       setMeta(metaJson);
 
-      // Fetch upload status to know if raw has celltype/neigh_names for annotation panel
+      // Upload status → annotation column flags
       try {
         const statusRes = await fetch(`/upload/status?ts=${Date.now()}`, { cache: "no-store", signal: abort.signal });
         if (statusRes.ok) {
@@ -235,12 +218,12 @@ export default function useDataLoader() {
       if (!Array.isArray(coords)) coords = [];
       setAllCoords(coords);
 
-      // Raw view: size from tile + range (no overlap). UMAP: same initial value, user adjusts via slider.
+      // Initial sizes from tile + raw span; UMAP capped by slider max
       const tilePx = metaJson?.atlas?.tile;
       const fromTileAndRange = tilePx != null && coords.length > 0
         ? imageSizeFromTileAndRawRange(tilePx, coords)
         : null;
-      const UMAP_SIZE_CAP = 6; // match Size Control (UMAP) slider max
+      const UMAP_SIZE_CAP = 6;
       if (fromTileAndRange != null) {
         const byTile = defaultImageSizeForTile(tilePx);
         const size = Math.min(byTile, fromTileAndRange);
@@ -289,12 +272,11 @@ export default function useDataLoader() {
     }
   }, []);
 
-  // Initial fetch meta + coords
   useEffect(() => {
     refreshData();
   }, [refreshData]);
 
-  // When allCoords data is loaded, build both projections
+  // Rebuild projections when coords load
   useEffect(() => {
     if (allCoords.length > 0) applyAllProjections();
     else {
@@ -305,13 +287,13 @@ export default function useDataLoader() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allCoords]);
 
-  // When 2D/3D mode changes, rebuild projections (side-by-side uses both)
+  // is3D flip → rebuild UMAP projection
   useEffect(() => {
     if (allCoords.length > 0) applyAllProjections();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [is3D]);
 
-  // Fetch UV for a chunk (only once)
+  // Chunk UV once
   const ensureUV = async (chunkId) => {
     if (!meta) return;
     if (chunkUV[chunkId]) return;
@@ -323,7 +305,7 @@ export default function useDataLoader() {
     }
   };
 
-  // Request atlas for a chunk (server-side RGBA synthesis)
+  // Legacy POST merged atlas per chunk
   const fetchAtlas = async (chunkId) => {
     if (atlasURL[chunkId]) return;
     if (fetchingChunks.has(chunkId)) return;
@@ -348,14 +330,13 @@ export default function useDataLoader() {
       return;
     }
 
-    // Convert image response to blob URL
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     setAtlasURL((prev) => ({ ...prev, [chunkId]: url }));
     setFetchingChunks((s) => { const t = new Set(s); t.delete(chunkId); return t; });
   };
 
-  // Request "single-channel grayscale" atlas for a chunk (frontend overlays coloring), unified via /atlas
+  // Grayscale atlas per channel (HEAD static → GET/POST generate)
   const fetchAtlasGray = async (chunkId, channel) => {
     const existing = atlasByChannel[chunkId]?.[channel];
     if (existing) return;
@@ -367,7 +348,7 @@ export default function useDataLoader() {
         const t = meta?.atlas?.tile ?? 16;
         const staticURL = staticAtlasURL(channel, t, chunkId);
 
-        // 1) First try HEAD to probe static cache at fixed path (avoid duplicate image downloads)
+        // 1) HEAD static cache
         const ok = await headStaticAtlas(staticURL, undefined);
         if (ok) {
           setAtlasByChannel((prev) => ({
@@ -377,7 +358,7 @@ export default function useDataLoader() {
           return;
         }
 
-        // 2) If not exists, trigger generation (GET alias → fallback to POST on failure)
+        // 2) Generate: GET then POST if needed
         let gen = await generateAtlasGrayGet(chunkId, channel, t, undefined);
         if (!gen.ok && gen.status !== 304) {
           if (gen.status === 405 || gen.status === 404) {
@@ -392,7 +373,7 @@ export default function useDataLoader() {
           }
         }
 
-        // 3) After generation, use static URL directly (let deck.gl load and use browser cache)
+        // 3) Point layer at static URL (browser cache)
         setAtlasByChannel((prev) => ({
           ...prev,
           [chunkId]: { ...(prev[chunkId] || {}), [channel]: staticURL },
@@ -405,25 +386,23 @@ export default function useDataLoader() {
     }
   };
 
-  // Calculate priority chunks (group by chunk, fetch all); use allCoords to cover both views
+  // Prefetch UV + gray atlas per chunk/channel
   useEffect(() => {
     if (!meta || loading) return;
     const chunks = new Set((allCoords || []).map((p) => p.chunk_id));
     (async () => {
       for (const c of chunks) {
         await ensureUV(c);
-        // New approach: frontend overlay -> fetch grayscale atlas for each channel
         for (const ch of (channels || [])) {
           await fetchAtlasGray(c, ch);
         }
-        // Compatible with old approach: can also keep backend synthesis (can be gradually removed)
-        // fetchAtlas(c);
+        // fetchAtlas(c); // legacy merged atlas
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta, loading, channels, renderMode, is3D, allCoords]);
 
-  // When selected channels change, notify backend for async prewarming to reduce subsequent first-packet latency
+  // Prewarm atlas on channel change
   useEffect(() => {
     if (!meta || !channels || channels.length === 0) return;
     const t = meta?.atlas?.tile ?? 16;
@@ -437,9 +416,8 @@ export default function useDataLoader() {
   }, [channels, meta]);
 
   return {
-    // Data state
     meta,
-    points, // legacy
+    points,
     pointsRaw,
     pointsUMAP,
     loading,
@@ -448,7 +426,6 @@ export default function useDataLoader() {
     atlasByChannel,
     fetchingChunks,
     
-    // Rendering parameters
     channels,
     weights,
     alphas,
@@ -457,11 +434,9 @@ export default function useDataLoader() {
     imageSize,
     rawImageSize,
 
-    // Rendering mode
     renderMode,
     is3D,
     
-    // Clustering overlay
     clusterColorOn,
     setClusterColorOn,
     clusterOutlineOn,
@@ -483,10 +458,8 @@ export default function useDataLoader() {
     neighNamesAnnotationOn,
     setNeighNamesAnnotationOn,
     
-    // UMAP mode (kept for compatibility)
     useUMAP,
 
-    // —— Selection (exported for App/Viewer/Control use) ——
     selectionMode,
     setSelectionMode,
     selectedIds,
@@ -497,7 +470,6 @@ export default function useDataLoader() {
     filteredIds,
     setFilteredIds,
     
-    // Setter functions
     setChannels,
     setWeights,
     setAlphas,
@@ -510,7 +482,6 @@ export default function useDataLoader() {
     refreshData,
     dataVersion,
     
-    // Data fetching functions
     ensureUV,
     fetchAtlas,
     fetchAtlasGray,

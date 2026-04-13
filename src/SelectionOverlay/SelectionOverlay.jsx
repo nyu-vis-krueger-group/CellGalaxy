@@ -6,16 +6,14 @@ export default function SelectionOverlay({
   containerRef,
   deckRef,
   viewerId = "viewer",
-  // selection props
   selectionMode = "none", // 'none' | 'box' | 'lasso'
   points = [],
   filteredIds = new Set(),
   selectedRegions = [],
   setSelectedRegions = () => {},
   setSelectedIds = () => {},
-  // callbacks
   onBeginSelection = () => {},
-  // render-prop child to wire handlers into DeckGL and expose selecting state
+  // Children get drag handlers + isSelecting
   children,
 }) {
   const [isSelecting, setIsSelecting] = useState(false);
@@ -25,7 +23,6 @@ export default function SelectionOverlay({
   const additiveRef = useRef(false);
   const shiftDownRef = useRef(false);
 
-  // Track Shift as a fallback, but only use it at gesture start
   useEffect(() => {
     const onKeyDown = (e) => { if (e.key === "Shift") shiftDownRef.current = true; };
     const onKeyUp = (e) => { if (e.key === "Shift") shiftDownRef.current = false; };
@@ -42,7 +39,6 @@ export default function SelectionOverlay({
   const onDragStart = (info) => {
     if (selectionMode === SELECTION_NONE) return;
     onBeginSelection();
-    // Capture whether this gesture is additive based on Shift at gesture start
     const se = info?.srcEvent || info?.sourceEvent || info?.event || info?.nativeEvent;
     additiveRef.current = !!((se && se.shiftKey) || shiftDownRef.current);
     const { x, y } = getXY(info);

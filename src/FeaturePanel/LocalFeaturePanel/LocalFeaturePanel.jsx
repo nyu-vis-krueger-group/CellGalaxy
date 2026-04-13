@@ -1,7 +1,24 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { drawCellPreviewToCanvas } from "../../Viewer/HoverPreview/HoverPreview";
 import "../../FeatureDock/FeatureDock.css";
 import "./LocalFeaturePanel.css";
+
+function cosineSimTo01(sim) {
+  const s = typeof sim === "number" ? sim : 0;
+  return Math.max(0, Math.min(1, (s + 1) * 0.5));
+}
+
+function clearSimilarityRankingGlobals(viewerId) {
+  if (typeof window === "undefined") return;
+  const rankingKey = `__showSimilarityRanking_${viewerId}`;
+  if (window[rankingKey]) window[rankingKey](null);
+  if (typeof window.__showSimilarityRanking === "function") {
+    window.__showSimilarityRanking(null);
+  }
+  if (typeof window.__showSimilarityRankingUMAP === "function") {
+    window.__showSimilarityRankingUMAP(null);
+  }
+}
 
 function Thumb({
   object,
@@ -73,16 +90,39 @@ export default function LocalFeaturePanel({
   iconMappingsByChunk,
   chunkUV,
   atlasByChannel,
-  atlasURL,
   channels,
   colors,
   alphas,
   windows,
   points = [],
-  viewerId = "raw", // determine which viewer to focus
+  viewerId = "raw",
+  similarityNeighborSpace = "umap",
+  onSimilarityNeighborSpaceChange,
 }) {
-  const [view, setView] = useState("all"); // 'all' | 'gallery' | 'compact' | 'hist' | 'diff'
-  // Similarity histogram x-axis: fix left end at 0.9, right end at 1.0
+  const gallerySpace = similarityNeighborSpace === "embedding" ? "embedding" : "umap";
+  const effectiveNeighborSpace =
+    (data?.neighbor_space ?? gallerySpace) === "embedding" ? "embedding" : "umap";
+  const isEmbedding = effectiveNeighborSpace === "embedding";
+  const galleryTitle = isEmbedding
+    ? "Similarity Gallery (Embedding Space)"
+    : "Similarity Gallery (UMAP Space)";
+  const localMetricsTitle = isEmbedding
+    ? "Local Metrics (embedding neighbors, feature space)"
+    : "Local Metrics (UMAP neighbors, feature space)";
+  const similarityHistTitle = isEmbedding
+    ? "Similarity histogram · embedding kNN"
+    : "Similarity histogram · UMAP kNN";
+
+  const cycleGallerySpace = useCallback(
+    (delta) => {
+      if (!onSimilarityNeighborSpaceChange) return;
+      const order = ["umap", "embedding"];
+      const i = order.indexOf(gallerySpace);
+      const next = order[(i + delta + order.length) % order.length];
+      if (next !== gallerySpace) onSimilarityNeighborSpaceChange(next);
+    },
+    [gallerySpace, onSimilarityNeighborSpaceChange]
+  );
   const mapById = useMemo(() => {
     const m = new Map();
     for (const p of points) m.set(p.id, p);
@@ -98,18 +138,42 @@ export default function LocalFeaturePanel({
     return arr.filter((x) => x.object);
   }, [data, mapById]);
 
-  // Histogram render
+  const rankingIds = useMemo(
+    () =>
+      data
+        ? [data.query, ...(data.neighbors || []).map((n) => n.id)].filter((id) => id != null)
+        : [],
+    [data]
+  );
+
+  const focusCellWithRankings = useCallback(
+    (obj) => {
+      if (!obj || typeof window === "undefined") return;
+      const focusKey = `__focusCell_${viewerId}`;
+      if (window[focusKey]) window[focusKey]({ id: obj.id });
+      if (typeof window.__focusCell === "function") window.__focusCell({ id: obj.id });
+      if (typeof window.__focusCellUMAP === "function") window.__focusCellUMAP({ id: obj.id });
+      if (rankingIds.length === 0) return;
+      const rankingKey = `__showSimilarityRanking_${viewerId}`;
+      if (window[rankingKey]) window[rankingKey](rankingIds);
+      if (typeof window.__showSimilarityRanking === "function") {
+        window.__showSimilarityRanking(rankingIds);
+      }
+      if (typeof window.__showSimilarityRankingUMAP === "function") {
+        window.__showSimilarityRankingUMAP(rankingIds);
+      }
+    },
+    [rankingIds, viewerId]
+  );
+
   const canvasRef = useRef(null);
   const layoutRef = useRef({});
   useEffect(() => {
-    // Backend returns similarities in [-1, 1] (cosine). Map to [0, 1] for display:
-    //   s01 = (s + 1) / 2
     const sims = (data?.similarities || [])
       .map((s) => (typeof s === "number" ? (s + 1) * 0.5 : null))
       .filter((s) => typeof s === "number" && Number.isFinite(s));
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (view !== "all" && view !== "hist") return;
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth || 300;
     const h = canvas.clientHeight || 120;
@@ -129,12 +193,6 @@ export default function LocalFeaturePanel({
     const simsIn = sims.filter((s) => s >= X_MIN && s <= X_MAX);
     const base = simsIn.length > 0 ? simsIn : sims;
 
-    let minS = Infinity, maxS = -Infinity, sum = 0;
-    for (const s of base) { if (s < minS) minS = s; if (s > maxS) maxS = s; sum += s; }
-    const span = maxS - minS;
-    const mean = base.length ? sum / base.length : 0;
-
-
     const bins = Math.min(16, Math.max(8, Math.round(Math.sqrt(base.length || sims.length) * 2)));
     const hist = new Array(bins).fill(0);
     for (const s of base) {
@@ -146,7 +204,6 @@ export default function LocalFeaturePanel({
     }
     const maxCount = Math.max(...hist);
 
-    // —— layout ——
     const margin = { left: 40, right: 10, top: 8, bottom: 28 };
     const plotW = Math.max(10, w - margin.left - margin.right);
     const plotH = Math.max(10, h - margin.top - margin.bottom);
@@ -156,7 +213,6 @@ export default function LocalFeaturePanel({
     ctx.fillStyle = "rgba(255,255,255,0.03)";
     ctx.fillRect(x0, y0 - plotH, plotW, plotH);
 
-    // axis lines
     ctx.strokeStyle = "rgba(255,255,255,0.22)";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -185,8 +241,7 @@ export default function LocalFeaturePanel({
     }
 
     const decimals = X_SPAN < 0.05 ? 3 : 2;
-    // more x-axis ticks for better readability (e.g. 0.00, 0.25, 0.50, 0.75, 1.00)
-    const tickCount =10; // will generate tickCount+1 ticks from X_MIN to X_MAX
+    const tickCount = 10;
     for (let i = 0; i <= tickCount; i++) {
       const val = X_MIN + (X_SPAN * i) / tickCount;
       const t = (val - X_MIN) / X_SPAN;
@@ -196,12 +251,10 @@ export default function LocalFeaturePanel({
       ctx.textBaseline = "top";
       ctx.fillText(val.toFixed(decimals), xx, y0 + 4);
     }
-    // x/y axis titles (larger font size)
     ctx.fillStyle = "rgba(255,255,255,0.85)";
     ctx.font = "14px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
-    // move x-axis title slightly further down for better spacing from ticks
     ctx.fillText("Similarity", x0 + plotW / 2, h);
     ctx.save();
     ctx.translate(12, y0 - plotH / 2);
@@ -209,7 +262,6 @@ export default function LocalFeaturePanel({
     ctx.fillText("count", 0, 0);
     ctx.restore();
 
-    // —— bars: grayscale, no gradient —— 
     const barSlot = plotW / bins;
     const barW = Math.max(1, barSlot * 0.42);
     ctx.shadowColor = "rgba(0,0,0,0.15)";
@@ -235,8 +287,6 @@ export default function LocalFeaturePanel({
     ctx.globalAlpha = 1;
     ctx.shadowBlur = 0;
 
-    // —— Smooth curve directly aligned with bar tops —— 
-    // Use bar centers + normalized counts, and draw a simple polyline.
     if (maxCount > 0 && bins > 1) {
       ctx.strokeStyle = "rgba(255,255,255,0.85)";
       ctx.lineWidth = 1.2;
@@ -253,7 +303,6 @@ export default function LocalFeaturePanel({
       ctx.stroke();
     }
 
-    // save geometry for hover (only bars now; median/std band removed)
     const barRects = [];
     {
       const barSlot2 = plotW / bins;
@@ -273,10 +322,24 @@ export default function LocalFeaturePanel({
       medianVal: null,
       band: null,
     };
-  }, [data, view]);
+  }, [data]);
 
-  // Hover tooltip: bar / median / std band
+  useEffect(() => {
+    if (!data || typeof window === "undefined" || rankingIds.length === 0) return;
+    const rankingKey = `__showSimilarityRanking_${viewerId}`;
+    if (window[rankingKey]) window[rankingKey](rankingIds);
+    if (typeof window.__showSimilarityRanking === "function") {
+      window.__showSimilarityRanking(rankingIds);
+    }
+    if (typeof window.__showSimilarityRankingUMAP === "function") {
+      window.__showSimilarityRankingUMAP(rankingIds);
+    }
+    return () => clearSimilarityRankingGlobals(viewerId);
+  }, [data, viewerId, rankingIds]);
+
   const wrapperRef = useRef(null);
+  const [globalTooltip, setGlobalTooltip] = useState(null);
+
   const onMouseMove = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -285,10 +348,8 @@ export default function LocalFeaturePanel({
     const my = e.clientY - rect.top;
     const l = layoutRef.current || {};
     if (!l || !l.plotW) return;
-    // bar hover
     for (const r of l.barRects || []) {
       if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
-        // clamp tooltip within wrapper bounds
         const wrap = wrapperRef.current;
         const ww = wrap?.clientWidth || rect.width;
         const wh = wrap?.clientHeight || rect.height;
@@ -303,136 +364,79 @@ export default function LocalFeaturePanel({
   };
   const onMouseLeave = () => setGlobalTooltip(null);
 
-  // shared simple tooltip (fixed position)
-  const [globalTooltip, setGlobalTooltip] = useState(null);
-
   if (!data) return null;
 
   return (
     <div>
-      
-
-      {/* remove query label, directly enter content block */}
-
-      {(view === "all" || view === "gallery") && (
       <div className="feature-section">
-        <div className="feature-title">Similarity Gallery (UMAP Space)</div>
-        <div className="gallery-t1">
-          <div className="gallery-query">
-            {queryObj && (
-              <Thumb
-                object={queryObj}
-                iconMappingsByChunk={iconMappingsByChunk}
-                chunkUV={chunkUV}
-                atlasByChannel={atlasByChannel}
-                atlasURL={atlasURL}
-                channels={channels}
-                colors={colors}
-                alphas={alphas}
-                windows={windows}
-                size={96}
-                label="query"
-                onClick={(obj) => {
-                  // Focus on the selected cell
-                  if (obj && typeof window !== "undefined") {
-                    // 1) Focus in the current viewer
-                    const focusKey = `__focusCell_${viewerId}`;
-                    if (window[focusKey]) {
-                      window[focusKey]({ id: obj.id });
-                    }
-                    // 2) Focus in both Raw and UMAP viewers
-                    if (typeof window.__focusCell === "function") {
-                      window.__focusCell({ id: obj.id });
-                    }
-                    if (typeof window.__focusCellUMAP === "function") {
-                      window.__focusCellUMAP({ id: obj.id });
-                    }
-                    // 3) Show similarity rankings in both viewers (query is 0, neighbors are 1-N)
-                    if (data) {
-                      const rankings = [data.query, ...(data.neighbors || []).map((n) => n.id)].filter(
-                        (id) => id != null
-                      );
-                      const rankingKey = `__showSimilarityRanking_${viewerId}`;
-                      if (window[rankingKey]) {
-                        window[rankingKey](rankings);
-                      }
-                      if (typeof window.__showSimilarityRanking === "function") {
-                        window.__showSimilarityRanking(rankings);
-                      }
-                      if (typeof window.__showSimilarityRankingUMAP === "function") {
-                        window.__showSimilarityRankingUMAP(rankings);
-                      }
-                    }
-                  }
-                }}
-              />
-            )}
+        <div className={onSimilarityNeighborSpaceChange ? "gallery-space-shell" : undefined}>
+          {onSimilarityNeighborSpaceChange ? (
+            <button
+              type="button"
+              className="gallery-space-arrow gallery-space-arrow-left"
+              aria-label="Previous: switch between UMAP and embedding neighbor space"
+              onClick={() => cycleGallerySpace(-1)}
+            >
+              ‹
+            </button>
+          ) : null}
+          <div className={onSimilarityNeighborSpaceChange ? "gallery-space-inner" : undefined}>
+            <div className="feature-title">{galleryTitle}</div>
+            <div className="gallery-t1">
+              <div className="gallery-query">
+                {queryObj && (
+                  <Thumb
+                    object={queryObj}
+                    iconMappingsByChunk={iconMappingsByChunk}
+                    chunkUV={chunkUV}
+                    atlasByChannel={atlasByChannel}
+                    channels={channels}
+                    colors={colors}
+                    alphas={alphas}
+                    windows={windows}
+                    size={96}
+                    label="query"
+                    onClick={focusCellWithRankings}
+                  />
+                )}
+              </div>
+              <div className="neighbors-grid">
+                {neighborObjs.slice(0, 8).map((n) => (
+                  <Thumb
+                    key={n.id}
+                    object={n.object}
+                    iconMappingsByChunk={iconMappingsByChunk}
+                    chunkUV={chunkUV}
+                    atlasByChannel={atlasByChannel}
+                    channels={channels}
+                    colors={colors}
+                    alphas={alphas}
+                    windows={windows}
+                    size={64}
+                    label={`sim ${cosineSimTo01(n.similarity).toFixed(2)}`}
+                    onClick={focusCellWithRankings}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="neighbors-grid">
-            {neighborObjs.slice(0, 8).map((n) => (
-              <Thumb
-                key={n.id}
-                object={n.object}
-                iconMappingsByChunk={iconMappingsByChunk}
-                chunkUV={chunkUV}
-                atlasByChannel={atlasByChannel}
-                atlasURL={atlasURL}
-                channels={channels}
-                colors={colors}
-                alphas={alphas}
-                windows={windows}
-                size={64}
-              label={`sim ${(() => {
-                const s = typeof n.similarity === "number" ? n.similarity : 0;
-                const s01 = Math.max(0, Math.min(1, (s + 1) * 0.5));
-                return s01.toFixed(2);
-              })()}`}
-                onClick={(obj) => {
-                  // Focus on the selected cell
-                  if (obj && typeof window !== "undefined") {
-                    // 1) Focus in the current viewer
-                    const focusKey = `__focusCell_${viewerId}`;
-                    if (window[focusKey]) {
-                      window[focusKey]({ id: obj.id });
-                    }
-                    // 2) Focus in both Raw and UMAP viewers
-                    if (typeof window.__focusCell === "function") {
-                      window.__focusCell({ id: obj.id });
-                    }
-                    if (typeof window.__focusCellUMAP === "function") {
-                      window.__focusCellUMAP({ id: obj.id });
-                    }
-                    // 3) Show similarity rankings in both viewers (query is 0, neighbors are 1-N)
-                    if (data) {
-                      const rankings = [data.query, ...(data.neighbors || []).map((nn) => nn.id)].filter(
-                        (id) => id != null
-                      );
-                      const rankingKey = `__showSimilarityRanking_${viewerId}`;
-                      if (window[rankingKey]) {
-                        window[rankingKey](rankings);
-                      }
-                      if (typeof window.__showSimilarityRanking === "function") {
-                        window.__showSimilarityRanking(rankings);
-                      }
-                      if (typeof window.__showSimilarityRankingUMAP === "function") {
-                        window.__showSimilarityRankingUMAP(rankings);
-                      }
-                    }
-                  }
-                }}
-              />
-            ))}
-          </div>
+          {onSimilarityNeighborSpaceChange ? (
+            <button
+              type="button"
+              className="gallery-space-arrow gallery-space-arrow-right"
+              aria-label="Next: switch between UMAP and embedding neighbor space"
+              onClick={() => cycleGallerySpace(1)}
+            >
+              ›
+            </button>
+          ) : null}
         </div>
       </div>
-      )}
 
-      {(view === "all" || view === "compact") && (
       <div className="feature-section">
-        <div className="feature-title">Local Metrics (High-Dim Feature Space)</div>
+        <div className="feature-title">{localMetricsTitle}</div>
         <div className="metrics-wrap">
         <div className="metric-card">
-          {/* Compactness gauge (smaller is better → use percentile directly) */}
           <div className="metric-row">
             <div className="metric-name">Compactness</div>
             <div className="metric-pad-right">
@@ -465,7 +469,6 @@ export default function LocalFeaturePanel({
               )}
             </div>
           </div>
-          {/* Difference gauge (larger is more unique → percentile higher is more right) */}
           <div className="metric-row">
             <div className="metric-name">Difference between Query and Neighbors</div>
             <div className="metric-pad-right">
@@ -501,11 +504,9 @@ export default function LocalFeaturePanel({
         </div>
         </div>
       </div>
-      )}
 
-      {(view === "all" || view === "hist") && (
       <div className="feature-section">
-        <div className="feature-title">Similarity histogram</div>
+        <div className="feature-title">{similarityHistTitle}</div>
         <div ref={wrapperRef} className="hist-wrapper">
         <canvas
             className="hist-canvas"
@@ -528,7 +529,6 @@ export default function LocalFeaturePanel({
           )}
         </div>
       </div>
-      )}
     </div>
   );
 }

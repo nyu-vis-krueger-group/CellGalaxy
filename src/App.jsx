@@ -1,5 +1,5 @@
 import React from "react";
-import { VIEW_DUAL, VIEW_SINGLE } from "./constants/view";
+import { VIEW_SINGLE } from "./constants/view";
 import useDataLoader from "./DataLoader/DataLoader";
 import Viewer from "./Viewer/Viewer";
 import Control from "./Control/Control";
@@ -14,13 +14,11 @@ export default function App() {
     clusterAnnotationOn,
     clusterAnnotationModel,
     clusterPreviewOn,
-    // pass-through for other props
     ...rest
   } = dataLoader;
-  // viewer mode: 'single' | 'dual'
-  // Default to single-view mode on first load.
+  // viewMode: single | dual
   const [viewMode, setViewMode] = React.useState(VIEW_SINGLE);
-  // Disable transitions during mode switch for smoother UX
+  // No camera tween on mode switch
   const [disableTransitions, setDisableTransitions] = React.useState(false);
   React.useEffect(() => {
     setDisableTransitions(true);
@@ -63,7 +61,6 @@ export default function App() {
               clusterAnnotationModel={clusterAnnotationModel}
               clusterPreviewOn={clusterPreviewOn}
               transitionsEnabled={!disableTransitions}
-              // Do not pass zoomSpeed: use Viewer default (currently 0.1) for slower zoom
             />
           </div>
         </div>
@@ -82,7 +79,7 @@ export default function App() {
               clusterAnnotationModel={clusterAnnotationModel}
               clusterPreviewOn={rest.useUMAP ? clusterPreviewOn : false}
               transitionsEnabled={!disableTransitions}
-              // Single-view: Raw uses 0.8, UMAP uses Viewer default 0.1 (when not explicitly specified)
+              // Single: raw zoomSpeed 0.8; UMAP uses Viewer default
               zoomSpeed={rest.useUMAP ? undefined : 0.8}
             />
           </div>

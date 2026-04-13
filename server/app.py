@@ -42,7 +42,6 @@ def create_app() -> FastAPI:
     async def root():
         return {"message": "API is running"}
 
-    # register routers
     app.include_router(upload_router)
     app.include_router(meta_router)
     app.include_router(atlas_router)
@@ -52,5 +51,4 @@ def create_app() -> FastAPI:
     return app
 
 
-# Keep the same public interface: module-level `app`
 app = create_app()

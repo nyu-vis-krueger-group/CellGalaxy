@@ -4,23 +4,14 @@ import shutil
 
 DATA_DIR = "public"
 
-# cache directory (outside of DATA_DIR)
 CACHE_DIR = os.path.join(os.getcwd(), ".cache")
-
-# zarr root directory
 ZARR_DIR = os.path.join(DATA_DIR, "output.zarr")
-
-# default tile size, will be overridden by Zarr metadata when available
 DEFAULT_TILE = 16
 
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-#
-# LLM settings
-#
-# Token file default location   
 LLM_TOKEN_FILE = os.environ.get(
     "LLM_TOKEN_FILE",
     os.path.join(os.getcwd(), "server", "secrets", "llm_token.txt"),
@@ -65,10 +56,8 @@ def remove_path(path: str) -> None:
         elif os.path.exists(path):
             os.remove(path)
     except FileNotFoundError:
-        # ignore if already deleted
         pass
     except Exception as exc:
-        # print but don't raise, to avoid affecting main flow
         print(f"failed to remove {path}: {exc}")
 
 

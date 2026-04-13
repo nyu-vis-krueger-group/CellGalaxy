@@ -1,13 +1,6 @@
-// =============================
-// utils.js - utility function collection
-// =============================
+// Shared helpers for viewer / selection / projection.
 
-/**
- * Determine if a screen space point is inside a polygon (ray casting method)
- * @param {Array} point - [px, py] point coordinates to be determined
- * @param {Array} polygon - [[x1,y1], [x2,y2], ...] polygon vertex array
- * @returns {boolean} whether the point is inside the polygon
- */
+/** Ray-cast: point [px,py] inside polygon [[x,y],...]. */
 export function pointInPolygon([px, py], polygon) {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -20,11 +13,7 @@ export function pointInPolygon([px, py], polygon) {
     }
     return inside;
   }
-/**
- * Calculate the geometric center of a point set
- * @param {Array} points - point array, each point contains x, y, z properties
- * @returns {Array} [centerX, centerY, centerZ]
- */
+/** AABB center of points with x,y,z. */
 export function computeCenter(points) {
   if (!points?.length) return [0, 0, 0];
 
@@ -51,21 +40,12 @@ export function computeCenter(points) {
 
 
 
-/**
- * Smooth interpolation function (smoothstep)
- * @param {number} t - interpolation parameter [0, 1]
- * @returns {number} smoothed value
- */
+/** Smoothstep on t in [0,1]. */
 export function ease(t) {
   return t * t * (3 - 2 * t);
 }
 
-/**
- * Build icon mapping for each chunk, used by IconLayer
- * @param {Object} meta - metadata
- * @param {Object} chunkUV - UV coordinate information for chunk
- * @returns {Object} icon mapping object
- */
+/** Per-chunk IconLayer mappings from meta + chunkUV. */
 export function buildIconMappingsByChunk(meta, chunkUV) {
   if (!meta || !chunkUV) return {};
   
@@ -83,7 +63,7 @@ export function buildIconMappingsByChunk(meta, chunkUV) {
         y,
         width: tile,
         height: tile,
-        // Use atlas RGB directly (grayscale), not alpha-mask mode
+        // Atlas RGB as mask (not alpha-only).
         mask:true,
         anchorY: tile / 2,
         anchorX: tile / 2,
@@ -95,11 +75,7 @@ export function buildIconMappingsByChunk(meta, chunkUV) {
   return map;
 }
 
-/**
- * Get canvas device pixel ratio
- * @param {Object} deckRef - deck.gl ref reference
- * @returns {number} device pixel ratio
- */
+/** Canvas DPR from deck ref or window. */
 export function getCanvasDPR(deckRef) {
   const deck = deckRef?.current?.deck;
   const canvas = deck?.canvas || deck?.getCanvas?.();
@@ -110,12 +86,7 @@ export function getCanvasDPR(deckRef) {
   return Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
 }
 
-/**
- * Unified get mouse event screen coordinates (relative to canvas top-left)
- * @param {Object} info - event information object
- * @param {HTMLElement} containerRef - container element ref
- * @returns {Object} {x, y} coordinate object
- */
+/** Pointer position in canvas space from deck info + container. */
 export function getEventCoordinates(info, containerRef) {
   if (info?.offsetCenter && Number.isFinite(info.offsetCenter.x)) {
     return { x: info.offsetCenter.x, y: info.offsetCenter.y };
@@ -137,14 +108,7 @@ export function getEventCoordinates(info, containerRef) {
   return { x: 0, y: 0 };
 }
 
-/**
- * Clamp an absolute position into the bounds of a node's offset parent
- * @param {HTMLElement} node - the element to clamp within its offsetParent
- * @param {number} x - desired left (CSS pixels)
- * @param {number} y - desired top (CSS pixels)
- * @param {number} margin - padding margin from edges
- * @returns {{x:number, y:number}} clamped position
- */
+/** Clamp (x,y) inside node's offsetParent with margin. */
 export function clampPositionToParent(node, x, y, margin = 8) {
   if (!node) return { x, y };
   const parent = node.offsetParent || document.body;
@@ -163,10 +127,7 @@ export function clampPositionToParent(node, x, y, margin = 8) {
   return { x: nx, y: ny };
 }
 
-/**
- * Clamp an absolute position to the browser viewport (window), useful for
- * floating panels that may span multiple viewer containers (e.g. analysis popover).
- */
+/** Clamp floating panel to viewport (e.g. analysis popover). */
 export function clampPositionToViewport(node, x, y, margin = 8) {
   const rect = node?.getBoundingClientRect
     ? node.getBoundingClientRect()
@@ -186,12 +147,7 @@ export function clampPositionToViewport(node, x, y, margin = 8) {
   return { x: nx, y: ny };
 }
 
-/**
- * Calculate selection box boundaries
- * @param {Object} dragStart - drag start point {x, y}
- * @param {Object} dragEnd - drag end point {x, y}
- * @returns {Object} {x0, y0, width, height} selection box boundaries
- */
+/** Box from drag corners. */
 export function computeSelectionBounds(dragStart, dragEnd) {
   const x0 = Math.min(dragStart.x, dragEnd.x);
   const y0 = Math.min(dragStart.y, dragEnd.y);
@@ -201,12 +157,7 @@ export function computeSelectionBounds(dragStart, dragEnd) {
   return { x0, y0, width, height };
 }
 
-/**
- * Perform box selection operation
- * @param {Object} deck - deck.gl instance
- * @param {Object} bounds - selection box boundaries {x0, y0, width, height}
- * @returns {Array} array of selected objects
- */
+/** deck.pickObjects in rect. */
 export function performBoxSelection(deck, bounds) {
   const { x0, y0, width, height } = bounds;
   
@@ -220,13 +171,7 @@ export function performBoxSelection(deck, bounds) {
   return picked;
 }
 
-/**
- * Perform lasso selection operation
- * @param {Array} points - all data points
- * @param {Object} viewport - viewport object
- * @param {Array} lassoPoints - lasso path points [[x,y], ...]
- * @returns {Set} set of selected IDs
- */
+/** Lasso path in screen space → selected ids. */
 export function performLassoSelection(points, viewport, lassoPoints) {
   if (lassoPoints.length < 3) return new Set();
   
@@ -241,10 +186,7 @@ export function performLassoSelection(points, viewport, lassoPoints) {
   return ids;
 }
 
-/**
- * 1D Kernel Density Estimation over values in [0,1]
- * Returns xs in [0,1] and ys normalized to max 1
- */
+/** 1D KDE on [0,1]; ys normalized to max 1. */
 export function kde1d(values01, bandwidth = 0.08, samples = 192) {
   const vals = Array.isArray(values01) ? values01 : [];
   if (vals.length === 0) return { xs: [], ys: [] };
@@ -268,11 +210,7 @@ export function kde1d(values01, bandwidth = 0.08, samples = 192) {
 }
 
 
-/**
- * Compute 2D convex hull using Andrew's monotone chain.
- * @param {Array<{x:number,y:number}>} pts - points array
- * @returns {Array<[number,number]>} hull path (counter-clockwise), no repeated last point
- */
+/** 2D convex hull (Andrew monotone chain), CCW, no duplicate closing point. */
 export function computeConvexHull2D(pts) {
   const n = Array.isArray(pts) ? pts.length : 0;
   if (n < 3) return pts.map(p => [p.x, p.y]);
@@ -297,22 +235,8 @@ export function computeConvexHull2D(pts) {
 
 
 /**
- * Batch-project world coordinates from DeckGL into screen (DOM) coordinates.
- * Suitable for scenarios where DOM elements are overlaid on top of the canvas:
- *  - cluster representative previews
- *  - cluster text annotations
- *  - similarity ranking labels
- *
- * Note: this helper only handles coordinate conversion and offset, and is
- * agnostic to business-specific fields.
- *
- * @param {Object} params
- * @param {React.RefObject} params.deckRef - ref to DeckGL component (.current.deck)
- * @param {React.RefObject} params.containerRef - outer container ref for DOM offset
- * @param {Array} params.items - array of items to project
- * @param {Function} params.getWorldPosition - (item) => [x, y, z] world coordinates
- * @param {Function} params.mapResult - (item, sx, sy, offsetX, offsetY) => any, mapped result
- * @returns {Array} array returned from mapResult
+ * Project world positions to DOM coords over the canvas (previews, labels, ranking).
+ * deckRef / containerRef / items / getWorldPosition / mapResult as documented at call sites.
  */
 export function projectItemsToScreen({
   deckRef,
@@ -327,8 +251,7 @@ export function projectItemsToScreen({
     return [];
   }
 
-  // deck.gl may throw assertion errors during the initial mount / resize switch.
-  // Protect against that: if getViewports fails, return an empty result to avoid breaking React effects.
+  // getViewports can throw during mount/resize; swallow and return [].
   let viewports;
   try {
     viewports = deckInstance.getViewports?.();
@@ -353,6 +276,5 @@ export function projectItemsToScreen({
     return mapResult(item, sx, sy, offsetX, offsetY);
   });
 }
-
 
 

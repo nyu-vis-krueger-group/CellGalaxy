@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import "../../FeatureDock/FeatureDock.css";
 import "./GroupFeaturePanel.css";
-import { API_BASE, fetchViolinGlobalKDE, fetchViolinSelectionKDE } from "../../api/api";
+import { fetchViolinGlobalKDE, fetchViolinSelectionKDE } from "../../api/api";
+import { useChannelNames } from "../../hooks/useChannelNames";
 import { kde1d } from "../../utils/utils";
 
 export default function GroupFeaturePanel({
@@ -10,41 +11,17 @@ export default function GroupFeaturePanel({
   colors,
 
 }) {
-  // ============== Violin (Global vs Selection) ==============
   const [violinData, setViolinData] = useState(null);
   const [violinMsg, setViolinMsg] = useState("Loading...");
   const violinRef = useRef(null);
-  const [channelNames, setChannelNames] = useState(new Map()); // id -> name (from channel_info.json)
-  useEffect(() => {
-    let abort = false;
-    const run = async () => {
-      try {
-        const url = `${API_BASE}/public/channel_info.json?ts=${Date.now()}`;
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) return;
-        const json = await res.json();
-        const m = new Map();
-        if (json && Array.isArray(json.channels)) {
-          for (const ch of json.channels) {
-            if (typeof ch?.id === "number" && typeof ch?.name === "string") {
-              m.set(ch.id, ch.name);
-            }
-          }
-        }
-        if (!abort) setChannelNames(m);
-      } catch {}
-    };
-    run();
-    return () => { abort = true; };
-  }, []);
+  const channelNames = useChannelNames();
+
   useEffect(() => {
     let abort = false;
     const run = async () => {
       try {
         setViolinMsg("Loading...");
-        // Use moderate sampling to keep interaction responsive:
-        // - Global KDE: larger sample for smooth background
-        // - Selection KDE: smaller sample / coarser grid (already downsampled in api.js)
+        // Moderate sample sizes; selection further capped in api.js
         const MAX_GLOBAL = 80000;
         const MAX_SELECTION = 30000;
         const GRID = 192;
@@ -54,14 +31,12 @@ export default function GroupFeaturePanel({
           setViolinMsg("No active channels");
           return;
         }
-        // collect ids
         const ids = Array.isArray(data?.coords) ? data.coords.map((o) => o.id) : [];
         if (!Array.isArray(ids) || ids.length === 0) {
           setViolinData(null);
           setViolinMsg("No selection");
           return;
         }
-        // fetch global and selection KDE
         const [gkde, skde] = await Promise.all([
           fetchViolinGlobalKDE(MAX_GLOBAL, 99.0, 0.1, activeChs, GRID, undefined),
           fetchViolinSelectionKDE(ids, MAX_SELECTION, 99.0, 0.1, activeChs, GRID, undefined),
@@ -140,7 +115,7 @@ export default function GroupFeaturePanel({
     const plotH = h - marginT - marginB;
     const C = chs.length;
     if (C === 0) return;
-    // x-axis layout for each channel (x-axis layout for each channel)
+    // One column per channel
     const colW = plotW / C;
 
     const gammaY = 0.5;
@@ -149,9 +124,8 @@ export default function GroupFeaturePanel({
       const nonlin = Math.pow(u, gammaY);
       return marginT + (1 - nonlin) * plotH;
     };
-    // use grayscale for violin plots to avoid conflicting with per-channel colors
-    const colorGlobal = "rgba(200,200,200,0.95)"; // global (left): lighter gray
-    const colorSel = "rgba(120,120,120,0.95)";    // selection (right): darker gray
+    const colorGlobal = "rgba(200,200,200,0.95)";
+    const colorSel = "rgba(120,120,120,0.95)";
 
     ctx.lineWidth = 1;
 
@@ -173,7 +147,7 @@ export default function GroupFeaturePanel({
             break;
           }
           if (j === 0 && x < xs[0]) break;
-          // x > max(xs): do not extrapolate — leave densityX 0 so violin tapers at high intensity
+          // No extrap past max(xs) → taper
         }
         ysOut.push(densityX * (x + 1));
       }
@@ -198,7 +172,7 @@ export default function GroupFeaturePanel({
       const v = uLo + f * (uHi - uLo);
       ctx.fillText(Math.round(v).toString(), marginL - 6, y + 4);
     }
-    // x-axis channel names (using channel colors + displaying real channel names from channel_info.json)
+    // X labels: channel_info names + colors
     ctx.textAlign = "center";
     ctx.font = "14px sans-serif";
     for (let i = 0; i < C; i++) {
@@ -271,7 +245,7 @@ export default function GroupFeaturePanel({
     }
   }, [violinData, channels]);
 
-  // High-dimensional Similarity Field (seriation-based)
+  // Similarity field (seriation x, sim y)
   const fieldRef = useRef(null);
   useEffect(() => {
     const canvas = fieldRef.current;
@@ -296,7 +270,6 @@ export default function GroupFeaturePanel({
     if (N === 0) return;
 
     const mx = 36, my = 28;
-    // x from seriation
     const orderIdx = [];
     if (seriation.length === memberIds.length) {
       const idToRank = new Map(seriation.map((id, rank) => [id, rank]));
@@ -310,10 +283,9 @@ export default function GroupFeaturePanel({
     }
     const n1 = Math.max(1, memberIds.length - 1);
     const x01 = orderIdx.map(r => r / n1);
-    // y from similarity to centroid
     const y01 = sims.map(s => Math.max(0, Math.min(1, (s + 1) / 2)));
 
-    // draw global y background bands (1D hist as horizontal bands)
+    // Global 1D hist as faint H-bands
     if (Array.isArray(gY.centers) && Array.isArray(gY.counts) && gY.centers.length === gY.counts.length && gY.centers.length > 0) {
       const maxC = Math.max(1, ...gY.counts);
       ctx.save();
@@ -330,7 +302,7 @@ export default function GroupFeaturePanel({
       }
       ctx.restore();
     }
-    // 2D KDE grid
+    // 2D KDE heatmap grid
     const gw = 160, gh = 100;
     const grid = new Float32Array(gw * gh);
     const sigma = 0.055;
@@ -367,7 +339,6 @@ export default function GroupFeaturePanel({
         }
       }
     }
-    // overlay group points
     for (let i = 0; i < N; i++) {
       const x = mx + x01[i] * (w - 2 * mx);
       const y = my + (1 - y01[i]) * (h - 2 * my);
@@ -392,7 +363,6 @@ export default function GroupFeaturePanel({
       ctx.arc(x, y, size, 0, Math.PI*2);
       ctx.fill();
     }
-    // median reference lines
     if (typeof medGlobal === "number") {
       const yg = my + (1 - medGlobal) * (h - 2 * my);
       ctx.setLineDash([4, 4]);
@@ -415,7 +385,6 @@ export default function GroupFeaturePanel({
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    // legend box
     if (typeof medGlobal === "number" || typeof medGroup === "number") {
       const pad = 8;
       const lh = 16;
@@ -431,7 +400,6 @@ export default function GroupFeaturePanel({
         ctx.fillRect(x0, y0, boxW, boxH);
       }
       ctx.font = "11px sans-serif";
-      // global
       ctx.strokeStyle = "rgba(200,200,205,0.75)";
       ctx.setLineDash([6,3]);
       ctx.lineWidth = 1.2;
@@ -443,7 +411,6 @@ export default function GroupFeaturePanel({
       ctx.fillStyle = "rgba(230,230,235,0.9)";
       ctx.textAlign = "left";
       ctx.fillText("global median", x0 + pad + 32, y0 + lh - 2);
-      // group
       ctx.strokeStyle = "rgba(0,160,255,0.85)";
       ctx.setLineDash([6,3]);
       ctx.lineWidth = 1.2;
@@ -455,12 +422,10 @@ export default function GroupFeaturePanel({
       ctx.fillStyle = "rgba(0,180,255,0.95)";
       ctx.fillText("group median", x0 + pad + 32, y0 + 2*lh - 2);
     }
-    // axis ticks (lightweight, non-intrusive)
     ctx.strokeStyle = "rgba(255,255,255,0.35)";
     ctx.fillStyle = "rgba(255,255,255,0.65)";
     ctx.lineWidth = 1;
     ctx.font = "11px sans-serif";
-    // x ticks: 0..1
     ctx.textAlign = "center";
     const xts = [0, 0.25, 0.5, 0.75, 1];
     for (const t of xts) {
@@ -472,7 +437,6 @@ export default function GroupFeaturePanel({
       ctx.stroke();
       ctx.fillText(t.toFixed(2), px, py + 12);
     }
-    // y ticks: 0..1 (top=1)
     ctx.textAlign = "right";
     const yts = [0, 0.25, 0.5, 0.75, 1];
     for (const t of yts) {
@@ -484,7 +448,6 @@ export default function GroupFeaturePanel({
       ctx.stroke();
       ctx.fillText(t.toFixed(2), mx - 4, py + 4);
     }
-    // axis labels
     ctx.fillStyle = "rgba(255,255,255,0.65)";
     ctx.font = "12px sans-serif";
     ctx.textAlign = "center";
@@ -496,7 +459,7 @@ export default function GroupFeaturePanel({
     ctx.restore();
   }, [data]);
 
-  // Unified radial visualization
+  // Radial similarity plot
   const radialRef = useRef(null);
   useEffect(() => {
     const canvas = radialRef.current;
@@ -517,7 +480,6 @@ export default function GroupFeaturePanel({
     ctx.setTransform(1,0,0,1,0,0);
     ctx.scale(dpr, dpr);
     ctx.clearRect(0,0,w,h);
-    // center, radii
     const cx = w / 2, cy = h / 2;
     const R = Math.min(w, h) * 0.48;
     const R0 = Math.min(w, h) * 0.075;
@@ -535,14 +497,12 @@ export default function GroupFeaturePanel({
       rMax = Math.max(...rVals);
     }
     const r01Group = rVals.map(v => (v - rMin) / (rMax - rMin + 1e-6));
-    // calculate group KDE (based on r_norm smooth radial band)
     const bw = Math.max(0.05, Math.min(0.15, 1 / Math.sqrt(Math.max(8, r01Group.length))));
     const { xs: gx, ys: gy } = kde1d(r01Group, bw, 192);
-    // calculate global density (smoothed by histogram)
     let hx = [], hy = [];
     if (Array.isArray(ghist.centers) && Array.isArray(ghist.counts) && ghist.centers.length === ghist.counts.length && ghist.centers.length > 0) {
       const maxC = Math.max(1, ...ghist.counts);
-      // smooth counts (3-point mean) and normalize
+      // 3-pt smooth hist → norm
       const sm = ghist.counts.map((c, i, a) => {
         const c0 = a[Math.max(0, i-1)] ?? c, c1 = c, c2 = a[Math.min(a.length-1, i+1)] ?? c;
         return (c0 + c1 + c2) / 3;
@@ -550,16 +510,16 @@ export default function GroupFeaturePanel({
       hx = ghist.centers.slice();
       hy = sm;
     }
-    // draw global background band (soft, low opacity) to avoid "CD"
+    // Global hist as radial gray band
     if (hx.length > 0) {
       ctx.save();
       ctx.filter = "blur(1.2px)";
       for (let i = 0; i < hx.length; i++) {
         const s01 = Math.max(0, Math.min(1, hx[i]));
-        const r01 = 1 - s01; // r_global_norm
+        const r01 = 1 - s01;
         const r = R0 + r01 * (R - R0);
         const a = 0.06 + 0.18 * hy[i];
-        ctx.strokeStyle = `rgba(180,180,185,${a})`; // global: light gray
+        ctx.strokeStyle = `rgba(180,180,185,${a})`;
         ctx.lineWidth = 10;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI*2);
@@ -567,7 +527,7 @@ export default function GroupFeaturePanel({
       }
       ctx.restore();
     }
-    // draw group density band (smoothed KDE, no stripes, light blue)
+    // Group KDE as blue radial band
     if (N > 0) {
       ctx.save();
       ctx.filter = "blur(1.8px)";
@@ -575,27 +535,24 @@ export default function GroupFeaturePanel({
         const r01 = gx[i];
         const r = R0 + r01 * (R - R0);
         const a = 0.10 + 0.35 * gy[i];
-        ctx.strokeStyle = `rgba(0,160,255,${a})`; // group: light blue; brightness scales with density
+        ctx.strokeStyle = `rgba(0,160,255,${a})`;
         ctx.lineWidth = 12;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI*2);
         ctx.stroke();
       }
       ctx.restore();
-      // angle from proj1 (direction axis)
       let minP = Math.min(...proj), maxP = Math.max(...proj);
       if (!isFinite(minP) || !isFinite(maxP) || minP === maxP) {
         minP = -1; maxP = 1;
       }
-      // angle from proj1 (direction axis)
-      const thetaPos = Math.PI; // direction corresponding to t=1
+      const thetaPos = Math.PI;
       ctx.strokeStyle = "rgba(255,255,255,0.1)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
       ctx.lineTo(cx + (R-2) * Math.cos(thetaPos), cy + (R-2) * Math.sin(thetaPos));
       ctx.stroke();
-      // small arrow
       const ax = cx + (R-2) * Math.cos(thetaPos);
       const ay = cy + (R-2) * Math.sin(thetaPos);
       const ah = 6;
@@ -607,11 +564,10 @@ export default function GroupFeaturePanel({
       ctx.closePath();
       ctx.fill();
 
-      // calculate local density (used for point size, dense→small, sparse→large)
-      const tvals = proj.map(v => (v - minP) / (maxP - minP)); // [0,1]
+      const tvals = proj.map(v => (v - minP) / (maxP - minP));
       const dens = new Array(N).fill(0);
       if (N <= 1500) {
-        const aeps = 0.08, reps = 0.06; // angle/radius neighborhood
+        const aeps = 0.08, reps = 0.06;
         for (let i = 0; i < N; i++) {
           let c = 0;
           const ti = tvals[i], ri = r01Group[i];
@@ -619,21 +575,19 @@ export default function GroupFeaturePanel({
             if (i === j) continue;
             const tj = tvals[j], rj = r01Group[j];
             let dt = Math.abs(ti - tj);
-            dt = Math.min(dt, 1 - dt); // wrap around
+            dt = Math.min(dt, 1 - dt);
             const dr = Math.abs(ri - rj);
             if (dt < aeps && dr < reps) c++;
           }
           dens[i] = c;
         }
-        // normalize to [0,1]
         const md = Math.max(1, ...dens);
         for (let i = 0; i < N; i++) dens[i] = dens[i] / md;
       } else {
-        // for large groups, do not calculate, default medium density
+        // N>1500: skip local density
         for (let i = 0; i < N; i++) dens[i] = 0.5;
       }
 
-      // foreground points: brightness=similarity, size=density(inverse), stroke=exemplar
       for (let i = 0; i < N; i++) {
         const r01 = r01Group[i];
         const r = R0 + r01 * (R - R0);
@@ -641,11 +595,9 @@ export default function GroupFeaturePanel({
         const theta = (t * Math.PI * 2) - Math.PI;
         const x = cx + r * Math.cos(theta);
         const y = cy + r * Math.sin(theta);
-        // point size: sparse larger
-        const size = 1.6 + (1 - dens[i]) * 2.2; // 1.6..3.8
-        // brightness: higher similarity brighter (HSL)
+        const size = 1.6 + (1 - dens[i]) * 2.2;
         const s01_for_light = Math.max(0, Math.min(1, (sClip[i] + 1) / 2));
-        const light = 40 + Math.round(45 * s01_for_light); // 40%..85%
+        const light = 40 + Math.round(45 * s01_for_light);
         ctx.strokeStyle = "rgba(0,0,0,0.3)";
         ctx.lineWidth = 1.5;
         ctx.beginPath();

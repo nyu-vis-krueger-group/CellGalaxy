@@ -37,7 +37,7 @@ export default function FileUpload({ onRefresh = async () => {} }) {
     fetchStatus();
   }, [fetchStatus]);
 
-  // Polling while generating or processing channels to keep UI in sync until fully done
+  // Poll while generating / channel pipeline
   const pollRef = useRef(null);
   useEffect(() => {
     const shouldPoll = processing.channels || status.generating || waitingForJson;
@@ -57,7 +57,7 @@ export default function FileUpload({ onRefresh = async () => {} }) {
     };
   }, [processing.channels, status.generating, waitingForJson, fetchStatus]);
 
-  // local polling: only when waiting for JSON, check static files with HEAD
+  // HEAD coords/channel_info while waitingForJson
   useEffect(() => {
     if (!waitingForJson) return;
     let aborted = false;
@@ -79,23 +79,20 @@ export default function FileUpload({ onRefresh = async () => {} }) {
       setJsonReady({ coords: coOk, channelInfo: chOk });
       if (chOk && coOk) {
         setWaitingForJson(false);
-        // refresh global status
         await fetchStatus();
         await onRefresh();
       }
     };
     const id = setInterval(tick, 800);
-    // check immediately to avoid waiting for the first cycle
     tick();
     return () => { aborted = true; clearInterval(id); };
   }, [waitingForJson, status.csv, fetchStatus, onRefresh]);
 
-  // When generating switches from true -> false, refresh once to pick up new files
+  // generating true→false: refresh
   const prevGeneratingRef = useRef(false);
   useEffect(() => {
     const prev = prevGeneratingRef.current;
     if (prev && !status.generating) {
-      // generation just finished
       (async () => {
         await fetchStatus();
         await onRefresh();
@@ -104,7 +101,6 @@ export default function FileUpload({ onRefresh = async () => {} }) {
     prevGeneratingRef.current = status.generating;
   }, [status.generating, fetchStatus, onRefresh]);
 
-  // close menu on outside click
   useEffect(() => {
     const onDocClick = (e) => {
       if (!open) return;
@@ -120,7 +116,6 @@ export default function FileUpload({ onRefresh = async () => {} }) {
     setBusy(true);
     setProcessing(prev => ({ ...prev, [fileType]: true }));
     if (fileType === 'channels') {
-      // start waiting for two JSON files to be ready
       setWaitingForJson(true);
       setJsonReady({ coords: false, channelInfo: false });
     }
@@ -137,9 +132,7 @@ export default function FileUpload({ onRefresh = async () => {} }) {
       if (response.ok) {
         console.log(`${fileType} file uploaded successfully`);
         
-        // If it's a CSV file, show processing status
         if (fileType === 'csv' || fileType === 'channels') {
-          // Wait for a while to let user see processing status
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
@@ -173,7 +166,6 @@ export default function FileUpload({ onRefresh = async () => {} }) {
 
   const handleClear = async (fileType) => {
     setBusy(true);
-    // delete channels will trigger rebuild of channel_info.json and coords.json
     if (fileType !== 'channels') {
       setProcessing(prev => ({ ...prev, [fileType]: true }));
     }

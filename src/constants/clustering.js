@@ -1,5 +1,4 @@
-// Predefined clustering color schema (RGB), designed for dark backgrounds.
-// Based on a mix of D3/ColorBrewer/Tableau palettes with good separability.
+// Cluster colors (RGB) for dark UI; D3/Brewer/Tableau-style separable palette.
 export const CLUSTERING_COLORS = [
   [228, 26, 28],   // red
   [55, 126, 184],  // blue

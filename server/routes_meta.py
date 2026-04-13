@@ -5,34 +5,19 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from .config import DATA_DIR, ZARR_DIR
+from .data_paths import (
+    channel_list_csv_path,
+    data_csv_path,
+    features_npy_path,
+    generating_marker_path,
+    raw_csv_json_paths,
+    zooming_csv_path,
+)
 from .data_utils import get_channel_info, process_coord_row, generate_channel_info_only
 from .zarr_utils import open_zarr, meta_from_img, grid_for_count, get_default_tile
 
 
 router = APIRouter()
-
-
-def _csv_path() -> str:
-    return os.path.join(DATA_DIR, "data.csv")
-
-
-def _raw_paths() -> tuple[str, str]:
-    return (
-        os.path.join(DATA_DIR, "raw.csv"),
-        os.path.join(DATA_DIR, "raw.json"),
-    )
-
-def _feat_path() -> str:
-    return os.path.join(DATA_DIR, "features.npy")
-
-def _channels_path() -> str:
-    return os.path.join(DATA_DIR, "channel_list.csv")
-
-def _zooming_path() -> str:
-    return os.path.join(DATA_DIR, "cluster_multilevel_hierarchy.csv")
-
-def _gen_marker_path() -> str:
-    return os.path.join(DATA_DIR, ".generating")
 
 
 def _has_zarr() -> bool:
@@ -48,7 +33,7 @@ def _has_zarr() -> bool:
 
 def _raw_annotation_columns() -> dict:
     """If raw.json exists, return which annotation columns are present (celltype, neigh_names)."""
-    _, raw_json = _raw_paths()
+    _, raw_json = raw_csv_json_paths()
     out = {"celltype": False, "neigh_names": False}
     if not os.path.exists(raw_json):
         return out
@@ -74,25 +59,24 @@ def _raw_annotation_columns() -> dict:
 
 @router.get("/upload/status")
 async def upload_status():
-    csv_path = _csv_path()
-    raw_csv, raw_json = _raw_paths()
+    csv_path = data_csv_path()
+    raw_csv, raw_json = raw_csv_json_paths()
     raw_cols = _raw_annotation_columns()
     return {
         "zarr": _has_zarr(),
         "csv": os.path.exists(csv_path),
         "raw": os.path.exists(raw_csv) and os.path.exists(raw_json),
         "raw_annotation_columns": raw_cols,
-        "feat": os.path.exists(_feat_path()),
-        "channels": os.path.exists(_channels_path()),
-        "zooming": os.path.exists(_zooming_path()),
-        "generating": os.path.exists(_gen_marker_path()),
+        "feat": os.path.exists(features_npy_path()),
+        "channels": os.path.exists(channel_list_csv_path()),
+        "zooming": os.path.exists(zooming_csv_path()),
+        "generating": os.path.exists(generating_marker_path()),
     }
 
 
 @router.get("/channels")
 async def get_channels():
     try:
-        # Prefer pre-generated file if present
         ch_json = os.path.join(DATA_DIR, "channel_info.json")
         if os.path.exists(ch_json):
             try:
@@ -103,12 +87,10 @@ async def get_channels():
                 return {"channels": channels, "total_channels": len(channels)}
             except Exception:
                 pass
-        # Else, try to generate on the fly (prefers channel_list.csv)
         channels = generate_channel_info_only()
         if channels is not None:
             return {"channels": channels, "total_channels": len(channels)}
-        # Finally, fallback to data.csv direct computation
-        csv_path = _csv_path()
+        csv_path = data_csv_path()
         if not os.path.exists(csv_path):
             return {"channels": [], "total_channels": 0}
         df = pd.read_csv(csv_path)
@@ -157,7 +139,7 @@ def _cluster_dominant_annotations() -> dict | None:
     from collections import Counter
 
     coords_path = os.path.join(DATA_DIR, "coords.json")
-    _, raw_json = _raw_paths()
+    _, raw_json = raw_csv_json_paths()
     if not os.path.exists(coords_path) or not os.path.exists(raw_json):
         return None
     try:
@@ -169,7 +151,6 @@ def _cluster_dominant_annotations() -> dict | None:
         return None
     if not isinstance(coords, list) or not isinstance(raw_data, list) or len(raw_data) < 2:
         return None
-    # raw_data[0] = schema; raw_data[1:] = { id, raw: { celltype?, neigh_names? } }
     id_to_raw = {}
     for i in range(1, len(raw_data)):
         row = raw_data[i]
@@ -183,7 +164,6 @@ def _cluster_dominant_annotations() -> dict | None:
             "celltype": raw_obj.get("celltype"),
             "neigh_names": raw_obj.get("neigh_names"),
         }
-    # Group coords by level and cluster
     levels_out = {}
     for level in range(6):
         cluster_key = f"cluster_L{level}"
@@ -230,7 +210,7 @@ def cluster_dominant_annotations():
 
 @router.get("/coords")
 def coords(limit: int | None = Query(None)):
-    csv_path = _csv_path()
+    csv_path = data_csv_path()
     if not os.path.exists(csv_path):
         return JSONResponse([])
     try:

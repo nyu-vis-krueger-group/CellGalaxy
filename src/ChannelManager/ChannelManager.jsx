@@ -12,12 +12,9 @@ export default function ChannelManager({
 }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [channelInfo, setChannelInfo] = useState({});
-  // Slider read/write directly uses global windows (min/max for each channel)
   const [tooltip, setTooltip] = useState({ show: false, value: '', x: 0, y: 0 });
 
-  // Normalize backend pixel_value_range into:
-  // - dataMin/dataMax: true global range (slider bounds)
-  // - autoMin/autoMax: recommended automatic window (based on 1%-99% percentiles)
+  // pixel_value_range → slider bounds + auto window
   const getChannelRanges = (channel) => {
     const pv = channel?.pixel_value_range || {};
     const dataMin = Number.isFinite(pv.data_min)
@@ -31,7 +28,6 @@ export default function ChannelManager({
     return { dataMin, dataMax, autoMin, autoMax };
   };
 
-  // Get channel information
   useEffect(() => {
     const fetchChannelInfo = async () => {
       try {
@@ -63,10 +59,8 @@ export default function ChannelManager({
     }
   }, [channelInfo, selected, setSelected]);
 
-  // Listen for click events, close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // If clicking on dropdown item, don't close menu
       if (event.target.closest('.dropdown-item')) {
         return;
       }
@@ -80,7 +74,6 @@ export default function ChannelManager({
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showDropdown]);
 
-  // Calculate available channels (unselected)
   const availableChannels = channelInfo.channels?.filter(
     (ch) => !selected.includes(ch.id)
   ) || [];
@@ -102,14 +95,12 @@ export default function ChannelManager({
   
   const defaultColorFor = (id) => palette[id % palette.length];
 
-  // Add channel
   const addChannel = (channel) => {
     setSelected(prev => [...prev, channel.id]);
     if (!colors[channel.id]) {
       const c = defaultColorFor(channel.id);
       setColors((prev) => ({ ...prev, [channel.id]: c }));
     }
-    // If window has not been initialized, use recommended autoMin/autoMax as default window.
     const { autoMin, autoMax } = getChannelRanges(channel);
     setWindows((prev) => (
       prev[channel.id]
@@ -118,18 +109,15 @@ export default function ChannelManager({
     ));
   };
 
-  // Remove channel
   const removeChannel = (channelId) => {
     setSelected(prev => prev.filter(id => id !== channelId));
   };
 
-  // Handle slider value changes
   const handleSliderChange = (channelId, type, value) => {
     const v = Number(value);
     setWindows((prev) => {
       const cur = prev[channelId] || { min: 0, max: 65535 };
       const next = { ...cur, [type]: v };
-      // Ensure min <= max
       if (next.min > next.max) {
         if (type === 'min') next.max = next.min;
         else next.min = next.max;
@@ -138,7 +126,6 @@ export default function ChannelManager({
     });
   };
 
-  // Show tooltip
   const showTooltip = (value, event) => {
     setTooltip({
       show: true,
@@ -148,12 +135,10 @@ export default function ChannelManager({
     });
   };
 
-  // Hide tooltip
   const hideTooltip = () => {
     setTooltip({ show: false, value: '', x: 0, y: 0 });
   };
 
-  // Render slider (currently UI only; can be extended to normalized lo/hi control)
   const renderSlider = (channelId, type, defaultValue, min, max) => {
     const current = windows?.[channelId] || { min: defaultValue, max: defaultValue };
     const currentValue = (type === 'min' ? current.min : current.max) ?? defaultValue;
@@ -179,7 +164,6 @@ export default function ChannelManager({
       <div className="channel-section-title">
         <span>Channels({selected.length} / 4)</span>
         
-        {/* Add channel area */}
         <div className="add-channel-section">
           <div
             className="add-channel-button"
@@ -188,7 +172,6 @@ export default function ChannelManager({
             <span>+</span>
           </div>
 
-          {/* Dropdown list */}
           {showDropdown && (
             <div className="channel-dropdown">
               {availableChannels.length > 0 ? (
@@ -211,7 +194,6 @@ export default function ChannelManager({
         </div>
       </div>
 
-      {/* Selected channels list */}
       <div className="selected-channels">
         {selected.map((channelId) => {
           const channel = channelInfo.channels?.find(ch => ch.id === channelId);
@@ -221,7 +203,6 @@ export default function ChannelManager({
 
           return (
             <div key={channelId} className="channel-item">
-              {/* Color picker */}
               <input
                 type="color"
                 className="color-picker"
@@ -229,10 +210,8 @@ export default function ChannelManager({
                 onChange={(e) => setColors((prev) => ({ ...prev, [channelId]: fromHex(e.target.value) }))}
               />
 
-              {/* Channel name */}
               <span className="channel-name" title={channel.name}>{channel.name}</span>
 
-              {/* Dual-end slider */}
               <div className="range-slider-container">
                 <div className="dual-range-slider">
                   {renderSlider(channelId, 'min', autoMin, dataMin, dataMax)}
@@ -240,7 +219,6 @@ export default function ChannelManager({
                 </div>
               </div>
 
-              {/* Auto button: reset to recommended automatic window */}
               <button
                 className="auto-button"
                 onClick={() => {
@@ -254,7 +232,6 @@ export default function ChannelManager({
                 Auto
               </button>
 
-              {/* Delete button */}
               <button
                 className="delete-button"
                 onClick={() => removeChannel(channelId)}
@@ -266,7 +243,6 @@ export default function ChannelManager({
         })}
       </div>
       
-      {/* Custom Tooltip */}
       {tooltip.show && (
         <div 
           className="custom-tooltip"

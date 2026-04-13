@@ -1,12 +1,23 @@
+import json
 import os
-from typing import Dict
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
-from .config import DATA_DIR, ZARR_DIR
+from .config import (
+    CLUSTER_LABELS_JSON,
+    DATA_DIR,
+    LLM_MODEL,
+    LLM_MODELS_REGISTRY,
+    LLM_TEMPERATURE,
+    ZARR_DIR,
+)
+from .data_paths import channel_list_csv_path, cluster_channel_avg_csv_path, data_csv_path
+from .llm_client import create_default_client
+from .prompt_templates import render_cluster_prompt
 from .zarr_utils import open_zarr, meta_from_img
 
 
@@ -30,9 +41,9 @@ def compute_cluster_channel_avg() -> Dict[str, object]:
     Chunk size is read from Zarr metadata (use chunk size along the N dimension).
     """
     try:
-        csv_path = os.path.join(DATA_DIR, "data.csv")
-        channels_csv = os.path.join(DATA_DIR, "channel_list.csv")
-        out_csv = os.path.join(DATA_DIR, "cluster_channel_avg.csv")
+        csv_path = data_csv_path()
+        channels_csv = channel_list_csv_path()
+        out_csv = cluster_channel_avg_csv_path()
 
         if not os.path.isdir(ZARR_DIR):
             raise FileNotFoundError(f"Zarr directory does not exist: {ZARR_DIR}")
@@ -41,19 +52,16 @@ def compute_cluster_channel_avg() -> Dict[str, object]:
         if not os.path.exists(channels_csv):
             raise FileNotFoundError("public/channel_list.csv not found")
 
-        # Remove existing output if present
         try:
             if os.path.exists(out_csv):
                 os.remove(out_csv)
         except Exception:
             pass
 
-        # 1) Load clustering assignments (support multi-level)
         df = pd.read_csv(csv_path)
 
         level_labels: dict[int, np.ndarray] = {}
 
-        # Prefer explicit hierarchical columns: cluster_L0 .. cluster_Lk
         for col in df.columns:
             if not str(col).startswith("cluster_L"):
                 continue
@@ -61,12 +69,10 @@ def compute_cluster_channel_avg() -> Dict[str, object]:
                 lvl = int(str(col).replace("cluster_L", ""))
             except Exception:
                 continue
-            # Convert to numeric, NaN for invalid
             series = pd.to_numeric(df[col], errors="coerce")
             level_labels[lvl] = series.to_numpy(dtype=np.float64)
 
         if not level_labels:
-            # Fallback: legacy single-level 'clustering'
             if "clustering" not in df.columns:
                 raise ValueError("data.csv must contain either 'clustering' or 'cluster_L0'.. columns.")
             series = pd.to_numeric(df["clustering"], errors="coerce")
@@ -74,20 +80,17 @@ def compute_cluster_channel_avg() -> Dict[str, object]:
 
         n_cells = len(df)
 
-        # 2) open zarr, read metadata and chunk size
         img = open_zarr()
         C, N, H, W, chunks, n_chunks, n_per_chunk = meta_from_img(img)
         if N != n_cells:
             raise ValueError(f"Zarr N={N} does not match data.csv rows N={n_cells}")
 
-        # 3) prepare clusters for each level
         unique_clusters_by_level: dict[int, np.ndarray] = {}
         cluster_to_idx_by_level: dict[int, dict[int, int]] = {}
         sum_pixels_by_level: dict[int, np.ndarray] = {}
         num_pixels_by_level: dict[int, np.ndarray] = {}
 
         for lvl, arr in level_labels.items():
-            # finite cluster ids only
             finite_mask = np.isfinite(arr)
             if not np.any(finite_mask):
                 continue
@@ -95,7 +98,6 @@ def compute_cluster_channel_avg() -> Dict[str, object]:
             uniq_int = uniq.astype(int)
             unique_clusters_by_level[lvl] = uniq_int
             cluster_to_idx_by_level[lvl] = {int(cl): i for i, cl in enumerate(uniq_int)}
-            # Use float64 accumulation to avoid overflow
             sum_pixels_by_level[lvl] = np.zeros((uniq_int.shape[0], C), dtype=np.float64)
             num_pixels_by_level[lvl] = np.zeros(uniq_int.shape[0], dtype=np.int64)
 
@@ -104,18 +106,15 @@ def compute_cluster_channel_avg() -> Dict[str, object]:
 
         total_pixels_per_image = int(H) * int(W)
 
-        # 4) iterate by N-dimension chunk, reuse the same image chunk for all levels
         for start in range(0, N, n_per_chunk):
             end = min(start + n_per_chunk, N)
             slc = slice(start, end)
-            # read (C, M, H, W)
             chunk_data = np.asarray(img[:, slc, :, :])
 
             for lvl, labels in level_labels.items():
                 if lvl not in unique_clusters_by_level:
                     continue
                 chunk_clusters = labels[slc]
-                # clusters present in this chunk (finite only)
                 finite = np.isfinite(chunk_clusters)
                 if not np.any(finite):
                     continue
@@ -135,7 +134,6 @@ def compute_cluster_channel_avg() -> Dict[str, object]:
                     sum_pixels_by_level[lvl][idx_cluster] += sum_per_channel
                     num_pixels_by_level[lvl][idx_cluster] += int(mask.sum()) * total_pixels_per_image
 
-        # 5) Build output rows: averages per (level_id, cluster_id)
         ch_df = pd.read_csv(channels_csv)
         ch_df = ch_df.sort_values("channel_id")
         channel_names = ch_df["channel_name"].tolist()
@@ -152,7 +150,6 @@ def compute_cluster_channel_avg() -> Dict[str, object]:
             uniq_int = unique_clusters_by_level[lvl]
             sums = sum_pixels_by_level[lvl]
             nums = num_pixels_by_level[lvl]
-            # avoid division by zero
             valid = nums > 0
             if not np.any(valid):
                 continue
@@ -189,20 +186,11 @@ def compute_cluster_channel_avg() -> Dict[str, object]:
         raise HTTPException(status_code=500, detail=f"Computation failed: {e}")
 
 
-# ===== New: Generate cluster labels via LLM =====
-import json
-from typing import Any
-from .config import CLUSTER_LABELS_JSON, LLM_TEMPERATURE, LLM_MODEL, LLM_MODELS_REGISTRY, DATA_DIR
-from .prompt_templates import render_cluster_prompt
-from .llm_client import create_default_client
-
-
 def _load_cluster_avg_df() -> pd.DataFrame:
-    path = os.path.join(DATA_DIR, "cluster_channel_avg.csv")
+    path = cluster_channel_avg_csv_path()
     if not os.path.exists(path):
         raise FileNotFoundError("public/cluster_channel_avg.csv not found. Compute it first.")
     df = pd.read_csv(path)
-    # expect first two columns: level_id, cluster_id; the rest are channels
     if "level_id" not in df.columns or "cluster_id" not in df.columns:
         raise ValueError("cluster_channel_avg.csv missing required columns: level_id, cluster_id")
     return df
@@ -214,22 +202,17 @@ def _as_int_scalar(value) -> int:
     Handles cases like value == (0,) where pandas may return a 1-tuple.
     """
     try:
-        # Unwrap tuple/list coming from pandas groupby keys etc.
         if isinstance(value, (tuple, list)):
-            # Prefer the first non-None element
             for v in value:
                 if v is None:
                     continue
                 return int(v)
-            # all elements None -> fall back below
             value = 0
         return int(value)
     except Exception:
         try:
-            # Try float cast then int
             return int(float(value))
         except Exception:
-            # Fallback: 0
             return 0
 
 
@@ -239,7 +222,7 @@ def _load_data_csv_context_required() -> dict[int, dict[int, dict[str, object]]]
     Return structure: { level_id: { cluster_id: { n:int, percent:float, umap:[x,y] | None } } }
     Require data.csv must exist and must contain 'clustering' column; if missing, raise exception.
     """
-    csv_path = os.path.join(DATA_DIR, "data.csv")
+    csv_path = data_csv_path()
     if not os.path.exists(csv_path):
         raise FileNotFoundError("public/data.csv not found. Please upload data.csv before generating labels.")
     df = pd.read_csv(csv_path)
@@ -261,7 +244,6 @@ def _load_data_csv_context_required() -> dict[int, dict[int, dict[str, object]]]
             clu_id_int = _as_int_scalar(cluster_id)
             out.setdefault(lvl_id_int, {})[clu_id_int] = {"n": n, "percent": pct, "umap": umap}
     else:
-        # assume all records belong to level 0
         level_id = 0
         groups = df.groupby(["clustering"])
         for cluster_id, g in groups:
@@ -279,7 +261,6 @@ def _top_low_markers_for_level(df_level: pd.DataFrame, cluster_row: pd.Series, k
     """
     Select Top-K high/low expression markers for each cluster within each level, based on z-score.
     """
-    # channel columns = all except level_id, cluster_id
     channel_cols = [c for c in df_level.columns if c not in ("level_id", "cluster_id")]
     sub = df_level[channel_cols].copy()
     means = sub.mean(axis=0)
@@ -299,14 +280,12 @@ def generate_cluster_labels(body: Dict[str, Any] | None = None):
     """
     try:
         df = _load_cluster_avg_df()
-        # body options
         body = body or {}
         only_levels = body.get("levels")  # Optional[List[int]]
         top_k = int(body.get("top_k", 6))
         temperature = float(body.get("temperature", LLM_TEMPERATURE))
         model = body.get("model", LLM_MODEL)
 
-        # filter by levels if provided
         if only_levels is not None and isinstance(only_levels, list) and len(only_levels) > 0:
             df = df[df["level_id"].isin([int(v) for v in only_levels])]
         if df.empty:
@@ -342,7 +321,6 @@ def generate_cluster_labels(body: Dict[str, Any] | None = None):
                     continue
                 models_to_run.append({"name": name, "provider": provider, "api_base": api_base, "model": model_id, "hf_model": hf_model})
         results: dict[str, dict[str, dict[str, object]]] = {}
-        # iterate by level
         for level_id, df_level in df.groupby("level_id"):
             level_id_int = _as_int_scalar(level_id)
             results[str(level_id_int)] = {}
@@ -474,12 +452,10 @@ def generate_cluster_labels(body: Dict[str, Any] | None = None):
                         print(f"[LLM][ok] level={level_id_int} cluster={cluster_id_int} model={m.get('name')} title={title} desc={desc[:120]}")
                     except Exception:
                         pass
-                # save (only models)
                 results[str(level_id_int)][str(cluster_id_int)] = {
                     "models": per_models
                 }
 
-        # write to file
         with open(CLUSTER_LABELS_JSON, "w", encoding="utf-8") as f:
             json.dump({"levels": results}, f, ensure_ascii=False, indent=2)
 

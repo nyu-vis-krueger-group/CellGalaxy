@@ -26,7 +26,6 @@ export function buildOutlineData2D(points, labelKey = "label") {
     const hull = computeConvexHull2D(arr);
     if (!hull || hull.length < 3) continue;
     const rgb = clusterColor(label);
-    // simple centroid estimate based on all points in this cluster (in projection space)
     let sumX = 0;
     let sumY = 0;
     for (const p of arr) {
@@ -35,8 +34,7 @@ export function buildOutlineData2D(points, labelKey = "label") {
     }
     const n = arr.length || 1;
     const centroid = [sumX / n, sumY / n, 0];
-    // To ensure a visually closed outline, explicitly append the first point to the end,
-    // forming a closed path.
+    // Close hull path
     const closedPath = hull
       .map(([x, y]) => [x, y, 0])
       .concat([[hull[0][0], hull[0][1], 0]]);
@@ -82,7 +80,6 @@ export function projectOutlines3D(viewport, points, filteredIds, labelKey = "lab
     const hull = computeConvexHull2D(arr);
     if (!hull || hull.length < 3) continue;
 
-    // Screen-space bounding box (for dynamic annotation placement)
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;
@@ -104,7 +101,6 @@ export function projectOutlines3D(viewport, points, filteredIds, labelKey = "lab
       cy: (minY + maxY) / 2,
     };
 
-    // 3D centroid in world space (average of cluster points)
     const denom = entry.count > 0 ? entry.count : 1;
     const centroidWorld = [
       entry.sumX / denom,

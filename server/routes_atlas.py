@@ -98,19 +98,16 @@ def atlas(chunk_id: int, req: AtlasRequest = Body(...)):
 
     tile = _effective_tile(req.tile)
 
-    # single-channel fixed cache path
     cache_path = single_cache_path(ch, chunk_id, tile)
     etag = _build_etag(ch, chunk_id, tile)
     if os.path.exists(cache_path):
         return FileResponse(cache_path, media_type="image/png", headers=_cache_headers(etag))
 
-    # render and cache
     _render_and_cache_atlas(img, ch, chunk_id, tile)
     try:
         print(f"Saved atlas cache: {cache_path}")
     except Exception:
         pass
-    # prewarm other chunks of the same channel
     _prewarm_channel_async(ch, tile)
     return FileResponse(cache_path, media_type="image/png", headers=_cache_headers(etag))
 

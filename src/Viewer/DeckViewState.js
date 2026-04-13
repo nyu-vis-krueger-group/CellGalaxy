@@ -9,7 +9,6 @@ export default function DeckViewState({
   setSharedZoom,
   initialZoom = 8,
   imageSize = 4,
-  // Whether to enable view-state transition animations
   transitionsEnabled = true,
 }) {
   const center = useMemo(() => computeCenter(points), [points]);
@@ -80,8 +79,8 @@ export default function DeckViewState({
     };
   }, [is3D]);
 
-  // 3D auto-rotate: toggle with spacebar, update rotationOrbit every frame via requestAnimationFrame
-  const autoRotateSpeed = 0.15; // degrees per frame
+  // Space: 3D auto-rotate (rAF)
+  const autoRotateSpeed = 0.3; // deg/frame (was 0.15)
   useEffect(() => {
     if (!is3D || !autoRotate) return;
     let rafId;
