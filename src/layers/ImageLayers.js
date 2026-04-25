@@ -41,6 +41,8 @@ export default function ImageLayers({
   pixelYFlipHeight = null,
   /** OME spatial: invisible scatter for pick/lasso; selection via DOM ring */
   omeSpatialScatterPickOnly = false,
+  /** Global guard: render nothing when no active channels */
+  hasRenderableChannels = true,
 }) {
   const worldPos = (d) => {
     const z = d.z ?? 0;
@@ -71,6 +73,7 @@ export default function ImageLayers({
   const hasSelection = selectedPoints.length > 0;
 
   const layers = useMemo(() => {
+    if (!hasRenderableChannels) return [];
     const hasPoints = (points?.length ?? 0) > 0;
     if (!meta && !(suppressSpriteAtlases && hasPoints)) return [];
 
@@ -487,6 +490,7 @@ export default function ImageLayers({
     dotOutlineForBrightBackground,
     suppressSpriteAtlases,
     omeSpatialScatterPickOnly,
+    hasRenderableChannels,
     selectedIds,
   ]);
 

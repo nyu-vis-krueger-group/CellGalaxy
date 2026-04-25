@@ -111,6 +111,12 @@ const Viewer = ({
   const isUMAPView =
     viewerId === "umap" || (viewerId === "single" && !!useUMAP);
   const rawUsesOmeTiff = Boolean(omeTiffUrl || omeTiffFile) && !isUMAPView;
+  const hasActiveChannels = useMemo(
+    () =>
+      Array.isArray(channels) &&
+      channels.some((c) => Number.isFinite(Number(c))),
+    [channels],
+  );
   // Raw space is always 2D; only UMAP respects the global 3D toggle.
   const viewIs3D = isUMAPView && is3D;
   // UMAP: same Image size slider as dual view. OME spatial: fixed as OME_SPATIAL_IMAGE_SIZE_FIXED (~0.3), not slider-driven.
@@ -295,6 +301,10 @@ const Viewer = ({
       return hash < samplingThreshold;
     });
   }, [points, samplingThreshold, selectedIds]);
+  const selectablePoints = useMemo(
+    () => (hasActiveChannels ? visiblePoints : []),
+    [hasActiveChannels, visiblePoints],
+  );
 
   const iconMappingsByChunk = useMemo(
     () => buildIconMappingsByChunk(meta, chunkUV),
@@ -946,6 +956,7 @@ const Viewer = ({
     transitionsEnabled,
     dotOutlineForBrightBackground: rawUsesOmeTiff,
     suppressSpriteAtlases: rawUsesOmeTiff,
+    hasRenderableChannels: hasActiveChannels,
     pixelYFlipHeight: omePixelYFlip,
     omeSpatialScatterPickOnly: rawUsesOmeTiff && !clusterColorOn,
   });
@@ -1009,7 +1020,7 @@ const Viewer = ({
         deckRef={deckRef}
         viewerId={viewerId}
         selectionMode={selectionMode}
-        points={visiblePoints}
+        points={selectablePoints}
         getWorldPositionForSelection={rawToWorld}
         filteredIds={filteredIds}
         selectedRegions={selectedRegions}
@@ -1281,7 +1292,7 @@ const Viewer = ({
         alphas={alphas}
         windows={windows}
         computedImageSize={computedImageSize}
-        hoverEnabled={selectionMode === SELECTION_NONE}
+        hoverEnabled={selectionMode === SELECTION_NONE && hasActiveChannels}
         selectedIds={selectedIds}
         cellTypeAnnotationOn={cellTypeAnnotationOn}
         neighNamesAnnotationOn={neighNamesAnnotationOn}
