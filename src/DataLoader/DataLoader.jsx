@@ -500,6 +500,58 @@ export default function useDataLoader() {
       }
 
       setDataVersion((v) => v + 1);
+
+      if (
+        opts?.blockingAtlasPrefetch &&
+        metaJson &&
+        !metaJson.error &&
+        coords.length > 0 &&
+        metaJson.atlas?.tile != null
+      ) {
+        const tile = metaJson.atlas.tile;
+        const chunkIds = [...new Set(coords.map((p) => p.chunk_id))];
+        const channelIds =
+          channels.length > 0
+            ? [...channels]
+            : typeof metaJson.C === "number" && metaJson.C > 0
+              ? Array.from({ length: metaJson.C }, (_, i) => i)
+              : [];
+
+        for (const chunkId of chunkIds) {
+          try {
+            const uv = await fetchUV(chunkId, tile, abort.signal);
+            setChunkUV((prev) => (prev[chunkId] ? prev : { ...prev, [chunkId]: uv }));
+          } catch (e) {
+            console.error("blockingAtlasPrefetch UV", e);
+          }
+        }
+
+        for (const chunkId of chunkIds) {
+          for (const ch of channelIds) {
+            try {
+              const staticURL = staticAtlasURL(ch, tile, chunkId);
+              const ok = await headStaticAtlas(staticURL, abort.signal);
+              if (!ok) {
+                let gen = await generateAtlasGrayGet(chunkId, ch, tile, abort.signal);
+                if (!gen.ok && gen.status !== 304) {
+                  if (gen.status === 405 || gen.status === 404) {
+                    gen = await generateAtlasGrayPost(chunkId, ch, tile, abort.signal);
+                    if (!gen.ok) continue;
+                  } else {
+                    continue;
+                  }
+                }
+              }
+              setAtlasByChannel((prev) => ({
+                ...prev,
+                [chunkId]: { ...(prev[chunkId] || {}), [ch]: staticURL },
+              }));
+            } catch (e) {
+              console.error("blockingAtlasPrefetch atlas", e);
+            }
+          }
+        }
+      }
     } catch (error) {
       console.error("Failed to refresh data", error);
       setMeta({ error: "Failed to refresh data" });
@@ -518,7 +570,7 @@ export default function useDataLoader() {
     } finally {
       if (!skipLoading) setLoading(false);
     }
-  }, [refreshUploadStatus]);
+  }, [refreshUploadStatus, channels]);
 
   useEffect(() => {
     refreshData();

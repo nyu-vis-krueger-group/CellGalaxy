@@ -17,19 +17,38 @@ export default function FileUpload({
   omeTiffRestoreNeedsClick = false,
   onRestoreOmeTiffFromDisk = async () => {},
 }) {
+  const CHANNEL_OVERLAY_LOCK_KEY = "cg_channel_overlay_lock";
   const [status, setStatus] = useState({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, ome_tiff: false, generating: false });
   const [busy, setBusy] = useState(false);
   const [processing, setProcessing] = useState({ zarr: false, csv: false, raw: false, feat: false, channels: false, zooming: false });
   const [open, setOpen] = useState(false);
   const [waitingForJson, setWaitingForJson] = useState(false);
   const [jsonReady, setJsonReady] = useState({ coords: false, channelInfo: false });
+  const [channelPipelineActive, setChannelPipelineActive] = useState(false);
+  const [channelOverlayLocked, setChannelOverlayLocked] = useState(false);
+  const [channelGeneratingSeen, setChannelGeneratingSeen] = useState(false);
+  const [generatingMarkerPresent, setGeneratingMarkerPresent] = useState(false);
+  const channelPipelineRef = useRef(false);
+  const channelUploadStartMsRef = useRef(0);
+  const channelFinishStableCountRef = useRef(0);
+
+  const persistChannelOverlayLock = useCallback((locked) => {
+    try {
+      if (locked) {
+        window.sessionStorage.setItem(CHANNEL_OVERLAY_LOCK_KEY, "1");
+      } else {
+        window.sessionStorage.removeItem(CHANNEL_OVERLAY_LOCK_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`/upload/status?ts=${Date.now()}`, { cache: 'no-store' });
       if (!res.ok) {
-        setStatus({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, ome_tiff: false, generating: false });
-        return;
+        return null;
       }
       const data = await res.json();
       setStatus({
@@ -43,9 +62,10 @@ export default function FileUpload({
         ome_tiff: Boolean(data?.ome_tiff),
         generating: Boolean(data?.generating),
       });
+      return data;
     } catch (err) {
       console.error("status fetch failed", err);
-      setStatus({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, ome_tiff: false, generating: false });
+      return null;
     }
   }, []);
 
@@ -53,10 +73,23 @@ export default function FileUpload({
     fetchStatus();
   }, [fetchStatus]);
 
+  useEffect(() => {
+    try {
+      const locked = window.sessionStorage.getItem(CHANNEL_OVERLAY_LOCK_KEY) === "1";
+      if (locked) {
+        setChannelOverlayLocked(true);
+        setWaitingForJson(true);
+        setChannelPipelineActive(true);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
   // Poll while generating / channel pipeline
   const pollRef = useRef(null);
   useEffect(() => {
-    const shouldPoll = processing.channels || status.generating || waitingForJson;
+    const shouldPoll = processing.channels || status.generating || generatingMarkerPresent || waitingForJson || channelPipelineActive;
     if (shouldPoll && !pollRef.current) {
       pollRef.current = setInterval(() => {
         fetchStatus();
@@ -71,30 +104,69 @@ export default function FileUpload({
         pollRef.current = null;
       }
     };
-  }, [processing.channels, status.generating, waitingForJson, fetchStatus]);
+  }, [processing.channels, status.generating, generatingMarkerPresent, waitingForJson, channelPipelineActive, fetchStatus]);
+
+  useEffect(() => {
+    if (channelPipelineActive && status.generating) {
+      setChannelGeneratingSeen(true);
+    }
+  }, [channelPipelineActive, status.generating]);
 
   // HEAD coords/channel_info while waitingForJson
   useEffect(() => {
     if (!waitingForJson) return;
     let aborted = false;
-    const headOk = async (path) => {
+    const headInfo = async (path) => {
       try {
         const res = await fetch(`${path}?ts=${Date.now()}`, { method: 'HEAD', cache: 'no-store' });
-        return res.ok || res.status === 304;
+        if (!(res.ok || res.status === 304)) return { ok: false, fresh: false };
+        const lmRaw = res.headers?.get?.("last-modified");
+        const lm = lmRaw ? Date.parse(lmRaw) : NaN;
+        const start = channelUploadStartMsRef.current || 0;
+        const fresh = start <= 0 || !Number.isFinite(lm) || lm >= (start - 1000);
+        return { ok: true, fresh };
+      } catch {
+        return { ok: false, fresh: false };
+      }
+    };
+    const headExists = async (path) => {
+      try {
+        const res = await fetch(`${path}?ts=${Date.now()}`, { method: "HEAD", cache: "no-store" });
+        return Boolean(res.ok || res.status === 304);
       } catch {
         return false;
       }
     };
     const tick = async () => {
+      if (channelPipelineRef.current) return;
+      const statusData = await fetchStatus();
+      const statusFetched = Boolean(statusData);
+      const generatingNow = Boolean(statusData?.generating);
       const needCoords = status.csv;
-      const [chOk, coOk] = await Promise.all([
-        headOk('/public/channel_info.json'),
-        needCoords ? headOk('/public/coords.json') : Promise.resolve(true),
+      const [chInfo, coInfo] = await Promise.all([
+        headInfo('/public/channel_info.json'),
+        needCoords ? headInfo('/public/coords.json') : Promise.resolve({ ok: true, fresh: true }),
       ]);
+      const markerNow = await headExists('/public/.generating');
       if (aborted) return;
+      setGeneratingMarkerPresent(markerNow);
+      const chOk = Boolean(chInfo.ok && chInfo.fresh);
+      const coOk = Boolean(coInfo.ok && coInfo.fresh);
       setJsonReady({ coords: coOk, channelInfo: chOk });
-      if (chOk && coOk) {
+      const elapsed = Date.now() - (channelUploadStartMsRef.current || 0);
+      const stableEnough = channelGeneratingSeen || elapsed > 1500;
+      const completeNow = chOk && coOk && stableEnough && statusFetched && !generatingNow && !markerNow && !processing.channels;
+      if (completeNow) {
+        channelFinishStableCountRef.current += 1;
+      } else {
+        channelFinishStableCountRef.current = 0;
+      }
+      if (channelFinishStableCountRef.current >= 3) {
         setWaitingForJson(false);
+        setChannelPipelineActive(false);
+        setChannelOverlayLocked(false);
+        persistChannelOverlayLock(false);
+        channelFinishStableCountRef.current = 0;
         await fetchStatus();
         await onRefresh();
       }
@@ -102,7 +174,7 @@ export default function FileUpload({
     const id = setInterval(tick, 800);
     tick();
     return () => { aborted = true; clearInterval(id); };
-  }, [waitingForJson, status.csv, fetchStatus, onRefresh]);
+  }, [waitingForJson, status.csv, status.generating, channelGeneratingSeen, processing.channels, fetchStatus, onRefresh, persistChannelOverlayLock]);
 
   // generating true→false: refresh
   const prevGeneratingRef = useRef(false);
@@ -132,6 +204,14 @@ export default function FileUpload({
     setBusy(true);
     setProcessing(prev => ({ ...prev, [fileType]: true }));
     if (fileType === 'channels') {
+      channelPipelineRef.current = true;
+      setChannelPipelineActive(true);
+      setChannelOverlayLocked(true);
+      persistChannelOverlayLock(true);
+      channelFinishStableCountRef.current = 0;
+      setChannelGeneratingSeen(false);
+      setGeneratingMarkerPresent(true);
+      channelUploadStartMsRef.current = Date.now();
       setWaitingForJson(true);
       setJsonReady({ coords: false, channelInfo: false });
     }
@@ -152,13 +232,28 @@ export default function FileUpload({
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
         await fetchStatus();
-        await onRefresh();
+        await onRefresh(fileType === 'channels' ? { blockingAtlasPrefetch: true } : undefined);
+        // For channels, keep waitingForJson true until HEAD polling confirms new files are ready.
+        if (fileType === 'channels') await fetchStatus();
       } else {
         console.error(`${fileType} file upload failed:`, response.statusText);
+        if (fileType === 'channels') {
+          setChannelPipelineActive(false);
+          setChannelOverlayLocked(false);
+          persistChannelOverlayLock(false);
+          setWaitingForJson(false);
+        }
       }
     } catch (error) {
       console.error(`${fileType} file upload error:`, error);
+      if (fileType === 'channels') {
+        setChannelPipelineActive(false);
+        setChannelOverlayLocked(false);
+        persistChannelOverlayLock(false);
+        setWaitingForJson(false);
+      }
     } finally {
+      if (fileType === 'channels') channelPipelineRef.current = false;
       setBusy(false);
       setProcessing(prev => ({ ...prev, [fileType]: false }));
     }
@@ -238,6 +333,14 @@ export default function FileUpload({
         console.log(`${fileType} file cleared`);
         await fetchStatus();
         await onRefresh();
+        if (fileType === 'channels') {
+          setWaitingForJson(false);
+          setChannelPipelineActive(false);
+          setChannelOverlayLocked(false);
+          persistChannelOverlayLock(false);
+          setGeneratingMarkerPresent(false);
+          await fetchStatus();
+        }
       } else {
         console.error(`${fileType} file clear failed:`, response.statusText);
       }
@@ -253,16 +356,17 @@ export default function FileUpload({
 
   return (
     <>
-      {(processing.csv || processing.zarr || processing.raw || processing.feat || processing.channels || processing.zooming || status.generating || (waitingForJson && !(jsonReady.channelInfo && (status.csv ? jsonReady.coords : true)))) && (
+      {(busy || processing.csv || processing.zarr || processing.raw || processing.feat || processing.channels || processing.zooming || status.generating || generatingMarkerPresent || channelPipelineActive || channelOverlayLocked || (waitingForJson && !(jsonReady.channelInfo && (status.csv ? jsonReady.coords : true)))) && (
         <div className="fullscreen-processing-overlay">
           <div className="processing-content">
             <div className="processing-spinner"></div>
+            {busy && !processing.csv && !processing.zarr && !processing.raw && !processing.feat && !processing.zooming && !processing.channels && <div className="processing-text">Processing...</div>}
             {processing.csv && <div className="processing-text">uploading Raw Data...</div>}
             {processing.zarr && <div className="processing-text">uploading Image Data...</div>}
             {processing.raw && <div className="processing-text">uploading Meta Data...</div>}
             {processing.feat && <div className="processing-text">uploading Features...</div>}
             {processing.zooming && <div className="processing-text">uploading Zooming Data...</div>}
-            {(processing.channels || status.generating || (waitingForJson && !(jsonReady.channelInfo && (status.csv ? jsonReady.coords : true)))) && <div className="processing-text">Generating channel_info.json and coords.json...</div>}
+            {(processing.channels || status.generating || generatingMarkerPresent || channelPipelineActive || channelOverlayLocked || (waitingForJson && !(jsonReady.channelInfo && (status.csv ? jsonReady.coords : true)))) && <div className="processing-text">Generating channel_info.json and coords.json...</div>}
           </div>
         </div>
       )}
@@ -276,7 +380,7 @@ export default function FileUpload({
             aria-haspopup="menu"
             aria-expanded={open}
           >
-            {processing.csv || processing.zarr || processing.raw || processing.feat || processing.channels || processing.zooming ? 'Uploading...' : 'Upload'}
+            {processing.csv || processing.zarr || processing.raw || processing.feat || processing.channels || processing.zooming || channelPipelineActive ? 'Uploading...' : 'Upload'}
           </button>
           {open && (
             <div className="upload-menu" role="menu">
