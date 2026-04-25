@@ -277,7 +277,17 @@ export default function HoverPreview({
   neighNamesAnnotationOn = false,
   rawAnnotationById = new Map(),
   filteredIds = null,
+  getWorldPosition = null,
+  /** deck pickObject radius; larger for transparent OME spatial scatter */
+  pickRadius = 6,
+  /** Hover ring scale vs computedImageSize (slightly larger on OME) */
+  hoverRingScale = 1,
 }) {
+  const toWorld =
+    typeof getWorldPosition === "function"
+      ? getWorldPosition
+      : (p) => [p.x, p.y, p.z ?? 0];
+
   const [hoverInfo, setHoverInfo] = useState(null);
   const [outlineRect, setOutlineRect] = useState(null);
 
@@ -335,7 +345,7 @@ export default function HoverPreview({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      const picked = deckInstance.pickObject({ x, y, radius: 6 });
+      const picked = deckInstance.pickObject({ x, y, radius: pickRadius });
       if (picked && picked.object) {
         setHoverInfo({
           ...picked,
@@ -355,7 +365,7 @@ export default function HoverPreview({
       containerEl.removeEventListener("mousemove", handleMove);
       containerEl.removeEventListener("mouseleave", handleLeave);
     };
-  }, [deckRef, containerRef, selectedIds, hoverEnabled]);
+  }, [deckRef, containerRef, selectedIds, hoverEnabled, pickRadius]);
 
   // Hovered tile outline in screen px
   useEffect(() => {
@@ -367,7 +377,7 @@ export default function HoverPreview({
       deckRef,
       containerRef,
       items: [hoverInfo.object],
-      getWorldPosition: (p) => [p.x, p.y, p.z ?? 0],
+      getWorldPosition: (p) => toWorld(p),
       mapResult: (p, sx, sy, offsetX, offsetY) => ({
         x: sx + offsetX,
         y: sy + offsetY,
@@ -379,14 +389,15 @@ export default function HoverPreview({
     }
     const { x, y } = projected[0];
     // Outline ≈ tile size
-    const baseSize = computedImageSize;
+    const baseSize = computedImageSize * hoverRingScale;
+    // Match Viewer selected-tile-outline: Math.max(6, computedImageSize)
     const size = Math.max(6, baseSize);
     setOutlineRect({
       left: x - size / 2,
       top: y - size / 2,
       size,
     });
-  }, [hoverInfo, deckRef, containerRef, computedImageSize]);
+  }, [hoverInfo, deckRef, containerRef, computedImageSize, toWorld, hoverRingScale]);
 
   if (!hoverInfo || !hoverInfo.object) return null;
 

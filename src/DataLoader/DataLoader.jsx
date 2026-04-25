@@ -11,6 +11,18 @@ import {
   generateAtlasGrayPost,
   prewarm as prewarmAPI,
 } from "../api/api";
+import {
+  clearOmeTiffFileHandle,
+  getFileFromOmeTiffHandle,
+  getStoredOmeTiffFileHandle,
+} from "../utils/omeTiffLocalPersistence";
+import {
+  openOmeTiffAsPixelSources,
+  openOmeTiffFromFile,
+  computeOmeChannelRangeFromPixels,
+} from "../ome/omeVivLoader";
+
+const OME_TIFF_PUBLIC_PATH = "/public/image.ome.tif";
 
 const API = API_BASE;
 
@@ -55,12 +67,148 @@ export default function useDataLoader() {
   
   // Single-view UMAP toggle
   const [useUMAP, setUseUMAP] = useState(false);
+  const [omeTiffPresent, setOmeTiffPresent] = useState(false);
+  /** Local OME-TIFF (browser File) — Viv path, no backend / no Zarr tiles */
+  const [omeTiffFile, setOmeTiffFile] = useState(null);
+  /** Handle persisted; after reload user must click to complete requestPermission. */
+  const [omeTiffRestoreNeedsClick, setOmeTiffRestoreNeedsClick] = useState(false);
+  const omeTiffSpatialActive = Boolean(omeTiffFile) || omeTiffPresent;
+  /** channel_id (UI) → OME 0-based c from channel_info.json ome_c (from raw_index). */
+  const [channelOmeIndexById, setChannelOmeIndexById] = useState({});
+  /** channel_id (UI) -> channel display name, from channel_info.json */
+  const [channelNameById, setChannelNameById] = useState({});
+  /** channel_id (UI) -> whether explicit ome index exists in channel_info */
+  const [channelHasExplicitOmeIndexById, setChannelHasExplicitOmeIndexById] = useState({});
+  /** channel_id (UI) -> pixel range derived from OME-TIFF metadata */
+  const [omePixelRangeByChannelId, setOmePixelRangeByChannelId] = useState({});
 
   const [chunkUV, setChunkUV] = useState({});
   const [atlasURL, setAtlasURL] = useState({}); // legacy merged atlas
   const [atlasByChannel, setAtlasByChannel] = useState({}); // per-ch grayscale
   const [fetchingChunks, setFetchingChunks] = useState(new Set());
   const [dataVersion, setDataVersion] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/public/channel_info.json?ts=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok) {
+          if (!cancelled) setChannelOmeIndexById({});
+          return;
+        }
+        const data = await res.json();
+        const m = {};
+        const n = {};
+        const explicit = {};
+        for (const ch of data?.channels || []) {
+          const id = Number(ch?.id);
+          if (!Number.isFinite(id)) continue;
+          n[id] = typeof ch?.name === "string" ? ch.name : "";
+          const raw = ch.raw_index != null && ch.raw_index !== "" ? Number(ch.raw_index) : NaN;
+          let omeC;
+          // raw_index: 1-based OME channel index in file → Viv c = raw_index - 1
+          if (Number.isFinite(raw) && raw >= 1) {
+            omeC = Math.max(0, Math.floor(raw) - 1);
+            explicit[id] = true;
+          } else if (Number.isFinite(Number(ch?.ome_c))) {
+            omeC = Number(ch.ome_c);
+            explicit[id] = true;
+          } else {
+            omeC = id;
+            explicit[id] = false;
+          }
+          m[id] = omeC;
+        }
+        if (!cancelled) {
+          setChannelOmeIndexById(m);
+          setChannelNameById(n);
+          setChannelHasExplicitOmeIndexById(explicit);
+        }
+      } catch {
+        if (!cancelled) {
+          setChannelOmeIndexById({});
+          setChannelNameById({});
+          setChannelHasExplicitOmeIndexById({});
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dataVersion]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const hasRemoteOme = Boolean(!omeTiffFile && omeTiffPresent);
+    const hasLocalOme = Boolean(omeTiffFile);
+    if (!hasLocalOme && !hasRemoteOme) {
+      setOmePixelRangeByChannelId({});
+      return undefined;
+    }
+
+    const remoteUrl = hasRemoteOme
+      ? (API_BASE
+          ? `${API_BASE}${OME_TIFF_PUBLIC_PATH}`
+          : `${typeof window !== "undefined" ? window.location.origin : ""}${OME_TIFF_PUBLIC_PATH}`)
+      : null;
+
+    (async () => {
+      try {
+        const source = hasLocalOme
+          ? await openOmeTiffFromFile(omeTiffFile)
+          : await openOmeTiffAsPixelSources(remoteUrl);
+        if (cancelled) return;
+
+        const mapped = {};
+        const omeNameToIdx = {};
+        for (let i = 0; i < (source?.names?.length || 0); i++) {
+          const key = String(source.names[i] || "").trim().toLowerCase();
+          if (key && !Object.prototype.hasOwnProperty.call(omeNameToIdx, key)) {
+            omeNameToIdx[key] = i;
+          }
+        }
+        const selectedList = Array.isArray(channels)
+          ? channels.map((x) => Number(x)).filter((x) => Number.isFinite(x))
+          : [];
+        for (const id of selectedList) {
+          const explicit = Boolean(channelHasExplicitOmeIndexById?.[id]);
+          let omeIdx = Number(channelOmeIndexById?.[id]);
+          if (!explicit) {
+            const nm = String(channelNameById?.[id] || "").trim().toLowerCase();
+            if (nm && Object.prototype.hasOwnProperty.call(omeNameToIdx, nm)) {
+              omeIdx = Number(omeNameToIdx[nm]);
+            }
+          }
+          if (!Number.isFinite(id) || !Number.isFinite(omeIdx) || omeIdx < 0) continue;
+          const fromMetadata = source?.channelRanges?.[omeIdx];
+          const computed = await computeOmeChannelRangeFromPixels(source, omeIdx);
+          const r = computed || fromMetadata;
+          if (!r) continue;
+          mapped[id] = {
+            data_min: Number.isFinite(r.dataMin) ? r.dataMin : 0,
+            data_max: Number.isFinite(r.dataMax) ? r.dataMax : 65535,
+            auto_min: Number.isFinite(r.autoMin) ? r.autoMin : 0,
+            auto_max: Number.isFinite(r.autoMax) ? r.autoMax : 65535,
+          };
+        }
+        setOmePixelRangeByChannelId(mapped);
+      } catch {
+        if (!cancelled) setOmePixelRangeByChannelId({});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    omeTiffFile,
+    omeTiffPresent,
+    channelOmeIndexById,
+    channelNameById,
+    channelHasExplicitOmeIndexById,
+    channels,
+  ]);
 
   // Request queue, max 6 parallel
   const limiterRef = useRef({ max: 6, inFlight: 0, queue: [] });
@@ -97,6 +245,44 @@ export default function useDataLoader() {
   };
   // Dim points not in filter
   const [filteredIds, setFilteredIds] = useState(() => new Set());
+
+  const clearLocalOmeTiff = useCallback(() => {
+    setOmeTiffFile(null);
+    setOmeTiffRestoreNeedsClick(false);
+    clearOmeTiffFileHandle();
+  }, []);
+
+  const restoreOmeTiffFromDisk = useCallback(async () => {
+    const handle = await getStoredOmeTiffFileHandle();
+    if (!handle) {
+      setOmeTiffRestoreNeedsClick(false);
+      return;
+    }
+    const file = await getFileFromOmeTiffHandle(handle);
+    if (file) {
+      setOmeTiffFile(file);
+      setOmeTiffRestoreNeedsClick(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const handle = await getStoredOmeTiffFileHandle();
+      if (!handle || cancelled) return;
+      const file = await getFileFromOmeTiffHandle(handle);
+      if (cancelled) return;
+      if (file) {
+        setOmeTiffFile(file);
+        setOmeTiffRestoreNeedsClick(false);
+      } else {
+        setOmeTiffRestoreNeedsClick(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function safeScale(v, minV, maxV) {
     const span = maxV - minV;
@@ -135,12 +321,67 @@ export default function useDataLoader() {
     return Math.min(sizeX, sizeY) * RAW_GRID_SAFETY;
   }
 
-  // Project raw + UMAP, normalize each separately
+  // Project raw + UMAP, normalize each separately (raw stays in pixel space when OME-TIFF is loaded)
   const applyAllProjections = () => {
     if (!allCoords || allCoords.length === 0) {
       setPoints([]);
       setPointsRaw([]);
       setPointsUMAP([]);
+      return;
+    }
+
+    if (omeTiffSpatialActive) {
+      const rawProjected = allCoords.map((src) => {
+        const raw = src?.raw || {};
+        return {
+          ...src,
+          label: src.label ?? (src.id % 11),
+          x: Number.isFinite(raw.x) ? raw.x : 0,
+          y: Number.isFinite(raw.y) ? raw.y : 0,
+          z: 0,
+        };
+      });
+      setPointsRaw(rawProjected);
+      setPoints(rawProjected);
+
+      const umapGetter = (p) => {
+        if (is3D && p.umap3d) return { x: p.umap3d.x, y: p.umap3d.y, z: p.umap3d.z ?? 0 };
+        if (!is3D && p.umap2d) return { x: p.umap2d.x, y: p.umap2d.y, z: 0 };
+        return { x: 0, y: 0, z: 0 };
+      };
+      const projectAndNormalize = (getter) => {
+        const projected = new Array(allCoords.length);
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+
+        for (let i = 0; i < allCoords.length; i++) {
+          const src = allCoords[i];
+          const { x, y, z } = getter(src);
+          const item = { ...src, x, y, z: z ?? 0 };
+          projected[i] = item;
+
+          const vx = item.x;
+          const vy = item.y;
+          const vz = item.z || 0;
+          if (vx < minX) minX = vx; if (vx > maxX) maxX = vx;
+          if (vy < minY) minY = vy; if (vy > maxY) maxY = vy;
+          if (vz < minZ) minZ = vz; if (vz > maxZ) maxZ = vz;
+        }
+
+        for (let i = 0; i < projected.length; i++) {
+          const p = projected[i];
+          projected[i] = {
+            ...p,
+            label: p.label ?? (p.id % 11),
+            x: safeScale(p.x, minX, maxX),
+            y: -safeScale(p.y, minY, maxY),
+            z: safeScale(p.z || 0, minZ, maxZ),
+          };
+        }
+        return projected;
+      };
+      setPointsUMAP(projectAndNormalize(umapGetter));
       return;
     }
 
@@ -196,23 +437,30 @@ export default function useDataLoader() {
     setPoints(scaledRaw);
   };
 
-  const refreshData = useCallback(async () => {
-    setLoading(true);
+  /** Fast path: upload flags only (OME-TIFF / etc.) — do not wait for meta or coords. */
+  const refreshUploadStatus = useCallback(async () => {
+    try {
+      const statusRes = await fetch(`/upload/status?ts=${Date.now()}`, { cache: "no-store" });
+      if (!statusRes.ok) return;
+      const statusData = await statusRes.json();
+      setRawAnnotationColumns(statusData?.raw_annotation_columns || { celltype: false, neigh_names: false });
+      setOmeTiffPresent(Boolean(statusData?.ome_tiff));
+    } catch (_) {
+      setRawAnnotationColumns({ celltype: false, neigh_names: false });
+      setOmeTiffPresent(false);
+    }
+  }, []);
+
+  const refreshData = useCallback(async (opts = {}) => {
+    const skipLoading = opts?.skipLoading === true;
+    if (!skipLoading) setLoading(true);
     try {
       const abort = new AbortController();
+      // OME-TIFF / upload flags first so Spatial view can switch before heavy meta+coords
+      await refreshUploadStatus();
+
       let metaJson = await fetchMeta(abort.signal);
       setMeta(metaJson);
-
-      // Upload status → annotation column flags
-      try {
-        const statusRes = await fetch(`/upload/status?ts=${Date.now()}`, { cache: "no-store", signal: abort.signal });
-        if (statusRes.ok) {
-          const statusData = await statusRes.json();
-          setRawAnnotationColumns(statusData?.raw_annotation_columns || { celltype: false, neigh_names: false });
-        }
-      } catch (_) {
-        setRawAnnotationColumns({ celltype: false, neigh_names: false });
-      }
 
       let coords = await fetchCoords(abort.signal);
       if (!Array.isArray(coords)) coords = [];
@@ -268,9 +516,9 @@ export default function useDataLoader() {
       setWindows({});
       setDataVersion((v) => v + 1);
     } finally {
-      setLoading(false);
+      if (!skipLoading) setLoading(false);
     }
-  }, []);
+  }, [refreshUploadStatus]);
 
   useEffect(() => {
     refreshData();
@@ -285,7 +533,7 @@ export default function useDataLoader() {
       setPointsUMAP([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCoords]);
+  }, [allCoords, omeTiffSpatialActive]);
 
   // is3D flip → rebuild UMAP projection
   useEffect(() => {
@@ -386,7 +634,7 @@ export default function useDataLoader() {
     }
   };
 
-  // Prefetch UV + gray atlas per chunk/channel
+  // Prefetch UV + gray atlas (UMAP sprites + spatial hover); keep even with OME
   useEffect(() => {
     if (!meta || loading) return;
     const chunks = new Set((allCoords || []).map((p) => p.chunk_id));
@@ -459,6 +707,22 @@ export default function useDataLoader() {
     setNeighNamesAnnotationOn,
     
     useUMAP,
+    omeTiffPresent,
+    omeTiffFile,
+    setOmeTiffFile,
+    clearLocalOmeTiff,
+    omeTiffRestoreNeedsClick,
+    restoreOmeTiffFromDisk,
+    omeTiffSpatialActive,
+    channelOmeIndexById,
+    omePixelRangeByChannelId,
+    /** Server-hosted OME-TIFF URL (only if no local file). */
+    omeTiffUrl:
+      !omeTiffFile && omeTiffPresent
+        ? API_BASE
+          ? `${API_BASE}${OME_TIFF_PUBLIC_PATH}`
+          : `${typeof window !== "undefined" ? window.location.origin : ""}${OME_TIFF_PUBLIC_PATH}`
+        : null,
 
     selectionMode,
     setSelectionMode,
@@ -480,6 +744,7 @@ export default function useDataLoader() {
     setUseUMAP,
     setImageSize,
     refreshData,
+    refreshUploadStatus,
     dataVersion,
     
     ensureUV,

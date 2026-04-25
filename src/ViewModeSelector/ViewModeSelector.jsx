@@ -46,7 +46,7 @@ export default function ViewModeSelector({ viewMode, setViewMode, useUMAP, setUs
               onChange={() => setUseUMAP(false)}
             />
             <span className="radio-custom"></span>
-            Raw
+            Spatial
           </label>
           <label className="render-option">
             <input

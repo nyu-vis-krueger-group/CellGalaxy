@@ -7,6 +7,12 @@ import { defaultRegionColors, makeRegionIndexGetter } from "../SelectionOverlay/
 import { ANALYSIS_SINGLE } from "../constants/analysis";
 import { SELECTION_NONE} from "../constants/selection";
 import {
+  CELL_FOCUS_ZOOM_SPATIAL,
+  CELL_FOCUS_ZOOM_UMAP,
+  OME_AUTO_FIT_ZOOM_SUB,
+  OME_SPATIAL_IMAGE_SIZE_FIXED,
+} from "../constants/render";
+import {
   OrthographicView,
   OrbitView,
   OrthographicController,
@@ -27,6 +33,13 @@ import GroupToolbarContainer from "../ToolBar/GroupToolbar/GroupToolbarContainer
 import ClusterHoverMask from "../ClusterHoverMask/ClusterHoverMask";
 import DeckViewState from "./DeckViewState";
 import ImageLayers from "../layers/ImageLayers";
+import { MultiscaleImageLayer } from "@hms-dbmi/viv";
+import {
+  openOmeTiffAsPixelSources,
+  openOmeTiffFromFile,
+  buildMultiscaleImageLayerProps,
+  MAX_CHANNELS,
+} from "../ome/omeVivLoader";
 import ClusterOutlines from "../ClusterHoverMask/ClusterOutlines";
 import useClusterSelection from "./useClusterSelection";
 import useClusterAnnotations from "./useClusterAnnotations";
@@ -88,13 +101,110 @@ const Viewer = ({
   zoomSpeed = 0.01,
   // Camera/point transition animations
   transitionsEnabled = true,
+  /** When set, raw / spatial view uses Viv multiscale OME-TIFF instead of Zarr tile atlases */
+  omeTiffUrl = null,
+  /** Local OME-TIFF file (browser) — takes precedence over omeTiffUrl */
+  omeTiffFile = null,
+  /** channel_id → OME 0-based c (from channel_info.json / channel_list raw_index). */
+  channelOmeIndexById = {},
 }) => {
   const isUMAPView =
     viewerId === "umap" || (viewerId === "single" && !!useUMAP);
+  const rawUsesOmeTiff = Boolean(omeTiffUrl || omeTiffFile) && !isUMAPView;
   // Raw space is always 2D; only UMAP respects the global 3D toggle.
   const viewIs3D = isUMAPView && is3D;
-  // Slider size: UMAP only; raw uses rawImageSize from tile/range.
-  const effectiveImageSize = isUMAPView ? imageSize : (rawImageSize ?? imageSize);
+  // UMAP: same Image size slider as dual view. OME spatial: fixed as OME_SPATIAL_IMAGE_SIZE_FIXED (~0.3), not slider-driven.
+  const UMAP_SLIDER_MIN = 0.3;
+  const UMAP_SLIDER_MAX = 6;
+  const markerViewportScale = 1;
+  const umapMatchedMarkerSize = Math.max(
+    UMAP_SLIDER_MIN,
+    Math.min(UMAP_SLIDER_MAX, imageSize * markerViewportScale),
+  );
+  const omeSpatialFixedMarkerSize = Math.max(
+    UMAP_SLIDER_MIN,
+    Math.min(
+      UMAP_SLIDER_MAX,
+      OME_SPATIAL_IMAGE_SIZE_FIXED * markerViewportScale,
+    ),
+  );
+  const effectiveImageSize = isUMAPView
+    ? umapMatchedMarkerSize
+    : rawUsesOmeTiff
+      ? omeSpatialFixedMarkerSize
+      : (rawImageSize ?? imageSize);
+  // Spatial+OME: points on Viv; UMAP: sprites (decoupled from global points/sprites toggle).
+  const effectiveRenderMode = rawUsesOmeTiff
+    ? "points"
+    : isUMAPView
+      ? "sprites"
+      : renderMode;
+
+  /** Single-view Spatial↔UMAP: id so Deck camera re-centers on coordinate change. */
+  const cameraSpaceId =
+    viewerId === "single"
+      ? isUMAPView
+        ? "single-umap"
+        : rawUsesOmeTiff
+          ? "single-spatial-ome"
+          : "single-spatial"
+      : viewerId;
+
+  const [omeTiffSource, setOmeTiffSource] = useState(null);
+  const [omeTiffLoadError, setOmeTiffLoadError] = useState(null);
+  const omeFittedRef = useRef(false);
+  /** Bump after OME fit so marker size zoom baseline matches post-fit camera. */
+  const [omeMarkerZoomBaselineSeq, setOmeMarkerZoomBaselineSeq] = useState(0);
+
+  useEffect(() => {
+    omeFittedRef.current = false;
+    setOmeMarkerZoomBaselineSeq(0);
+  }, [omeTiffUrl, omeTiffFile, rawUsesOmeTiff]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!rawUsesOmeTiff || (!omeTiffFile && !omeTiffUrl)) {
+      setOmeTiffSource(null);
+      setOmeTiffLoadError(null);
+      return undefined;
+    }
+    (async () => {
+      try {
+        const src = omeTiffFile
+          ? await openOmeTiffFromFile(omeTiffFile)
+          : await openOmeTiffAsPixelSources(omeTiffUrl);
+        if (!cancelled) {
+          setOmeTiffSource(src);
+          setOmeTiffLoadError(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setOmeTiffSource(null);
+          setOmeTiffLoadError(e?.message || String(e));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rawUsesOmeTiff, omeTiffFile, omeTiffUrl]);
+
+  const omePixelYFlip =
+    rawUsesOmeTiff &&
+    omeTiffSource?.imageHeight != null &&
+    Number.isFinite(omeTiffSource.imageHeight)
+      ? omeTiffSource.imageHeight
+      : null;
+
+  const rawToWorld = useCallback(
+    (p) => {
+      const z = p.z ?? 0;
+      if (omePixelYFlip == null) return [p.x, p.y, z];
+      return [p.x, omePixelYFlip - p.y, z];
+    },
+    [omePixelYFlip],
+  );
+
   const {
     viewState,
     setViewState,
@@ -107,10 +217,30 @@ const Viewer = ({
     is3D: viewIs3D,
     sharedZoom,
     setSharedZoom,
-    initialZoom: 8,
+    initialZoom: isUMAPView && viewerId === "single" ? 9 : 8,
     imageSize: effectiveImageSize,
     transitionsEnabled,
+    pixelYFlipHeight: omePixelYFlip,
+    cameraSpaceId,
+    markerZoomBaselineSeq:
+      rawUsesOmeTiff && omeMarkerZoomBaselineSeq > 0
+        ? omeMarkerZoomBaselineSeq
+        : undefined,
   });
+
+  const prevCameraSpaceIdRef = useRef(null);
+  useEffect(() => {
+    const prev = prevCameraSpaceIdRef.current;
+    prevCameraSpaceIdRef.current = cameraSpaceId;
+    if (cameraSpaceId !== "single-umap") return;
+    if (prev === "single-spatial" || prev === "single-spatial-ome") {
+      setViewState((p) => ({
+        ...p,
+        zoom: 9,
+        transitionDuration: 0,
+      }));
+    }
+  }, [cameraSpaceId, setViewState]);
 
   const [semanticLevel, setSemanticLevel] = useState(6); // 1..6, finest default
   const [isSemanticAuto, setIsSemanticAuto] = useState(true);
@@ -138,9 +268,9 @@ const Viewer = ({
     setSemanticLevel(lvl);
   }, [isUMAPView, isSemanticAuto, viewState?.zoom]);
 
-  // Max visible points per level (5k..100k linear).
+  // Max visible points per level (5k..80k linear, step 15k).
   const SAMPLING_BUDGETS = useMemo(
-    () => [5000, 24000, 43000, 62000, 81000, 100000],
+    () => [5000, 20000, 35000, 50000, 65000, 80000],
     []
   );
 
@@ -170,6 +300,27 @@ const Viewer = ({
     () => buildIconMappingsByChunk(meta, chunkUV),
     [meta, chunkUV]
   );
+
+  const omeDeckLayer = useMemo(() => {
+    if (!rawUsesOmeTiff || !omeTiffSource) return null;
+    const chList = (Array.isArray(channels) ? channels : [])
+      .map((c) => Number(c))
+      .filter((id) => Number.isFinite(id))
+      .slice(0, MAX_CHANNELS);
+    if (chList.length === 0) return null;
+    const map = channelOmeIndexById && typeof channelOmeIndexById === "object" ? channelOmeIndexById : {};
+    const mapHasKey = (id) => Object.prototype.hasOwnProperty.call(map, id);
+    if (!chList.every(mapHasKey)) return null;
+    const props = buildMultiscaleImageLayerProps(omeTiffSource, {
+      channels: chList,
+      colors,
+      windows,
+      alphas,
+      channelOmeIndexById: map,
+    });
+    if (!props) return null;
+    return new MultiscaleImageLayer({ ...props, pickable: false });
+  }, [rawUsesOmeTiff, omeTiffSource, channels, colors, windows, alphas, channelOmeIndexById]);
 
   const { selectClusterByLabel, selectSingleById } = useClusterSelection({
     points: visiblePoints,
@@ -212,6 +363,49 @@ const Viewer = ({
       if (readyTimeoutRef.current) clearTimeout(readyTimeoutRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!rawUsesOmeTiff || !omeTiffSource || !containerReady) return;
+    if (omeFittedRef.current) return;
+    const el = containerRef.current;
+    if (!el || el.clientWidth < 24 || el.clientHeight < 24) return;
+    const { imageWidth, imageHeight } = omeTiffSource;
+    let minX = 0;
+    let minY = 0;
+    let maxX = imageWidth;
+    let maxY = imageHeight;
+    if (points?.length) {
+      for (const p of points) {
+        const [wx, wy] = rawToWorld(p);
+        if (typeof wx === "number") {
+          minX = Math.min(minX, wx);
+          maxX = Math.max(maxX, wx);
+        }
+        if (typeof wy === "number") {
+          minY = Math.min(minY, wy);
+          maxY = Math.max(maxY, wy);
+        }
+      }
+    }
+    const pad = 48;
+    const vw = el.clientWidth;
+    const vh = el.clientHeight;
+    const spanX = Math.max(1, maxX - minX);
+    const spanY = Math.max(1, maxY - minY);
+    const z0 = Math.log2(
+      Math.min((vw - 2 * pad) / spanX, (vh - 2 * pad) / spanY),
+    );
+    const z = z0 - OME_AUTO_FIT_ZOOM_SUB;
+    setViewState((prev) => ({
+      ...prev,
+      target: [(minX + maxX) / 2, (minY + maxY) / 2, 0],
+      zoom: z,
+      transitionDuration: 0,
+    }));
+    setOmeMarkerZoomBaselineSeq((n) => n + 1);
+    omeFittedRef.current = true;
+  }, [rawUsesOmeTiff, omeTiffSource, points, containerReady, setViewState, rawToWorld]);
+
   const [toolbar, setToolbar] = useState({ show: false, x: 0, y: 0, object: null });
   // Analysis popover
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -254,7 +448,7 @@ const Viewer = ({
     if (selected.length === 0) return;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (const p of selected) {
-      const x = p.x ?? 0, y = p.y ?? 0, z = p.z ?? 0;
+      const [x, y, z] = rawToWorld(p);
       if (x < minX) minX = x; if (x > maxX) maxX = x;
       if (y < minY) minY = y; if (y > maxY) maxY = y;
       if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
@@ -271,10 +465,20 @@ const Viewer = ({
         ? new LinearInterpolator(["target", "zoom"])
         : undefined,
     }));
-  }, [points, selectedIds, setViewState, transitionsEnabled]);
+  }, [points, selectedIds, setViewState, transitionsEnabled, rawToWorld]);
 
   // Back to data center + zoom 8
-  const initialTarget = useMemo(() => computeCenter(points || []), [points]);
+  const initialTarget = useMemo(() => {
+    if (
+      omePixelYFlip != null &&
+      Number.isFinite(omePixelYFlip) &&
+      (points?.length ?? 0) > 0
+    ) {
+      const h = omePixelYFlip;
+      return computeCenter(points.map((p) => ({ ...p, y: h - (p.y ?? 0) })));
+    }
+    return computeCenter(points || []);
+  }, [points, omePixelYFlip]);
   const restoreView = useCallback(() => {
     setViewState((prev) => ({
       ...prev,
@@ -324,15 +528,15 @@ const Viewer = ({
     const currentZoom = typeof viewState?.zoom === "number" ? viewState.zoom : 8;
     const zoomThreshold = 9;
     if (currentZoom < zoomThreshold && info?.object) {
-      const cellX = info.object.x ?? 0;
-      const cellY = info.object.y ?? 0;
-      const cellZ = info.object.z ?? 0;
-      const targetZoom = 14;
-      
+      const [cellX, cellY, cellZ] = rawToWorld(info.object);
+      const cellFocusZoom = isUMAPView
+        ? CELL_FOCUS_ZOOM_UMAP
+        : CELL_FOCUS_ZOOM_SPATIAL;
+
       setViewState((prev) => ({
         ...prev,
         target: [cellX, cellY, cellZ],
-        zoom: targetZoom,
+        zoom: cellFocusZoom,
         transitionDuration: transitionsEnabled ? 800 : 0,
         transitionEasing: transitionsEnabled ? ease : undefined,
         transitionInterpolator: transitionsEnabled
@@ -399,7 +603,7 @@ const Viewer = ({
       deckRef,
       containerRef,
       items: clusterPreviewPoints,
-      getWorldPosition: (p) => [p.x, p.y, p.z ?? 0],
+      getWorldPosition: (p) => rawToWorld(p),
       mapResult: (p, sx, sy, offsetX, offsetY) => ({
         point: p,
         x: sx + offsetX,
@@ -410,7 +614,7 @@ const Viewer = ({
     });
     if (result.length === 0) return;
     setClusterPreviewScreens(result);
-  }, [isUMAPView, clusterPreviewOn, clusterPreviewPoints, viewState, deckRef, containerRef]);
+  }, [isUMAPView, clusterPreviewOn, clusterPreviewPoints, viewState, deckRef, containerRef, rawToWorld]);
 
   // Cluster title DOM positions
   const [clusterAnnotationScreens, setClusterAnnotationScreens] = useState([]);
@@ -502,6 +706,7 @@ const Viewer = ({
     screenOutlines3D: screenOutlines,
     level: semanticLevel,
     filteredDominantAnnotations,
+    pixelYFlipHeight: omePixelYFlip,
   });
 
   // Titles via DOM, not Deck TextLayer
@@ -520,6 +725,7 @@ const Viewer = ({
       deckRef,
       containerRef,
       items: clusterAnnotationData,
+      // position already in Deck world space (incl. OME y-flip) from useClusterAnnotations
       getWorldPosition: (d) => d.position || [0, 0, 0],
       mapResult: (d, sx, sy, offsetX, offsetY) => ({
         ...d,
@@ -557,7 +763,7 @@ const Viewer = ({
       deckRef,
       containerRef,
       items: visiblePoints,
-      getWorldPosition: (p) => [p.x, p.y, p.z ?? 0],
+      getWorldPosition: (p) => rawToWorld(p),
       mapResult: (p, sx, sy, offsetX, offsetY) => ({ ...p, x: sx + offsetX, y: sy + offsetY }),
     });
     const containerEl = containerRef?.current;
@@ -617,6 +823,7 @@ const Viewer = ({
     viewState,
     deckRef,
     containerRef,
+    rawToWorld,
   ]);
 
   // Similarity rank label positions
@@ -630,6 +837,7 @@ const Viewer = ({
     setViewState,
     transitionsEnabled,
     setSimilarityRankings,
+    mapWorldPosition: rawToWorld,
   });
 
   // Selected tile outline DOM positions
@@ -650,7 +858,7 @@ const Viewer = ({
       deckRef,
       containerRef,
       items: selectedPointsForOutline,
-      getWorldPosition: (p) => [p.x, p.y, p.z ?? 0],
+      getWorldPosition: (p) => rawToWorld(p),
       mapResult: (p, sx, sy, offsetX, offsetY) => {
         const rIdx = typeof getRegionIndexForId === "function"
           ? getRegionIndexForId(p.id)
@@ -673,7 +881,16 @@ const Viewer = ({
       return;
     }
     setSelectedTileScreens(result);
-  }, [selectedIds, visiblePoints, viewState, deckRef, containerRef, getRegionIndexForId, regionColors]);
+  }, [
+    selectedIds,
+    visiblePoints,
+    viewState,
+    deckRef,
+    containerRef,
+    getRegionIndexForId,
+    regionColors,
+    rawToWorld,
+  ]);
 
   useEffect(() => {
     if (!similarityRankings || similarityRankings.size === 0) {
@@ -690,7 +907,7 @@ const Viewer = ({
       deckRef,
       containerRef,
       items: rankedPoints,
-      getWorldPosition: (p) => [p.x, p.y, p.z ?? 0],
+      getWorldPosition: (p) => rawToWorld(p),
       mapResult: (p, sx, sy, offsetX, offsetY) => ({
         id: p.id,
         x: sx + offsetX,
@@ -700,11 +917,11 @@ const Viewer = ({
     });
     if (result.length === 0) return;
     setSimilarityRankingScreens(result);
-  }, [similarityRankings, points, viewState, deckRef, containerRef]);
+  }, [similarityRankings, points, viewState, deckRef, containerRef, rawToWorld]);
 
-  const layers = ImageLayers({
+  const imageLayers = ImageLayers({
     meta,
-    renderMode,
+    renderMode: effectiveRenderMode,
     points,
     atlasURL,
     atlasByChannel,
@@ -727,7 +944,13 @@ const Viewer = ({
     samplingThreshold,
     selectedIds,
     transitionsEnabled,
+    dotOutlineForBrightBackground: rawUsesOmeTiff,
+    suppressSpriteAtlases: rawUsesOmeTiff,
+    pixelYFlipHeight: omePixelYFlip,
+    omeSpatialScatterPickOnly: rawUsesOmeTiff && !clusterColorOn,
   });
+
+  const layers = omeDeckLayer ? [omeDeckLayer, ...imageLayers] : imageLayers;
 
   const controller =
     selectionMode === SELECTION_NONE
@@ -758,6 +981,25 @@ const Viewer = ({
 
   return (
     <div className="viewer-root" ref={containerRef}>
+      {rawUsesOmeTiff && omeTiffLoadError && (
+        <div
+          style={{
+            position: "absolute",
+            zIndex: 20,
+            left: 8,
+            top: 8,
+            maxWidth: "min(420px, 90%)",
+            padding: "8px 10px",
+            background: "rgba(40,0,0,0.85)",
+            color: "#fff",
+            fontSize: 12,
+            borderRadius: 6,
+          }}
+          role="alert"
+        >
+          OME-TIFF failed to load: {omeTiffLoadError}
+        </div>
+      )}
       {!containerReady ? (
         <div style={{ width: "100%", height: "100%" }} aria-hidden="true" />
       ) : (
@@ -768,6 +1010,7 @@ const Viewer = ({
         viewerId={viewerId}
         selectionMode={selectionMode}
         points={visiblePoints}
+        getWorldPositionForSelection={rawToWorld}
         filteredIds={filteredIds}
         selectedRegions={selectedRegions}
         setSelectedRegions={setSelectedRegions}
@@ -785,6 +1028,7 @@ const Viewer = ({
               containerRef={containerRef}
               active={hoverMaskEnabled && clusterOutlineOn}
               altPressed={altPressed}
+              pixelYFlipHeight={omePixelYFlip}
               screenOutlines3D={screenOutlines}
             >
               {({ onHover, layers: hoverLayers }) => (
@@ -836,6 +1080,7 @@ const Viewer = ({
               selectedIds={selectedIds}
               selectedRegions={selectedRegions}
               points={visiblePoints}
+              getWorldPosition={rawToWorld}
               deckRef={deckRef}
               containerRef={containerRef}
               toolbar={toolbar}
@@ -1042,13 +1287,15 @@ const Viewer = ({
         neighNamesAnnotationOn={neighNamesAnnotationOn}
         rawAnnotationById={rawAnnotationById}
         filteredIds={filteredIds}
+        getWorldPosition={rawToWorld}
+        pickRadius={rawUsesOmeTiff ? 14 : 6}
       />
 
       {/* Selection outlines */}
       {selectedTileScreens &&
         selectedTileScreens.length > 0 &&
         selectedTileScreens.map(({ id, x, y, color }) => {
-          // Outline ~ tile size
+          // Outline ~ tile size; same effectiveImageSize / zoom base as UMAP
           const size = Math.max(6, computedImageSize);
           let borderColor = "rgba(255, 255, 255, 0.9)";
           if (Array.isArray(color) && color.length >= 3) {

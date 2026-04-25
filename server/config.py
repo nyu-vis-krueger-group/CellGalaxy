@@ -1,11 +1,13 @@
 import os
 import shutil
 
-
-DATA_DIR = "public"
+# Resolve against package dir so uploads / exists() work regardless of process cwd (uvicorn, etc.)
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DATA_DIR = os.path.join(_PROJECT_ROOT, "public")
 
 CACHE_DIR = os.path.join(os.getcwd(), ".cache")
 ZARR_DIR = os.path.join(DATA_DIR, "output.zarr")
+OME_TIFF_PATH = os.path.join(DATA_DIR, "image.ome.tif")
 DEFAULT_TILE = 16
 
 

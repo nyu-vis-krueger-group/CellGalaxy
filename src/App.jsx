@@ -1,5 +1,9 @@
 import React from "react";
 import { VIEW_SINGLE } from "./constants/view";
+import {
+  SPATIAL_SCROLL_ZOOM_SPEED,
+  UMAP_SCROLL_ZOOM_SPEED,
+} from "./constants/render";
 import useDataLoader from "./DataLoader/DataLoader";
 import Viewer from "./Viewer/Viewer";
 import Control from "./Control/Control";
@@ -31,11 +35,14 @@ export default function App() {
       {viewMode === "dual" ? (
         <div className="viewer-split">
           <div className="viewer-pane">
-            <div className="viewer-label">Raw</div>
+            <div className="viewer-label">Spatial</div>
             <Viewer
               key={`viewer-raw-${viewMode}`}
               {...rest}
               viewerId="raw"
+              omeTiffUrl={rest.omeTiffUrl}
+              omeTiffFile={rest.omeTiffFile}
+              channelOmeIndexById={rest.channelOmeIndexById}
               points={pointsRaw}
               hoverMaskEnabled={false}
               clusterColorOn={clusterColorOn}
@@ -44,7 +51,7 @@ export default function App() {
               clusterAnnotationModel={clusterAnnotationModel}
               clusterPreviewOn={false}
               transitionsEnabled={!disableTransitions}
-              zoomSpeed={0.8}  // Raw: keep original zoom speed
+              zoomSpeed={SPATIAL_SCROLL_ZOOM_SPEED}
             />
           </div>
           <div className="viewer-pane">
@@ -53,6 +60,8 @@ export default function App() {
               key={`viewer-umap-${viewMode}`}
               {...rest}
               viewerId="umap"
+              omeTiffFile={null}
+              omeTiffUrl={null}
               points={pointsUMAP}
               hoverMaskEnabled={true}
               clusterColorOn={clusterColorOn}
@@ -61,16 +70,20 @@ export default function App() {
               clusterAnnotationModel={clusterAnnotationModel}
               clusterPreviewOn={clusterPreviewOn}
               transitionsEnabled={!disableTransitions}
+              zoomSpeed={UMAP_SCROLL_ZOOM_SPEED}
             />
           </div>
         </div>
       ) : (
         <div className="viewer-split">
           <div className="viewer-pane">
-            <div className="viewer-label">{rest.useUMAP ? "UMAP" : "Raw"}</div>
+            <div className="viewer-label">{rest.useUMAP ? "UMAP" : "Spatial"}</div>
             <Viewer
               {...rest}
               viewerId="single"
+              omeTiffUrl={rest.useUMAP ? null : rest.omeTiffUrl}
+              omeTiffFile={rest.useUMAP ? null : rest.omeTiffFile}
+              channelOmeIndexById={rest.channelOmeIndexById}
               points={rest.useUMAP ? pointsUMAP : pointsRaw}
               hoverMaskEnabled={!!rest.useUMAP}
               clusterColorOn={clusterColorOn}
@@ -79,8 +92,11 @@ export default function App() {
               clusterAnnotationModel={clusterAnnotationModel}
               clusterPreviewOn={rest.useUMAP ? clusterPreviewOn : false}
               transitionsEnabled={!disableTransitions}
-              // Single: raw zoomSpeed 0.8; UMAP uses Viewer default
-              zoomSpeed={rest.useUMAP ? undefined : 0.8}
+              zoomSpeed={
+                rest.useUMAP
+                  ? UMAP_SCROLL_ZOOM_SPEED
+                  : SPATIAL_SCROLL_ZOOM_SPEED
+              }
             />
           </div>
         </div>

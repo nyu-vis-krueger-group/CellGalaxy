@@ -8,6 +8,8 @@ export default function SelectionOverlay({
   viewerId = "viewer",
   selectionMode = "none", // 'none' | 'box' | 'lasso'
   points = [],
+  /** Optional: world coords like Deck scatter (e.g. raw+OME y-flip) */
+  getWorldPositionForSelection,
   filteredIds = new Set(),
   selectedRegions = [],
   setSelectedRegions = () => {},
@@ -82,7 +84,12 @@ export default function SelectionOverlay({
       }
     }
     if (selectionMode === SELECTION_LASSO && lassoPts.length >= 3 && viewport) {
-      const lassoIds = performLassoSelection(points, viewport, lassoPts);
+      const lassoIds = performLassoSelection(
+        points,
+        viewport,
+        lassoPts,
+        getWorldPositionForSelection,
+      );
       const activeFilter = filteredIds && filteredIds.size > 0;
       if (activeFilter) {
         for (const id of lassoIds) { if (filteredIds.has(id)) ids.add(id); }

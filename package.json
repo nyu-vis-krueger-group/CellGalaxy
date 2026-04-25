@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "deck.gl": "^9.2.0",
+    "@hms-dbmi/viv": "^0.19.0",
+    "@vivjs/loaders": "0.19.0",
+    "@vivjs/types": "^0.19.0",
+    "deck.gl": "9.1.15",
+    "math.gl": "^4.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1"
@@ -29,5 +33,20 @@
   "proxy": "http://localhost:8000",
   "devDependencies": {
     "eslint-plugin-react-hooks": "^5.2.0"
+  },
+  "overrides": {
+    "deck.gl": "9.1.15",
+    "@deck.gl/core": "9.1.15",
+    "@deck.gl/extensions": "9.1.15",
+    "@deck.gl/geo-layers": "9.1.15",
+    "@deck.gl/layers": "9.1.15",
+    "@deck.gl/mesh-layers": "9.1.15",
+    "@deck.gl/react": "9.1.15",
+    "@deck.gl/widgets": "9.1.15",
+    "@deck.gl/aggregation-layers": "9.1.15",
+    "@deck.gl/carto": "9.1.15",
+    "@deck.gl/json": "9.1.15",
+    "@deck.gl/mapbox": "9.1.15",
+    "@deck.gl/google-maps": "9.1.15"
   }
 }

@@ -26,6 +26,7 @@ export default function Control({
   imageSize,
   setImageSize,
   refreshData,
+  refreshUploadStatus,
   dataVersion,
 
   selectionMode = "none",
@@ -54,6 +55,13 @@ export default function Control({
   setCellTypeAnnotationOn = () => {},
   neighNamesAnnotationOn = false,
   setNeighNamesAnnotationOn = () => {},
+
+  omeTiffFile = null,
+  setOmeTiffFile = () => {},
+  clearLocalOmeTiff = () => {},
+  omeTiffRestoreNeedsClick = false,
+  restoreOmeTiffFromDisk = async () => {},
+  omePixelRangeByChannelId = {},
 }) {
   const [collapsed, setCollapsed] = useState(false);
   return (
@@ -76,7 +84,15 @@ export default function Control({
         </button>
       </div>
       <div className="control-content">
-        <FileUpload onRefresh={refreshData} />
+        <FileUpload
+          onRefresh={refreshData}
+          refreshUploadStatus={refreshUploadStatus}
+          omeTiffFile={omeTiffFile}
+          setOmeTiffFile={setOmeTiffFile}
+          onClearLocalOmeTiff={clearLocalOmeTiff}
+          omeTiffRestoreNeedsClick={omeTiffRestoreNeedsClick}
+          onRestoreOmeTiffFromDisk={restoreOmeTiffFromDisk}
+        />
       {/* Channel management (moved above Selection) */}
       <ChannelManager
         selected={channels}
@@ -86,6 +102,7 @@ export default function Control({
         windows={windows}
         setWindows={setWindows}
         dataVersion={dataVersion}
+        omePixelRangeByChannelId={omePixelRangeByChannelId}
       />
       {/* Selection panel */}
       <SelectionPanel

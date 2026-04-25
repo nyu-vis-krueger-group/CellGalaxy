@@ -4,6 +4,14 @@ import { clusterColor } from "../utils/clustering";
 import { pointInPolygon, getEventCoordinates } from "../utils/utils";
 
 
+function outlinePathToWorld(path, pixelYFlipHeight) {
+  if (pixelYFlipHeight == null || !Number.isFinite(pixelYFlipHeight) || !Array.isArray(path)) {
+    return path;
+  }
+  const h = pixelYFlipHeight;
+  return path.map(([x, y, z = 0]) => [x, h - y, z]);
+}
+
 export default function ClusterHoverMask({
   outlineData = [],
   is3D = false,
@@ -11,6 +19,8 @@ export default function ClusterHoverMask({
   containerRef,
   active = true,
   altPressed = false,
+  /** Match scatter/PathLayer: world y = h - raw_y */
+  pixelYFlipHeight = null,
 
   screenOutlines3D = [],
   children = () => null,
@@ -33,12 +43,15 @@ export default function ClusterHoverMask({
       const { x, y } = getEventCoordinates(info, containerRef);
       if (!is3D) {
         for (const o of outlineData) {
-          const polyScreen = o.path.map(([wx, wy, wz]) => viewport.project([wx, wy, wz || 0]));
+          const pathW = outlinePathToWorld(o.path, pixelYFlipHeight);
+          const polyScreen = pathW.map(([wx, wy, wz]) =>
+            viewport.project([wx, wy, wz || 0]),
+          );
           if (polyScreen.length >= 3 && pointInPolygon([x, y], polyScreen)) {
             const rgb = clusterColor(o.label ?? 0);
 
             setHoverMask({
-              path: o.path,
+              path: pathW,
               color: [rgb[0], rgb[1], rgb[2], 64],
             });
             setHoverMask3D(null);

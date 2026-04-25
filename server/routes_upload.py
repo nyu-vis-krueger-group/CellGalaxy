@@ -12,6 +12,7 @@ from .data_paths import (
     raw_csv_json_paths,
     zooming_csv_path,
 )
+from .display_subset import clear_display_subset_artifacts
 from .zarr_utils import reset_zarr_handle
 from .data_utils import generate_json_files, generate_raw_json
 
@@ -30,6 +31,7 @@ async def upload_or_delete(
         if file_type == "zarr":
             remove_path(ZARR_DIR)
             reset_zarr_handle()
+            clear_display_subset_artifacts()
             return {"message": "Zarr data cleared"}
 
         if file_type == "csv":
@@ -37,6 +39,7 @@ async def upload_or_delete(
             remove_path(data_csv)
             remove_path(coords_json)
             remove_path(channel_json)
+            clear_display_subset_artifacts()
             return {"message": "CSV data cleared"}
 
         if file_type == "raw":

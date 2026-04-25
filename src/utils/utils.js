@@ -172,17 +172,27 @@ export function performBoxSelection(deck, bounds) {
 }
 
 /** Lasso path in screen space → selected ids. */
-export function performLassoSelection(points, viewport, lassoPoints) {
+export function performLassoSelection(
+  points,
+  viewport,
+  lassoPoints,
+  getWorldPosition,
+) {
   if (lassoPoints.length < 3) return new Set();
-  
+
+  const toWorld =
+    typeof getWorldPosition === "function"
+      ? getWorldPosition
+      : (p) => [p.x, p.y, p.z ?? 0];
+
   const ids = new Set();
   for (const p of points) {
-    const [sx, sy] = viewport.project([p.x, p.y, p.z ?? 0]);
+    const [sx, sy] = viewport.project(toWorld(p));
     if (pointInPolygon([sx, sy], lassoPoints)) {
       ids.add(p.id);
     }
   }
-  
+
   return ids;
 }
 

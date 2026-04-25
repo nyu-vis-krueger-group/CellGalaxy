@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import "./ChannelManager.css";
 
 export default function ChannelManager({
@@ -9,13 +9,31 @@ export default function ChannelManager({
   windows = {},
   setWindows = () => {},
   dataVersion = 0,
+  omePixelRangeByChannelId = {},
 }) {
   const [showDropdown, setShowDropdown] = useState(false);
-  const [channelInfo, setChannelInfo] = useState({});
+  const [serverChannelInfo, setServerChannelInfo] = useState({});
   const [tooltip, setTooltip] = useState({ show: false, value: '', x: 0, y: 0 });
 
   // pixel_value_range → slider bounds + auto window
   const getChannelRanges = (channel) => {
+    const channelId = Number(channel?.id);
+    const omePv =
+      Number.isFinite(channelId) && omePixelRangeByChannelId && omePixelRangeByChannelId[channelId]
+        ? omePixelRangeByChannelId[channelId]
+        : null;
+    const pv = omePv || channel?.pixel_value_range || {};
+    const dataMin = Number.isFinite(pv.data_min)
+      ? pv.data_min
+      : (Number.isFinite(pv.min) ? pv.min : 0);
+    const dataMax = Number.isFinite(pv.data_max)
+      ? pv.data_max
+      : (Number.isFinite(pv.max) ? pv.max : 65535);
+    const autoMin = Number.isFinite(pv.auto_min) ? pv.auto_min : dataMin;
+    const autoMax = Number.isFinite(pv.auto_max) ? pv.auto_max : dataMax;
+    return { dataMin, dataMax, autoMin, autoMax };
+  };
+  const getServerChannelRanges = (channel) => {
     const pv = channel?.pixel_value_range || {};
     const dataMin = Number.isFinite(pv.data_min)
       ? pv.data_min
@@ -33,22 +51,25 @@ export default function ChannelManager({
       try {
         const response = await fetch(`/public/channel_info.json?ts=${Date.now()}`, { cache: 'no-store' });
         if (!response.ok) {
-          setChannelInfo({});
+          setServerChannelInfo({});
           return;
         }
         const data = await response.json();
-        setChannelInfo(data);
+        setServerChannelInfo(data);
       } catch (err) {
         console.error("channel_info fetch failed", err);
-        setChannelInfo({});
+        setServerChannelInfo({});
       }
     };
 
     fetchChannelInfo();
   }, [dataVersion]);
 
+  const channelInfo = useMemo(() => serverChannelInfo, [serverChannelInfo]);
+
   useEffect(() => {
-    const validIds = new Set(channelInfo.channels?.map((ch) => ch.id) || []);
+    const channels = channelInfo.channels || [];
+    const validIds = new Set(channels.map((ch) => ch.id));
     if (validIds.size === 0) {
       if (selected.length > 0) setSelected([]);
       return;
@@ -73,6 +94,33 @@ export default function ChannelManager({
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showDropdown]);
+
+  useEffect(() => {
+    if (!selected?.length) return;
+    const channels = channelInfo.channels || [];
+    const eps = 1e-6;
+    setWindows((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const channelId of selected) {
+        const channel = channels.find((ch) => ch.id === channelId);
+        if (!channel) continue;
+        const ome = omePixelRangeByChannelId?.[channelId];
+        if (!ome) continue;
+        const cur = prev?.[channelId];
+        const server = getServerChannelRanges(channel);
+        const isCurrentServerAuto =
+          cur &&
+          Math.abs((cur.min ?? NaN) - server.autoMin) < eps &&
+          Math.abs((cur.max ?? NaN) - server.autoMax) < eps;
+        if (!cur || isCurrentServerAuto) {
+          next[channelId] = { min: ome.auto_min, max: ome.auto_max };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [selected, channelInfo, omePixelRangeByChannelId, setWindows]);
 
   const availableChannels = channelInfo.channels?.filter(
     (ch) => !selected.includes(ch.id)

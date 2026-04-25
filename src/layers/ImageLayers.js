@@ -33,7 +33,31 @@ export default function ImageLayers({
   samplingThreshold = 1.0,
   selectedIds = null,
   transitionsEnabled = true,
+  /** Stroked cell markers for readability on top of bright OME-TIFF imagery */
+  dotOutlineForBrightBackground = false,
+  /** When true, never composite Zarr tile atlases (OME-TIFF / Viv is the image source). */
+  suppressSpriteAtlases = false,
+  /** If set, match OME base: world y = pixelYFlipHeight - raw_y */
+  pixelYFlipHeight = null,
+  /** OME spatial: invisible scatter for pick/lasso; selection via DOM ring */
+  omeSpatialScatterPickOnly = false,
 }) {
+  const worldPos = (d) => {
+    const z = d.z ?? 0;
+    if (pixelYFlipHeight == null || !Number.isFinite(pixelYFlipHeight)) {
+      return [d.x, d.y, z];
+    }
+    return [d.x, pixelYFlipHeight - (d.y ?? 0), z];
+  };
+
+  const worldPath = (path) => {
+    if (!Array.isArray(path)) return path;
+    if (pixelYFlipHeight == null || !Number.isFinite(pixelYFlipHeight)) {
+      return path;
+    }
+    const h = pixelYFlipHeight;
+    return path.map(([x, y, z = 0]) => [x, h - y, z]);
+  };
 
   const selectedPoints = useMemo(() => {
     if (!points || !getRegionIndexForId) return [];
@@ -47,9 +71,10 @@ export default function ImageLayers({
   const hasSelection = selectedPoints.length > 0;
 
   const layers = useMemo(() => {
-    if (!meta) return [];
+    const hasPoints = (points?.length ?? 0) > 0;
+    if (!meta && !(suppressSpriteAtlases && hasPoints)) return [];
 
-    if (renderMode === "sprites") {
+    if (renderMode === "sprites" && !suppressSpriteAtlases) {
       const byChunk = new Map();
       for (const p of points ?? []) {
         const cid = p.chunk_id ?? 0;
@@ -273,11 +298,11 @@ export default function ImageLayers({
       }
 
       if (!is3D && clusterOutlineOn && clusterLineWidth > 0 && outlineData.length > 0) {
-        all.push(
-          new PathLayer({
-            id: "cluster-outlines",
-            data: outlineData,
-            getPath: (d) => d.path,
+            all.push(
+              new PathLayer({
+                id: "cluster-outlines",
+                data: outlineData,
+                getPath: (d) => worldPath(d.path),
             getColor: (d) => d.color,
             widthUnits: "pixels",
             getWidth: Math.max(0, clusterLineWidth),
@@ -287,7 +312,11 @@ export default function ImageLayers({
             jointRounded: true,
             miterLimit: 2,
             loop: true,
-            updateTriggers: { getColor: [outlineData.length], getWidth: [clusterLineWidth] },
+            updateTriggers: {
+              getColor: [outlineData.length],
+              getWidth: [clusterLineWidth],
+              getPath: [pixelYFlipHeight, outlineData.length],
+            },
           })
         );
       }
@@ -302,8 +331,11 @@ export default function ImageLayers({
         new ScatterplotLayer({
           id: "scatter-cluster-only",
           data: points ?? [],
-          getPosition: (d) => [d.x, d.y, d.z ?? 0],
-          stroked: false,
+          getPosition: (d) => worldPos(d),
+          stroked: dotOutlineForBrightBackground,
+          lineWidthUnits: "pixels",
+          getLineWidth: dotOutlineForBrightBackground ? 1 : 0,
+          getLineColor: () => [0, 0, 0, 210],
           extensions: [new DataFilterExtension({ filterSize: 1 })],
           getFilterValue: (d) => {
             if (selectedIds && selectedIds.has(d.id)) return 0;
@@ -332,10 +364,11 @@ export default function ImageLayers({
                 getPosition: { duration: 600, easing: ease },
               }
             : undefined,
-          updateTriggers: { 
-            getFillColor: [filteredIds, clusterOpacity, selectedPoints.length, labelKey], 
+          updateTriggers: {
+            getFillColor: [filteredIds, clusterOpacity, selectedPoints.length, labelKey],
             getRadius: [computedImageSize, selectedPoints.length],
             getFilterValue: [selectedPoints.length],
+            getPosition: [pixelYFlipHeight],
           },
         })
       );
@@ -344,7 +377,7 @@ export default function ImageLayers({
         new ScatterplotLayer({
           id: "scatter",
           data: points ?? [],
-          getPosition: (d) => [d.x, d.y, d.z ?? 0],
+          getPosition: (d) => worldPos(d),
           extensions: [new DataFilterExtension({ filterSize: 1 })],
           getFilterValue: (d) => {
             if (selectedIds && selectedIds.has(d.id)) return 0;
@@ -353,13 +386,29 @@ export default function ImageLayers({
           filterRange: [0, samplingThreshold],
           getFillColor: (d) => {
             const activeFilter = filteredIds && filteredIds.size > 0;
+            if (omeSpatialScatterPickOnly) {
+              if (activeFilter && !filteredIds.has(d.id)) {
+                return [0, 0, 0, 0];
+              }
+              // Transparent scatter; selection ring in Viewer DOM (avoids disk over OME)
+              return [255, 255, 255, 0];
+            }
             if (activeFilter && !filteredIds.has(d.id)) {
               return [0, 0, 0, 0];
             }
+            if (dotOutlineForBrightBackground) {
+              return [255, 255, 255, 220];
+            }
             return [255, 255, 255, 255];
           },
-          stroked: false,
-          getRadius: () => computedImageSize * 0.75,
+          stroked: omeSpatialScatterPickOnly ? false : dotOutlineForBrightBackground,
+          lineWidthUnits: "pixels",
+          getLineWidth: omeSpatialScatterPickOnly ? 0 : dotOutlineForBrightBackground ? 1 : 0,
+          getLineColor: () => [0, 0, 0, 220],
+          getRadius: () =>
+            computedImageSize *
+            0.75 *
+            (omeSpatialScatterPickOnly ? 1.5 : 1),
           radiusScale: 1,
           radiusUnits: "pixels",
           pickable: true,
@@ -371,9 +420,19 @@ export default function ImageLayers({
               }
             : undefined,
           updateTriggers: {
-            getFillColor: [filteredIds, selectedPoints.length],
-            getRadius: [computedImageSize, selectedPoints.length],
+            getFillColor: [
+              filteredIds,
+              selectedPoints.length,
+              omeSpatialScatterPickOnly,
+            ],
+            getRadius: [
+              computedImageSize,
+              selectedPoints.length,
+              omeSpatialScatterPickOnly,
+            ],
             getFilterValue: [selectedPoints.length],
+            getPosition: [pixelYFlipHeight],
+            getLineWidth: [omeSpatialScatterPickOnly, dotOutlineForBrightBackground],
           },
         })
       );
@@ -383,7 +442,7 @@ export default function ImageLayers({
         new PathLayer({
           id: "scatter-cluster-outlines",
           data: outlineData,
-          getPath: (d) => d.path,
+          getPath: (d) => worldPath(d.path),
           getColor: (d) => d.color,
           widthUnits: "pixels",
           getWidth: Math.max(0, clusterLineWidth),
@@ -393,7 +452,11 @@ export default function ImageLayers({
           jointRounded: true,
           miterLimit: 2,
           loop: true,
-          updateTriggers: { getColor: [outlineData.length], getWidth: [clusterLineWidth] },
+          updateTriggers: {
+            getColor: [outlineData.length],
+            getWidth: [clusterLineWidth],
+            getPath: [pixelYFlipHeight, outlineData.length],
+          },
         })
       );
     }
@@ -402,6 +465,7 @@ export default function ImageLayers({
     meta,
     renderMode,
     points,
+    pixelYFlipHeight,
     atlasURL,
     atlasByChannel,
     iconMappingsByChunk,
@@ -420,6 +484,10 @@ export default function ImageLayers({
     getRegionIndexForId,
     regionColors,
     selectedPoints.length,
+    dotOutlineForBrightBackground,
+    suppressSpriteAtlases,
+    omeSpatialScatterPickOnly,
+    selectedIds,
   ]);
 
   return layers;

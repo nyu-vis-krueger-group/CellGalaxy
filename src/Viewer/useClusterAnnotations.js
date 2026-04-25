@@ -22,6 +22,8 @@ export default function useClusterAnnotations({
   screenOutlines3D = [],
   level = 0,
   filteredDominantAnnotations = null,
+  /** Match raw+OME scatter: flip centroid y in 2D */
+  pixelYFlipHeight = null,
 }) {
   const [clusterLabelsJson, setClusterLabelsJson] = useState(null);
   const [clusterDominantAnnotations, setClusterDominantAnnotations] = useState(null);
@@ -96,9 +98,20 @@ export default function useClusterAnnotations({
       const dominant = dominantLevel[labelKey] || {};
       const dominantCelltype = dominant.celltype != null && String(dominant.celltype).trim() ? String(dominant.celltype) : null;
       const dominantNeighNames = dominant.neigh_names != null && String(dominant.neigh_names).trim() ? String(dominant.neigh_names) : null;
-      const c = is3D
+      const cRaw = is3D
         ? outline.centroidWorld || [0, 0, 0]
         : outline.centroid || (outline.path && outline.path[0]) || [0, 0, 0];
+      const c =
+        !is3D &&
+        pixelYFlipHeight != null &&
+        Number.isFinite(pixelYFlipHeight) &&
+        Array.isArray(cRaw)
+          ? [
+              cRaw[0],
+              pixelYFlipHeight - (cRaw[1] ?? 0),
+              cRaw[2] ?? 0,
+            ]
+          : cRaw;
       const pixelOffset = is3D && Array.isArray(outline.pixelOffset)
         ? outline.pixelOffset.map((v) => (Number.isFinite(v) ? v : 0))
         : [0, 0];
@@ -132,6 +145,7 @@ export default function useClusterAnnotations({
     screenOutlines3D,
     level,
     filteredDominantAnnotations,
+    pixelYFlipHeight,
   ]);
 
   const clusterAnnotationByLabel = useMemo(() => {

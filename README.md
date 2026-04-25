@@ -114,7 +114,7 @@ Before using the system, you need to prepare the following data files.
 | Zarr Image | Image tiles stored in Zarr format |
 | Raw Data | Spatial coordinates and embeddings for each tile |
 | Zooming Cluster | Multi-level hierarchical clustering |
-| Channel List | Channel names |
+| Channel List | Channel names (optional `raw_index` when using OME-TIFF) |
 | Features | High-dimensional features |
 | Meta Data | Optional metadata |
 
@@ -123,13 +123,13 @@ Before using the system, you need to prepare the following data files.
 # Data Upload Order
 
 Please upload files in the following order:
-
-1. `output.zarr.zip`
-2. `data_raw.csv`
-3. `cluster_multilevel_hierarchy.csv`
-4. `channel_list.csv`
-5. `features.npy`
-6. `metadata.csv` (optional)
+1. `ometiff image`
+2. `output.zarr.zip`
+3. `data_raw.csv`
+4. `cluster_multilevel_hierarchy.csv`
+5. `channel_list.csv` (optional `raw_index` for OME-TIFF — see [Channel List](#channel-list))
+6. `features.npy`
+7. `metadata.csv` (optional)
 
 ---
 
@@ -248,19 +248,25 @@ These two files are required by the visualization system.
 
 # Channel List
 
-Upload a CSV file with two columns:
+CSV columns: **`channel_id`**, **`channel_name`**. Optional **`raw_index`** when using **OME-TIFF** if Zarr channel order ≠ OME channel order.
+
+**`raw_index`:** that channel’s index **in the original OME-TIFF file**, **1-based** (first channel in the file = `1`). Not the UI `channel_id`. The app uses `ome_c = raw_index - 1` for rendering. Aliases: `raw`, `ome_index`, `ome_c`, `c` (same meaning).
 
 ```
 channel_id,channel_name
-```
-
-Example:
-
-```
 0,CD3
 1,CD4
-2,CD8
 ```
+
+With OME mapping:
+
+```
+channel_id,channel_name,raw_index
+0,Hoechst,1
+1,CD3,10
+```
+
+Writes `raw_index` / `ome_c` into `channel_info.json`.
 
 ---
 

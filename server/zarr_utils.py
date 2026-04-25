@@ -4,13 +4,14 @@ import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 from PIL import Image
 import zarr
 
 from .config import CACHE_DIR, ZARR_DIR, DEFAULT_TILE, clear_cache_dir
+from .display_subset import load_display_indices
 
 
 # blosc thread count setting (if available)
@@ -113,7 +114,7 @@ def stable_label(idx: int, num_classes: int = 11) -> int:
 
 
 def single_cache_path(channel: int, chunk_id: int, tile: int) -> str:
-    """single-channel fixed cache path"""
+    """single-channel fixed cache path (matches /public/cache static URL layout)."""
     ch_dir = os.path.join(CACHE_DIR, f"ch{int(channel)}", f"tile_{int(tile)}")
     os.makedirs(ch_dir, exist_ok=True)
     return os.path.join(ch_dir, f"chunk_{int(chunk_id)}.png")
@@ -149,10 +150,29 @@ def tiles_to_atlas(rgba_tiles: np.ndarray, tile: int) -> Image.Image:
     return Image.fromarray(atlas, mode="RGBA")
 
 
-def _generate_single_channel_mask(img, ch: int, slc: slice) -> np.ndarray:
-    """generate single-channel RGBA mask from Zarr image"""
-    # Zarr basic indexing does not support list indexing for axes; use integers/slices
-    data = np.asarray(img[ch, slc, :, :], dtype=np.float32)
+def _cell_indices_for_atlas_chunk(
+    chunk_id: int, n_per_chunk: int, n_zarr: int,     subset: Optional[np.ndarray],
+) -> np.ndarray:
+    """Original Zarr axis-1 indices for one display atlas chunk."""
+    if subset is None:
+        start = int(chunk_id) * int(n_per_chunk)
+        end = min(start + int(n_per_chunk), int(n_zarr))
+        if start >= end:
+            return np.array([], dtype=np.int64)
+        return np.arange(start, end, dtype=np.int64)
+    k = int(subset.size)
+    start = int(chunk_id) * int(n_per_chunk)
+    end = min(start + int(n_per_chunk), k)
+    if start >= end:
+        return np.array([], dtype=np.int64)
+    return subset[start:end].astype(np.int64, copy=False)
+
+
+def _generate_single_channel_mask(img, ch: int, cell_indices: np.ndarray) -> np.ndarray:
+    """generate single-channel RGBA mask from Zarr image for given cell indices (axis 1)."""
+    if cell_indices.size == 0:
+        raise RuntimeError("empty cell_indices for atlas mask")
+    data = np.asarray(img[ch, cell_indices, :, :], dtype=np.float32)
     if data.ndim == 3:
         data = data[np.newaxis, ...]
     if data.ndim != 4:
@@ -169,15 +189,16 @@ def _render_and_cache_atlas(img, ch: int, chunk_id: int, tile: int) -> str:
     C, N, H, W, chunks, n_chunks, n_per_chunk = meta_from_img(img)
     if not (0 <= ch < C):
         raise RuntimeError(f"channel {ch} out of range [0,{C-1}]")
-    if not (0 <= chunk_id < n_chunks):
+    subset = load_display_indices()
+    n_disp = int(subset.size) if subset is not None else int(N)
+    n_chunks_eff = int(math.ceil(n_disp / max(int(n_per_chunk), 1))) if n_disp > 0 else 0
+    if not (0 <= chunk_id < n_chunks_eff):
         raise RuntimeError("chunk_id out of range")
     cache_path = single_cache_path(ch, chunk_id, int(tile))
     if os.path.exists(cache_path):
         return cache_path
-    start = chunk_id * n_per_chunk
-    end = min(start + n_per_chunk, N)
-    slc = slice(start, end)
-    mask = _generate_single_channel_mask(img, ch, slc)
+    cell_idx = _cell_indices_for_atlas_chunk(chunk_id, n_per_chunk, N, subset)
+    mask = _generate_single_channel_mask(img, ch, cell_idx)
     atlas_img = tiles_to_atlas(mask, tile=int(tile))
     buf = io.BytesIO()
     atlas_img.save(buf, format="PNG", compress_level=1)
@@ -198,8 +219,11 @@ def _prewarm_channel_async(ch: int, tile: int) -> None:
         try:
             img = open_zarr()
             C, N, H, W, chunks, n_chunks, n_per_chunk = meta_from_img(img)
+            subset = load_display_indices()
+            n_disp = int(subset.size) if subset is not None else int(N)
+            n_chunks_eff = int(math.ceil(n_disp / max(int(n_per_chunk), 1))) if n_disp > 0 else 0
             futures = []
-            for cid in range(n_chunks):
+            for cid in range(n_chunks_eff):
                 cp = single_cache_path(ch, cid, int(tile))
                 if os.path.exists(cp):
                     continue

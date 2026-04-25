@@ -1,5 +1,9 @@
 import { useEffect } from "react";
 import { LinearInterpolator } from "@deck.gl/core";
+import {
+  CELL_FOCUS_ZOOM_SPATIAL,
+  CELL_FOCUS_ZOOM_UMAP,
+} from "../constants/render";
 import { ease } from "../utils/utils";
 
 // window.__focusCell*, __showSimilarityRanking* for cross-viewer focus + rank overlay
@@ -10,38 +14,49 @@ export default function useGlobalCellFocusAndRanking({
   setViewState,
   transitionsEnabled,
   setSimilarityRankings,
+  /** (p) => [x,y,z] in Deck world space (incl. raw+OME y-flip) */
+  mapWorldPosition = null,
 }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    const toWorld =
+      typeof mapWorldPosition === "function"
+        ? mapWorldPosition
+        : (p) => [p.x ?? 0, p.y ?? 0, p.z ?? 0];
+
+    const isUmapViewer =
+      viewerId === "umap" || (viewerId === "single" && useUMAP);
+    const cellFocusZoom = isUmapViewer
+      ? CELL_FOCUS_ZOOM_UMAP
+      : CELL_FOCUS_ZOOM_SPATIAL;
+
     const focusKey = `__focusCell_${viewerId}`;
     window[focusKey] = (cellPos) => {
       if (!cellPos) return;
-      let cellX;
-      let cellY;
-      let cellZ;
+      let raw;
 
       // By id: use this viewer's coords; or legacy x,y,z
       if (typeof cellPos.id === "number" && Array.isArray(points) && points.length > 0) {
         const hit = points.find((p) => p.id === cellPos.id);
         if (!hit) return;
-        cellX = hit.x ?? 0;
-        cellY = hit.y ?? 0;
-        cellZ = hit.z ?? 0;
+        raw = hit;
       } else if (typeof cellPos.x === "number" && typeof cellPos.y === "number") {
-        cellX = cellPos.x ?? 0;
-        cellY = cellPos.y ?? 0;
-        cellZ = cellPos.z ?? 0;
+        raw = {
+          x: cellPos.x ?? 0,
+          y: cellPos.y ?? 0,
+          z: cellPos.z ?? 0,
+        };
       } else {
         return;
       }
 
-      const targetZoom = 14;
+      const [cellX, cellY, cellZ] = toWorld(raw);
 
       setViewState((prev) => ({
         ...prev,
         target: [cellX, cellY, cellZ],
-        zoom: targetZoom,
+        zoom: cellFocusZoom,
         transitionDuration: transitionsEnabled ? 800 : 0,
         transitionEasing: transitionsEnabled ? ease : undefined,
         transitionInterpolator: transitionsEnabled
@@ -109,7 +124,15 @@ export default function useGlobalCellFocusAndRanking({
         }
       }
     };
-  }, [viewerId, useUMAP, setViewState, transitionsEnabled, points, setSimilarityRankings]);
+  }, [
+    viewerId,
+    useUMAP,
+    setViewState,
+    transitionsEnabled,
+    points,
+    setSimilarityRankings,
+    mapWorldPosition,
+  ]);
 }
 
 

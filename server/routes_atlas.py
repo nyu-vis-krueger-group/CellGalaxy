@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Body, Request, Response
 from fastapi.responses import FileResponse
 
 from .models import AtlasRequest
+from .display_subset import display_atlas_n_and_chunks
 from .zarr_utils import (
     open_zarr,
     meta_from_img,
@@ -47,7 +48,8 @@ def _cache_headers(etag: str) -> dict[str, str]:
 def atlas_uv(chunk_id: int, tile: Optional[int] = Query(None)):
     img = open_zarr()
     C, N, H, W, chunks, n_chunks, n_per_chunk = meta_from_img(img)
-    _validate_chunk_id(chunk_id, n_chunks)
+    n_disp, n_chunks_eff = display_atlas_n_and_chunks(N, n_per_chunk)
+    _validate_chunk_id(chunk_id, n_chunks_eff)
     effective_tile = _effective_tile(tile)
     rows, cols = grid_for_count(n_per_chunk)
     width = cols * effective_tile
@@ -55,7 +57,7 @@ def atlas_uv(chunk_id: int, tile: Optional[int] = Query(None)):
     uvs = []
     for i in range(n_per_chunk):
         gindex = chunk_id * n_per_chunk + i
-        if gindex >= N:
+        if gindex >= n_disp:
             break
         r = i // cols
         c = i % cols
@@ -86,6 +88,7 @@ def atlas_uv(chunk_id: int, tile: Optional[int] = Query(None)):
 def atlas(chunk_id: int, req: AtlasRequest = Body(...)):
     img = open_zarr()
     C, N, H, W, chunks, n_chunks, n_per_chunk = meta_from_img(img)
+    _n_disp, n_chunks_eff = display_atlas_n_and_chunks(N, n_per_chunk)
     chans = sorted(set(int(c) for c in req.channels))
     if len(chans) != 1:
         raise HTTPException(
@@ -94,7 +97,7 @@ def atlas(chunk_id: int, req: AtlasRequest = Body(...)):
         )
     ch = chans[0]
     _validate_channel_index(ch, C)
-    _validate_chunk_id(chunk_id, n_chunks)
+    _validate_chunk_id(chunk_id, n_chunks_eff)
 
     tile = _effective_tile(req.tile)
 
@@ -121,8 +124,9 @@ def atlas_get(
 ):
     img = open_zarr()
     C, N, H, W, chunks, n_chunks, n_per_chunk = meta_from_img(img)
+    _n_disp, n_chunks_eff = display_atlas_n_and_chunks(N, n_per_chunk)
     _validate_channel_index(channel, C)
-    _validate_chunk_id(chunk_id, n_chunks)
+    _validate_chunk_id(chunk_id, n_chunks_eff)
 
     effective_tile = _effective_tile(tile)
     ch = int(channel)

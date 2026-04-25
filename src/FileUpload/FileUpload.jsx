@@ -1,8 +1,23 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import "./FileUpload.css";
+import {
+  supportsOmeTiffHandlePersistence,
+  saveOmeTiffFileHandle,
+  clearOmeTiffFileHandle,
+} from "../utils/omeTiffLocalPersistence";
 
-export default function FileUpload({ onRefresh = async () => {} }) {
-  const [status, setStatus] = useState({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, generating: false });
+export default function FileUpload({
+  onRefresh = async () => {},
+  refreshUploadStatus = async () => {},
+  /** Local OME-TIFF (browser File) — no upload API */
+  omeTiffFile = null,
+  setOmeTiffFile = () => {},
+  /** Clear local OME-TIFF and remove persisted FileSystemFileHandle from IndexedDB */
+  onClearLocalOmeTiff,
+  omeTiffRestoreNeedsClick = false,
+  onRestoreOmeTiffFromDisk = async () => {},
+}) {
+  const [status, setStatus] = useState({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, ome_tiff: false, generating: false });
   const [busy, setBusy] = useState(false);
   const [processing, setProcessing] = useState({ zarr: false, csv: false, raw: false, feat: false, channels: false, zooming: false });
   const [open, setOpen] = useState(false);
@@ -13,7 +28,7 @@ export default function FileUpload({ onRefresh = async () => {} }) {
     try {
       const res = await fetch(`/upload/status?ts=${Date.now()}`, { cache: 'no-store' });
       if (!res.ok) {
-        setStatus({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, generating: false });
+        setStatus({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, ome_tiff: false, generating: false });
         return;
       }
       const data = await res.json();
@@ -25,11 +40,12 @@ export default function FileUpload({ onRefresh = async () => {} }) {
         feat: Boolean(data?.feat),
         channels: Boolean(data?.channels),
         zooming: Boolean(data?.zooming),
+        ome_tiff: Boolean(data?.ome_tiff),
         generating: Boolean(data?.generating),
       });
     } catch (err) {
       console.error("status fetch failed", err);
-      setStatus({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, generating: false });
+      setStatus({ zarr: false, csv: false, raw: false, raw_annotation_columns: { celltype: false, neigh_names: false }, feat: false, channels: false, zooming: false, ome_tiff: false, generating: false });
     }
   }, []);
 
@@ -131,11 +147,10 @@ export default function FileUpload({ onRefresh = async () => {} }) {
 
       if (response.ok) {
         console.log(`${fileType} file uploaded successfully`);
-        
+
         if (fileType === 'csv' || fileType === 'channels') {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        
         await fetchStatus();
         await onRefresh();
       } else {
@@ -163,6 +178,54 @@ export default function FileUpload({ onRefresh = async () => {} }) {
     };
     input.click();
   };
+
+  const handleOmeTiffLocalPick = async () => {
+    if (supportsOmeTiffHandlePersistence()) {
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [
+            {
+              description: "OME-TIFF",
+              accept: {
+                "image/tiff": [".tif", ".tiff", ".ome.tif", ".ome.tiff"],
+              },
+            },
+          ],
+          multiple: false,
+        });
+        await saveOmeTiffFileHandle(handle);
+        const file = await handle.getFile();
+        setOmeTiffFile(file);
+        return;
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+        console.warn("OME-TIFF: File System Access picker failed, using file input", e);
+      }
+    }
+    try {
+      await clearOmeTiffFileHandle();
+    } catch {
+      /* ignore */
+    }
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".tif,.tiff,.ome.tif,.ome.tiff";
+    input.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (file) setOmeTiffFile(file);
+    };
+    input.click();
+  };
+
+  const handleClearLocalOmeTiff = () => {
+    if (typeof onClearLocalOmeTiff === "function") {
+      onClearLocalOmeTiff();
+    } else {
+      setOmeTiffFile(null);
+    }
+  };
+
+  const omeTiffBound = Boolean(omeTiffFile) || omeTiffRestoreNeedsClick;
 
   const handleClear = async (fileType) => {
     setBusy(true);
@@ -217,6 +280,22 @@ export default function FileUpload({ onRefresh = async () => {} }) {
           </button>
           {open && (
             <div className="upload-menu" role="menu">
+              <div className="upload-menu-item" role="menuitem">
+                <button
+                  className="upload-menu-action"
+                  onClick={() => { setOpen(false); handleOmeTiffLocalPick(); }}
+                  disabled={busy || omeTiffBound}
+                >
+                  OME-TIFF
+                </button>
+                <button
+                  className={`upload-menu-clear${omeTiffBound ? " has-file" : ""}`}
+                  onClick={() => { setOpen(false); handleClearLocalOmeTiff(); }}
+                  disabled={busy || !omeTiffBound}
+                  title="Clear Local OME-TIFF"
+                  aria-label="Clear Local OME-TIFF"
+                />
+              </div>
               <div className="upload-menu-item" role="menuitem">
                 <button className="upload-menu-action" onClick={() => { setOpen(false); handleFileSelect('zarr'); }} disabled={busy || status.zarr}>
                   Zarr Image (zip)
@@ -292,6 +371,21 @@ export default function FileUpload({ onRefresh = async () => {} }) {
             </div>
           )}
         </div>
+        {omeTiffRestoreNeedsClick && !omeTiffFile && (
+          <div className="ome-tiff-restore-hint" role="status">
+            <span className="ome-tiff-restore-text">
+              OME-TIFF path saved. After reload, grant access again to read.
+            </span>
+            <button
+              type="button"
+              className="ome-tiff-restore-btn"
+              disabled={busy}
+              onClick={() => onRestoreOmeTiffFromDisk()}
+            >
+              Restore file
+            </button>
+          </div>
+        )}
     </div>
     </>
   );
