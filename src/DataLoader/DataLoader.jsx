@@ -35,6 +35,9 @@ export default function useDataLoader() {
 
   // Render params (UI-bound)
   const [channels, setChannels] = useState([]);
+  /** Latest channels for refreshData / prefetch without re-creating refreshData when selection changes. */
+  const channelsRef = useRef(channels);
+  channelsRef.current = channels;
   const [weights, setWeights] = useState({});
   const [alphas, setAlphas] = useState({});
   const [colors, setColors] = useState({});
@@ -111,7 +114,8 @@ export default function useDataLoader() {
           if (Number.isFinite(raw) && raw >= 1) {
             omeC = Math.max(0, Math.floor(raw) - 1);
             explicit[id] = true;
-          } else if (Number.isFinite(Number(ch?.ome_c))) {
+            // JSON null → Number(null) is 0 (finite): must not treat as explicit ome_c.
+          } else if (ch?.ome_c != null && ch.ome_c !== "" && Number.isFinite(Number(ch.ome_c))) {
             omeC = Number(ch.ome_c);
             explicit[id] = true;
           } else {
@@ -510,9 +514,10 @@ export default function useDataLoader() {
       ) {
         const tile = metaJson.atlas.tile;
         const chunkIds = [...new Set(coords.map((p) => p.chunk_id))];
+        const selectedCh = channelsRef.current;
         const channelIds =
-          channels.length > 0
-            ? [...channels]
+          Array.isArray(selectedCh) && selectedCh.length > 0
+            ? [...selectedCh]
             : typeof metaJson.C === "number" && metaJson.C > 0
               ? Array.from({ length: metaJson.C }, (_, i) => i)
               : [];
@@ -570,7 +575,7 @@ export default function useDataLoader() {
     } finally {
       if (!skipLoading) setLoading(false);
     }
-  }, [refreshUploadStatus, channels]);
+  }, [refreshUploadStatus]);
 
   useEffect(() => {
     refreshData();
