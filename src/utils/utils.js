@@ -1,5 +1,31 @@
 // Shared helpers for viewer / selection / projection.
 
+/** Hash sampling gate (matches ImageLayers / Viewer). */
+export function passesDisplaySampling(id, threshold) {
+  if (threshold >= 1.0) return true;
+  return (id * 0.6180339887) % 1 < threshold;
+}
+
+export function getSelectionOwner() {
+  try {
+    return typeof window !== "undefined" ? window.__selectionOwner : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isSelectionOwnerSpatial(owner) {
+  return (
+    owner === "raw" ||
+    owner === "single-spatial" ||
+    owner === "single-spatial-ome"
+  );
+}
+
+export function isSelectionOwnerUmap(owner) {
+  return owner === "umap" || owner === "single-umap";
+}
+
 /** Ray-cast: point [px,py] inside polygon [[x,y],...]. */
 export function pointInPolygon([px, py], polygon) {
     let inside = false;
@@ -169,6 +195,55 @@ export function performBoxSelection(deck, bounds) {
   }) || [];
   
   return picked;
+}
+
+/**
+ * Box selection in world/projection space (all points), not limited to visible deck instances.
+ * Use on UMAP so spatial view receives every cell in the region, not only sampled sprites.
+ */
+export function performGeometricBoxSelection(
+  points,
+  viewport,
+  bounds,
+  getWorldPosition,
+) {
+  if (!viewport || !points?.length) return new Set();
+  const { x0, y0, width, height } = bounds;
+  const corners = [
+    [x0, y0],
+    [x0 + width, y0],
+    [x0 + width, y0 + height],
+    [x0, y0 + height],
+  ];
+  const toWorld =
+    typeof getWorldPosition === "function"
+      ? getWorldPosition
+      : (p) => [p.x, p.y, p.z ?? 0];
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const [sx, sy] of corners) {
+    const w = viewport.unproject([sx, sy]);
+    if (!w || w.length < 2) continue;
+    const wx = w[0];
+    const wy = w[1];
+    if (wx < minX) minX = wx;
+    if (wx > maxX) maxX = wx;
+    if (wy < minY) minY = wy;
+    if (wy > maxY) maxY = wy;
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return new Set();
+
+  const ids = new Set();
+  for (const p of points) {
+    const [wx, wy] = toWorld(p);
+    if (wx >= minX && wx <= maxX && wy >= minY && wy <= maxY) {
+      ids.add(p.id);
+    }
+  }
+  return ids;
 }
 
 /** Lasso path in screen space → selected ids. */

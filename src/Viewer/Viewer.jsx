@@ -3,7 +3,11 @@ import React, { useMemo, useState, useRef, useEffect, useLayoutEffect, useCallba
 import DeckGL from "@deck.gl/react";
 import AnalysisPopover from "../AnalysisPopover/AnalysisPopover";
 import SelectionOverlay from "../SelectionOverlay/SelectionOverlay";
-import { defaultRegionColors, makeRegionIndexGetter } from "../SelectionOverlay/selectionUtils";
+import {
+  clusterHighlightColor,
+  defaultRegionColors,
+  makeRegionIndexGetter,
+} from "../SelectionOverlay/selectionUtils";
 import { ANALYSIS_SINGLE } from "../constants/analysis";
 import { SELECTION_NONE} from "../constants/selection";
 import {
@@ -25,6 +29,10 @@ import {
   ease,
   projectItemsToScreen,
   computeCenter,
+  passesDisplaySampling,
+  getSelectionOwner,
+  isSelectionOwnerSpatial,
+  isSelectionOwnerUmap,
 } from "../utils/utils";
 import { buildOutlineData2D, clusterColor } from "../utils/clustering";
 import "./Viewer.css";
@@ -55,6 +63,9 @@ const Viewer = ({
   viewerId = "viewer",
   meta,
   points,
+  pointsRawPick = null,
+  pointsUMAPPick = null,
+  displayCoordById = null,
   chunkUV,
   hoverMaskEnabled = false,
   atlasURL,
@@ -80,6 +91,7 @@ const Viewer = ({
   setSelectedRegions = () => {},
   clearSelection = () => {},
   filteredIds = new Set(),
+  highlightedClusters = new Set(),
   // Clustering overlay
   clusterColorOn = false,
   clusterOpacity = 0.25,
@@ -249,7 +261,7 @@ const Viewer = ({
   }, [cameraSpaceId, setViewState]);
 
   const [semanticLevel, setSemanticLevel] = useState(6); // 1..6, finest default
-  const [isSemanticAuto, setIsSemanticAuto] = useState(true);
+  const [isSemanticAuto, setIsSemanticAuto] = useState(false);
   // UMAP: cluster_L*; raw: label
   const clusterLabelKey = isUMAPView
     ? `cluster_L${semanticLevel - 1}`
@@ -259,19 +271,48 @@ const Viewer = ({
     ? `rank_L${semanticLevel - 1}`
     : null;
 
-  // UMAP + auto: map zoom → semantic level 1..6
+  // UMAP + auto: map zoom → semantic level (debounced + hysteresis to avoid transition thrash while scrolling).
+  const zoomForSemanticRef = useRef(viewState?.zoom ?? 8);
+  zoomForSemanticRef.current =
+    typeof viewState?.zoom === "number" ? viewState.zoom : 8;
+  const semanticZoomTimerRef = useRef(null);
+
   useEffect(() => {
-    if (!isUMAPView || !isSemanticAuto || !viewState) return;
-    const z = typeof viewState.zoom === 'number' ? viewState.zoom : 8;
-    let lvl = 6;
-    if (z < 6) lvl = 1;
-    else if (z < 7) lvl = 2;
-    else if (z < 8) lvl = 3;
-    else if (z < 9) lvl = 4;
-    else if (z < 10) lvl = 5;
-    else lvl = 6;
-    
-    setSemanticLevel(lvl);
+    if (!isUMAPView || !isSemanticAuto) return undefined;
+
+    const applyLevelFromZoom = () => {
+      const z = zoomForSemanticRef.current;
+      setSemanticLevel((prev) => {
+        const h = 0.15;
+        let target = 6;
+        if (z < 6) target = 1;
+        else if (z < 7) target = 2;
+        else if (z < 8) target = 3;
+        else if (z < 9) target = 4;
+        else if (z < 10) target = 5;
+        if (target === prev) return prev;
+        const boundaries = [6, 7, 8, 9, 10];
+        if (target > prev) {
+          const boundary = boundaries[prev - 1];
+          if (z < boundary + h) return prev;
+        } else if (target < prev) {
+          const boundary = boundaries[target - 1];
+          if (z >= boundary - h) return prev;
+        }
+        return target;
+      });
+    };
+
+    if (semanticZoomTimerRef.current) {
+      clearTimeout(semanticZoomTimerRef.current);
+    }
+    semanticZoomTimerRef.current = setTimeout(applyLevelFromZoom, 250);
+
+    return () => {
+      if (semanticZoomTimerRef.current) {
+        clearTimeout(semanticZoomTimerRef.current);
+      }
+    };
   }, [isUMAPView, isSemanticAuto, viewState?.zoom]);
 
   // Max visible points per level (5k..80k linear, step 15k).
@@ -290,21 +331,23 @@ const Viewer = ({
     return Math.min(1.0, budget / total);
   }, [isUMAPView, semanticLevel, SAMPLING_BUDGETS, points]);
 
-  // CPU subset for outlines/selection; full `points` go to GPU sampling in ImageLayers.
+  // UMAP display always respects sampling; full selectedIds still used for spatial cross-view.
   const visiblePoints = useMemo(() => {
     if (!points || points.length === 0) return [];
     if (samplingThreshold >= 1.0) return points;
 
-    return points.filter((p) => {
-      if (selectedIds.has(p.id)) return true;
-      const hash = (p.id * 0.6180339887) % 1;
-      return hash < samplingThreshold;
-    });
-  }, [points, samplingThreshold, selectedIds]);
+    return points.filter((p) => passesDisplaySampling(p.id, samplingThreshold));
+  }, [points, samplingThreshold]);
   const selectablePoints = useMemo(
     () => (hasActiveChannels ? visiblePoints : []),
     [hasActiveChannels, visiblePoints],
   );
+
+  const umapGeometricSelectionPoints = useMemo(() => {
+    if (!isUMAPView) return selectablePoints;
+    if (pointsUMAPPick?.length) return pointsUMAPPick;
+    return points;
+  }, [isUMAPView, pointsUMAPPick, points, selectablePoints]);
 
   const iconMappingsByChunk = useMemo(
     () => buildIconMappingsByChunk(meta, chunkUV),
@@ -348,31 +391,65 @@ const Viewer = ({
   const containerRef = useRef(null);
   // Defer DeckGL until layout + rAF×2 + 80ms so WebGL limits exist (avoids maxTextureDimension2D errors).
   const [containerReady, setContainerReady] = useState(false);
+  const [layoutEpoch, setLayoutEpoch] = useState(0);
   const readyTimeoutRef = useRef(null);
+  const readyOnceRef = useRef(false);
+  const containerReadyRef = useRef(false);
+  const lastDeckSizeRef = useRef({ width: 0, height: 0 });
+  containerReadyRef.current = containerReady;
+
+  const syncDeckToContainer = useCallback(() => {
+    const el = containerRef.current;
+    const deck = deckRef.current?.deck;
+    if (!el || !deck) return;
+    const w = Math.round(el.clientWidth);
+    const h = Math.round(el.clientHeight);
+    if (w <= 0 || h <= 0) return;
+    const prev = lastDeckSizeRef.current;
+    if (prev.width === w && prev.height === h) return;
+    lastDeckSizeRef.current = { width: w, height: h };
+    deck.setProps({ width: w, height: h });
+    deck.redraw(true);
+  }, []);
+
+  const scheduleLayoutEpoch = useCallback(() => {
+    setLayoutEpoch((n) => n + 1);
+  }, []);
+
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.target !== el) continue;
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          if (readyTimeoutRef.current) clearTimeout(readyTimeoutRef.current);
-          // rAF×2 + 80ms before showing canvas
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              readyTimeoutRef.current = setTimeout(() => setContainerReady(true), 80);
-            });
-          });
-        }
+
+    const onResize = () => {
+      if (containerReadyRef.current) {
+        syncDeckToContainer();
+        scheduleLayoutEpoch();
       }
-    });
+      if (readyOnceRef.current) return;
+      if (readyTimeoutRef.current) clearTimeout(readyTimeoutRef.current);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          readyTimeoutRef.current = setTimeout(() => {
+            readyOnceRef.current = true;
+            setContainerReady(true);
+          }, 80);
+        });
+      });
+    };
+
+    const ro = new ResizeObserver(onResize);
     ro.observe(el);
+    onResize();
     return () => {
       ro.disconnect();
       if (readyTimeoutRef.current) clearTimeout(readyTimeoutRef.current);
     };
-  }, []);
+  }, [syncDeckToContainer, scheduleLayoutEpoch]);
+
+  useLayoutEffect(() => {
+    if (!containerReady) return;
+    syncDeckToContainer();
+  }, [containerReady, syncDeckToContainer]);
 
   useEffect(() => {
     if (!rawUsesOmeTiff || !omeTiffSource || !containerReady) return;
@@ -453,8 +530,11 @@ const Viewer = ({
 
   // Fit camera to selection bbox
   const zoomToSelection = useCallback(() => {
-    if (!points?.length || !selectedIds?.size) return;
-    const selected = points.filter((p) => selectedIds.has(p.id));
+    if (!selectedIds?.size) return;
+    const pool =
+      !isUMAPView && pointsRawPick?.length ? pointsRawPick : points;
+    if (!pool?.length) return;
+    const selected = pool.filter((p) => selectedIds.has(p.id));
     if (selected.length === 0) return;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (const p of selected) {
@@ -475,7 +555,7 @@ const Viewer = ({
         ? new LinearInterpolator(["target", "zoom"])
         : undefined,
     }));
-  }, [points, selectedIds, setViewState, transitionsEnabled, rawToWorld]);
+  }, [points, pointsRawPick, isUMAPView, selectedIds, setViewState, transitionsEnabled, rawToWorld]);
 
   // Back to data center + zoom 8
   const initialTarget = useMemo(() => {
@@ -569,7 +649,13 @@ const Viewer = ({
     points: visiblePoints,
     filteredIds,
     deckRef,
-    viewDeps: [viewState.zoom, viewState.rotationX, viewState.rotationOrbit, viewState.target],
+    viewDeps: [
+      viewState.zoom,
+      viewState.rotationX,
+      viewState.rotationOrbit,
+      viewState.target,
+      layoutEpoch,
+    ],
     labelKey: clusterLabelKey,
   });
 
@@ -833,6 +919,7 @@ const Viewer = ({
     viewState,
     deckRef,
     containerRef,
+    layoutEpoch,
     rawToWorld,
   ]);
 
@@ -852,13 +939,25 @@ const Viewer = ({
 
   // Selected tile outline DOM positions
   const [selectedTileScreens, setSelectedTileScreens] = useState([]);
+  const [clusterHighlightScreens, setClusterHighlightScreens] = useState([]);
+
+  const MAX_CLUSTER_HIGHLIGHT_OUTLINES = 4000;
 
   useEffect(() => {
     if (!selectedIds || selectedIds.size === 0 || !visiblePoints || visiblePoints.length === 0) {
       setSelectedTileScreens([]);
       return;
     }
-    const selectedPointsForOutline = visiblePoints.filter((p) => selectedIds.has(p.id));
+    let selectedPointsForOutline = visiblePoints.filter((p) => selectedIds.has(p.id));
+    if (!isUMAPView && pointsRawPick?.length) {
+      const seen = new Set(selectedPointsForOutline.map((p) => p.id));
+      for (const p of pointsRawPick) {
+        if (selectedIds.has(p.id) && !seen.has(p.id)) {
+          selectedPointsForOutline.push(p);
+          seen.add(p.id);
+        }
+      }
+    }
     if (selectedPointsForOutline.length === 0) {
       setSelectedTileScreens([]);
       return;
@@ -900,6 +999,77 @@ const Viewer = ({
     getRegionIndexForId,
     regionColors,
     rawToWorld,
+    isUMAPView,
+    pointsRawPick,
+  ]);
+
+  useEffect(() => {
+    if (!highlightedClusters || highlightedClusters.size === 0) {
+      setClusterHighlightScreens([]);
+      return;
+    }
+    if (!visiblePoints || visiblePoints.length === 0) {
+      setClusterHighlightScreens([]);
+      return;
+    }
+
+    let matched = visiblePoints.filter((p) => {
+      const lbl = p?.label;
+      return Number.isFinite(lbl) && highlightedClusters.has(lbl);
+    });
+
+    if (!isUMAPView && pointsRawPick?.length) {
+      const seen = new Set(matched.map((p) => p.id));
+      for (const p of pointsRawPick) {
+        const lbl = p?.label;
+        if (
+          Number.isFinite(lbl) &&
+          highlightedClusters.has(lbl) &&
+          !seen.has(p.id)
+        ) {
+          matched.push(p);
+          seen.add(p.id);
+        }
+      }
+    }
+
+    if (matched.length > MAX_CLUSTER_HIGHLIGHT_OUTLINES) {
+      const ratio = MAX_CLUSTER_HIGHLIGHT_OUTLINES / matched.length;
+      matched = matched.filter((p) => (p.id * 0.6180339887) % 1 < ratio);
+    }
+
+    if (matched.length === 0) {
+      setClusterHighlightScreens([]);
+      return;
+    }
+
+    const result = projectItemsToScreen({
+      deckRef,
+      containerRef,
+      items: matched,
+      getWorldPosition: (p) => rawToWorld(p),
+      mapResult: (p, sx, sy, offsetX, offsetY) => {
+        const lbl = Number.isFinite(p?.label) ? p.label : 0;
+        return {
+          id: p.id,
+          x: sx + offsetX,
+          y: sy + offsetY,
+          color: clusterHighlightColor(lbl),
+        };
+      },
+    });
+
+    setClusterHighlightScreens(result || []);
+  }, [
+    highlightedClusters,
+    visiblePoints,
+    viewState,
+    deckRef,
+    containerRef,
+    layoutEpoch,
+    rawToWorld,
+    isUMAPView,
+    pointsRawPick,
   ]);
 
   useEffect(() => {
@@ -927,12 +1097,49 @@ const Viewer = ({
     });
     if (result.length === 0) return;
     setSimilarityRankingScreens(result);
-  }, [similarityRankings, points, viewState, deckRef, containerRef, rawToWorld]);
+  }, [
+    similarityRankings,
+    points,
+    viewState,
+    deckRef,
+    containerRef,
+    layoutEpoch,
+    rawToWorld,
+  ]);
+
+  const hoverPickAll =
+    !isUMAPView &&
+    effectiveRenderMode === "sprites" &&
+    !rawUsesOmeTiff &&
+    hasActiveChannels;
+  const effectivePickPoints =
+    hoverPickAll && pointsRawPick?.length ? pointsRawPick : points;
+
+  // UMAP region select → spatial shows all selected; spatial select → UMAP uses sampling only.
+  const spatialVisualPoints = useMemo(() => {
+    if (isUMAPView || !selectedIds?.size) return points;
+    const owner = getSelectionOwner();
+    if (!isSelectionOwnerUmap(owner)) return points;
+    const inDisplay = points.filter((p) => selectedIds.has(p.id));
+    return inDisplay.length > 0 ? inDisplay : points;
+  }, [isUMAPView, points, selectedIds]);
+
+  const umapVisualPoints = useMemo(() => {
+    if (!isUMAPView) return points;
+    return visiblePoints;
+  }, [isUMAPView, points, visiblePoints]);
+
+  // UMAP never bypasses GPU sampling (selected cells included only if they pass hash budget).
+  const selectedBypassSampling = !isUMAPView;
+
+  const imageLayerPoints = isUMAPView ? umapVisualPoints : spatialVisualPoints;
 
   const imageLayers = ImageLayers({
     meta,
     renderMode: effectiveRenderMode,
-    points,
+    points: imageLayerPoints,
+    pickPoints: effectivePickPoints,
+    hoverPickAll,
     atlasURL,
     atlasByChannel,
     iconMappingsByChunk,
@@ -953,7 +1160,8 @@ const Viewer = ({
     labelKey: clusterLabelKey,
     samplingThreshold,
     selectedIds,
-    transitionsEnabled,
+    selectedBypassSampling,
+    transitionsEnabled: transitionsEnabled && !isUMAPView,
     dotOutlineForBrightBackground: rawUsesOmeTiff,
     suppressSpriteAtlases: rawUsesOmeTiff,
     hasRenderableChannels: hasActiveChannels,
@@ -977,7 +1185,7 @@ const Viewer = ({
             smoothZoom: true,
             smoothZoomDuration: 200
           }
-        : { 
+        : {
             type: OrthographicController,
             scrollZoom: true,
             doubleClickZoom: true,
@@ -985,8 +1193,9 @@ const Viewer = ({
             inertiaFriction: 0.95,
             inertiaDeceleration: 0.95,
             scrollZoomSpeed: zoomSpeed,
-            smoothZoom: true,
-            smoothZoomDuration: 200
+            // UMAP: instant zoom — smoothZoom + semantic resampling caused continuous sprite transitions.
+            smoothZoom: !isUMAPView,
+            smoothZoomDuration: isUMAPView ? 0 : 200,
           }
       : false;
 
@@ -1021,6 +1230,8 @@ const Viewer = ({
         viewerId={viewerId}
         selectionMode={selectionMode}
         points={selectablePoints}
+        selectionPoints={umapGeometricSelectionPoints}
+        useGeometricSelection={isUMAPView}
         getWorldPositionForSelection={rawToWorld}
         filteredIds={filteredIds}
         selectedRegions={selectedRegions}
@@ -1090,7 +1301,13 @@ const Viewer = ({
               isSelecting={isSelecting}
               selectedIds={selectedIds}
               selectedRegions={selectedRegions}
-              points={visiblePoints}
+              points={
+                isUMAPView
+                  ? visiblePoints
+                  : pointsRawPick?.length
+                    ? pointsRawPick
+                    : visiblePoints
+              }
               getWorldPosition={rawToWorld}
               deckRef={deckRef}
               containerRef={containerRef}
@@ -1298,8 +1515,9 @@ const Viewer = ({
         neighNamesAnnotationOn={neighNamesAnnotationOn}
         rawAnnotationById={rawAnnotationById}
         filteredIds={filteredIds}
+        displayCoordById={displayCoordById}
         getWorldPosition={rawToWorld}
-        pickRadius={rawUsesOmeTiff ? 14 : 6}
+        pickRadius={rawUsesOmeTiff ? 14 : hoverPickAll ? 10 : 6}
       />
 
       {/* Selection outlines */}
@@ -1325,6 +1543,33 @@ const Viewer = ({
                 width: size,
                 height: size,
                 borderColor,
+              }}
+            />
+          );
+        })}
+
+      {clusterHighlightScreens &&
+        clusterHighlightScreens.length > 0 &&
+        clusterHighlightScreens.map(({ id, x, y, color }) => {
+          const size = Math.max(6, computedImageSize);
+          let borderColor = "rgba(255, 255, 255, 0.9)";
+          if (Array.isArray(color) && color.length >= 3) {
+            const [r, g, b, a] = color;
+            const alpha =
+              typeof a === "number" && a >= 0 && a <= 255 ? a / 255 : 0.95;
+            borderColor = `rgba(${r},${g},${b},${alpha})`;
+          }
+          return (
+            <div
+              key={`cluster-highlight-${id}`}
+              className="selected-tile-outline cluster-highlight-outline"
+              style={{
+                left: x - size / 2,
+                top: y - size / 2,
+                width: size,
+                height: size,
+                borderColor,
+                borderWidth: 1.5,
               }}
             />
           );

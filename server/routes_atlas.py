@@ -14,6 +14,7 @@ from .zarr_utils import (
     single_cache_path,
     _render_and_cache_atlas,
     _prewarm_channel_async,
+    render_cell_preview_png,
 )
 
 
@@ -147,6 +148,72 @@ def atlas_get(
         pass
     _prewarm_channel_async(ch, effective_tile)
     return FileResponse(cache_path, media_type="image/png", headers=_cache_headers(etag))
+
+
+def _parse_channel_list(channels: str) -> list[int]:
+    out: list[int] = []
+    for part in (channels or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            out.append(int(part))
+        except ValueError:
+            continue
+    return out
+
+
+def _parse_channel_windows(
+    channels: list[int],
+    win_min: Optional[str] = None,
+    win_max: Optional[str] = None,
+) -> dict[int, tuple[float, float]]:
+    """Optional parallel comma lists: win_min=0,0&win_max=65535,65535 per channel."""
+    mins = [float(x) for x in (win_min or "").split(",") if x.strip() != ""]
+    maxs = [float(x) for x in (win_max or "").split(",") if x.strip() != ""]
+    wins: dict[int, tuple[float, float]] = {}
+    for i, ch in enumerate(channels):
+        lo = mins[i] if i < len(mins) else 0.0
+        hi = maxs[i] if i < len(maxs) else 65535.0
+        wins[int(ch)] = (lo, hi)
+    return wins
+
+
+@router.get("/cell/{cell_id}/preview.png")
+def cell_preview(
+    cell_id: int,
+    channels: str = Query(..., description="Comma-separated channel indices"),
+    win_min: Optional[str] = Query(None),
+    win_max: Optional[str] = Query(None),
+    size: int = Query(128, ge=16, le=256),
+):
+    """On-demand single-cell preview for spatial hover (cells outside display atlas)."""
+    img = open_zarr()
+    C, N, H, W, chunks, n_chunks, n_per_chunk = meta_from_img(img)
+    chans = _parse_channel_list(channels)
+    if not chans:
+        raise HTTPException(status_code=400, detail="channels required")
+    for ch in chans:
+        _validate_channel_index(ch, C)
+    if not (0 <= int(cell_id) < int(N)):
+        raise HTTPException(status_code=404, detail="cell_id out of range")
+    wins = _parse_channel_windows(chans, win_min, win_max)
+    try:
+        png = render_cell_preview_png(
+            img,
+            int(cell_id),
+            chans,
+            channel_windows=wins,
+            out_size=int(size),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    etag = f"cell-{cell_id}-{'-'.join(str(c) for c in chans)}-s{size}"
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400", "ETag": etag},
+    )
 
 
 @router.post("/prewarm")

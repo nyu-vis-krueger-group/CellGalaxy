@@ -6,14 +6,15 @@ from typing import Any, List, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from .config import DATA_DIR, ZARR_DIR, clear_cache_dir
+from .config import DATA_DIR
+from .data_paths import spatial_coords_path
 from .display_subset import (
     clear_display_subset_artifacts,
     compute_display_indices,
     save_display_subset,
     subset_artifacts_exist,
 )
-from .zarr_utils import open_zarr, meta_from_img, stable_label
+from .zarr_utils import clear_cache_dir, open_zarr, meta_from_img, stable_label
 
 
 def _to_native(val: Any) -> Any:
@@ -193,6 +194,26 @@ def process_coord_row(
     }
     base.update(extra)
     return base
+
+
+def process_spatial_coord_row(row: pd.Series, zarr_row_id: int) -> Dict[str, Any]:
+    """Full-tissue record for spatial hover pick + UMAP geometric selection."""
+    x_raw = float(row.get("X_centroid", 0))
+    y_raw = float(row.get("Y_centroid", 0))
+    return {
+        "id": int(zarr_row_id),
+        "raw": {"x": x_raw, "y": y_raw, "z": 0},
+        "umap2d": {
+            "x": float(row.get("umap2_x", x_raw)),
+            "y": float(row.get("umap2_y", y_raw)),
+            "z": 0,
+        },
+        "umap3d": {
+            "x": float(row.get("umap3_x", x_raw)),
+            "y": float(row.get("umap3_y", y_raw)),
+            "z": float(row.get("umap3_z", 0)),
+        },
+    }
 
 
 _AUTO_P_LO = 1.0
@@ -550,6 +571,14 @@ async def generate_json_files() -> None:
             with open(os.path.join(DATA_DIR, "coords.json"), "w", encoding="utf-8") as f:
                 json.dump(coords, f, ensure_ascii=False, indent=2)
             coords_generated = True
+
+            # Full spatial coords for hover pick (all CSV rows; compact JSON).
+            spatial_coords = [
+                process_spatial_coord_row(df.iloc[i], i) for i in range(len(df))
+            ]
+            with open(spatial_coords_path(), "w", encoding="utf-8") as f:
+                json.dump(spatial_coords, f, ensure_ascii=False, separators=(",", ":"))
+            print(f"Generated spatial_coords.json ({len(spatial_coords)} points)")
 
         # channel_info.json generation (prefer explicit channel list)
         channels = generate_channel_info_only()

@@ -208,6 +208,59 @@ def _render_and_cache_atlas(img, ch: int, chunk_id: int, tile: int) -> str:
     return cache_path
 
 
+def render_cell_preview_png(
+    img,
+    cell_id: int,
+    channels: list[int],
+    channel_colors: dict[int, tuple[int, int, int]] | None = None,
+    channel_alphas: dict[int, float] | None = None,
+    channel_windows: dict[int, tuple[float, float]] | None = None,
+    out_size: int = 128,
+) -> bytes:
+    """Composite multi-channel cell tile to PNG (for spatial hover off-atlas cells)."""
+    C, N, H, W, _chunks, _n_chunks, _n_per_chunk = meta_from_img(img)
+    cid = int(cell_id)
+    if not (0 <= cid < int(N)):
+        raise ValueError(f"cell_id {cid} out of range [0, {N - 1}]")
+
+    colors = channel_colors or {}
+    alphas = channel_alphas or {}
+    wins = channel_windows or {}
+
+    accum = np.zeros((int(H), int(W), 4), dtype=np.float32)
+    for ch in channels:
+        ci = int(ch)
+        if not (0 <= ci < int(C)):
+            continue
+        data = np.asarray(img[ci, cid, :, :], dtype=np.float32)
+        w = wins.get(ci, (0.0, 65535.0))
+        lo, hi = float(w[0]), float(w[1])
+        t = norm01(data, lo, hi, 1.0)
+        col = colors.get(ci, (255, 255, 255))
+        alpha01 = float(min(1.0, max(0.0, alphas.get(ci, 1.0))))
+        v = t * alpha01
+        accum[..., 0] += col[0] * v
+        accum[..., 1] += col[1] * v
+        accum[..., 2] += col[2] * v
+        accum[..., 3] = np.maximum(accum[..., 3], v)
+
+    tone_gain = 1.35
+    rgba = np.zeros((int(H), int(W), 4), dtype=np.uint8)
+    a = accum[..., 3]
+    mask = a >= (5.0 / 255.0)
+    rgba[..., 0] = np.where(mask, np.clip(accum[..., 0] * tone_gain, 0, 255), 0)
+    rgba[..., 1] = np.where(mask, np.clip(accum[..., 1] * tone_gain, 0, 255), 0)
+    rgba[..., 2] = np.where(mask, np.clip(accum[..., 2] * tone_gain, 0, 255), 0)
+    rgba[..., 3] = np.where(mask, np.clip(a * 255.0, 0, 255), 0).astype(np.uint8)
+
+    pil = Image.fromarray(rgba, mode="RGBA")
+    if out_size > 0 and (int(H) != out_size or int(W) != out_size):
+        pil = pil.resize((int(out_size), int(out_size)), Image.Resampling.NEAREST)
+    buf = io.BytesIO()
+    pil.save(buf, format="PNG", compress_level=1)
+    return buf.getvalue()
+
+
 def _prewarm_channel_async(ch: int, tile: int) -> None:
     """async prewarm all chunks of a single channel atlas"""
     key = (int(ch), int(tile))
@@ -248,6 +301,7 @@ __all__ = [
     "meta_from_img",
     "grid_for_count",
     "get_default_tile",
+    "render_cell_preview_png",
     "stable_label",
     "single_cache_path",
     "_render_and_cache_atlas",

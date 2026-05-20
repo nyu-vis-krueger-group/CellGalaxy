@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { getEventCoordinates, computeSelectionBounds, performBoxSelection, performLassoSelection } from "../utils/utils";
+import {
+  getEventCoordinates,
+  computeSelectionBounds,
+  performBoxSelection,
+  performGeometricBoxSelection,
+  performLassoSelection,
+} from "../utils/utils";
 import { SELECTION_NONE, SELECTION_BOX, SELECTION_LASSO } from "../constants/selection";
 
 export default function SelectionOverlay({
@@ -8,6 +14,10 @@ export default function SelectionOverlay({
   viewerId = "viewer",
   selectionMode = "none", // 'none' | 'box' | 'lasso'
   points = [],
+  /** Full point list for geometric box/lasso (e.g. all UMAP coords). Falls back to `points`. */
+  selectionPoints = null,
+  /** When true, box/lasso use world-space geometry instead of deck.pickObjects. */
+  useGeometricSelection = false,
   /** Optional: world coords like Deck scatter (e.g. raw+OME y-flip) */
   getWorldPositionForSelection,
   filteredIds = new Set(),
@@ -71,21 +81,38 @@ export default function SelectionOverlay({
     const viewport = deck?.getViewports()[0];
     const ids = new Set();
     const isAdditive = !!additiveRef.current;
+    const geomPoints =
+      Array.isArray(selectionPoints) && selectionPoints.length > 0
+        ? selectionPoints
+        : points;
 
     if (selectionMode === SELECTION_BOX && dragStart && dragEnd) {
       const bounds = computeSelectionBounds(dragStart, dragEnd);
-      const picked = performBoxSelection(deck, bounds);
       const activeFilter = filteredIds && filteredIds.size > 0;
-      for (const p of picked) {
-        const id = p?.object?.id;
-        if (id == null) continue;
-        if (activeFilter && !filteredIds.has(id)) continue;
-        ids.add(id);
+      if (useGeometricSelection && viewport) {
+        const boxIds = performGeometricBoxSelection(
+          geomPoints,
+          viewport,
+          bounds,
+          getWorldPositionForSelection,
+        );
+        for (const id of boxIds) {
+          if (activeFilter && !filteredIds.has(id)) continue;
+          ids.add(id);
+        }
+      } else {
+        const picked = performBoxSelection(deck, bounds);
+        for (const p of picked) {
+          const id = p?.object?.id;
+          if (id == null) continue;
+          if (activeFilter && !filteredIds.has(id)) continue;
+          ids.add(id);
+        }
       }
     }
     if (selectionMode === SELECTION_LASSO && lassoPts.length >= 3 && viewport) {
       const lassoIds = performLassoSelection(
-        points,
+        geomPoints,
         viewport,
         lassoPts,
         getWorldPositionForSelection,

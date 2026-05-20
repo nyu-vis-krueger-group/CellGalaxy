@@ -10,11 +10,12 @@ from .data_paths import (
     features_npy_path,
     generating_marker_path,
     raw_csv_json_paths,
+    spatial_coords_path,
     zooming_csv_path,
 )
 from .display_subset import clear_display_subset_artifacts
 from .zarr_utils import reset_zarr_handle
-from .data_utils import generate_json_files, generate_raw_json
+from .data_utils import generate_channel_info_only, generate_json_files, generate_raw_json
 
 
 router = APIRouter()
@@ -39,6 +40,7 @@ async def upload_or_delete(
             remove_path(data_csv)
             remove_path(coords_json)
             remove_path(channel_json)
+            remove_path(spatial_coords_path())
             clear_display_subset_artifacts()
             return {"message": "CSV data cleared"}
 
@@ -103,7 +105,8 @@ async def upload_or_delete(
         try:
             with open(marker, "w", encoding="utf-8") as f:
                 f.write("generating")
-            await generate_json_files()
+            # Channel list only affects channel_info.json (not full coords/spatial rebuild).
+            generate_channel_info_only()
         finally:
             try:
                 if os.path.exists(marker):

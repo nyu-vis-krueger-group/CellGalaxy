@@ -2,6 +2,14 @@
 .viewer-root {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Let DeckGL canvas follow pane size (resize via ResizeObserver + deck.setProps) */
+.viewer-root canvas {
+  display: block;
 }
 .viewer-loading {
   height: 100vh;

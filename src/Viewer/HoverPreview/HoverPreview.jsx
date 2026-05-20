@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./HoverPreview.css";
 import { projectItemsToScreen } from "../../utils/utils";
+import { cellPreviewURL } from "../../api/api";
 
 // Hover tile: windowing like WindowedIconLayer; cached atlas images.
 const _previewImageCache = new Map();
@@ -35,6 +36,37 @@ function loadImageCached(src) {
   });
 }
 
+function resolveDisplayObject(object, displayCoordById) {
+  if (!object) return null;
+  const disp =
+    displayCoordById &&
+    typeof displayCoordById.get === "function" &&
+    Number.isFinite(object.id)
+      ? displayCoordById.get(object.id)
+      : null;
+  if (disp && disp.chunk_id != null && disp.local_index != null) {
+    return { ...object, chunk_id: disp.chunk_id, local_index: disp.local_index };
+  }
+  return object;
+}
+
+async function drawCellPreviewFromUrl(canvas, url, previewSize = 128) {
+  if (!canvas || !url) return;
+  const img = await loadImageCached(url);
+  const finalCtx = canvas.getContext("2d");
+  if (!finalCtx || !img) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = previewSize * dpr;
+  canvas.height = previewSize * dpr;
+  finalCtx.setTransform(1, 0, 0, 1, 0, 0);
+  finalCtx.scale(dpr, dpr);
+  finalCtx.imageSmoothingEnabled = true;
+  finalCtx.clearRect(0, 0, previewSize, previewSize);
+  finalCtx.fillStyle = "black";
+  finalCtx.fillRect(0, 0, previewSize, previewSize);
+  finalCtx.drawImage(img, 0, 0, previewSize, previewSize);
+}
+
 export async function drawCellPreviewToCanvas({
   canvas,
   object,
@@ -45,14 +77,28 @@ export async function drawCellPreviewToCanvas({
   colors,
   alphas,
   windows,
+  displayCoordById = null,
   previewSize = 128,
 }) {
   if (!canvas || !object) return;
-  const chunkId = object.chunk_id;
-  const localIndex = object.local_index;
+  const resolved = resolveDisplayObject(object, displayCoordById);
+  const chunkId = resolved.chunk_id;
+  const localIndex = resolved.local_index;
   const mapping = iconMappingsByChunk?.[chunkId]?.[`t_${localIndex}`];
   const uvMeta = chunkUV?.[chunkId];
   if (!mapping || !uvMeta) {
+    const chList =
+      Array.isArray(channels) && channels.length > 0
+        ? channels
+        : [];
+    const previewUrl =
+      chList.length > 0 && Number.isFinite(resolved.id)
+        ? cellPreviewURL(resolved.id, chList, windows, previewSize)
+        : null;
+    if (previewUrl) {
+      await drawCellPreviewFromUrl(canvas, previewUrl, previewSize);
+      return;
+    }
     const ctx = canvas.getContext("2d");
     if (ctx) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -177,6 +223,7 @@ function HoverCellTooltip({
   neighNamesAnnotationOn = false,
   rawAnnotationById = new Map(),
   filteredIds = null,
+  displayCoordById = null,
 }) {
   const canvasRef = useRef(null);
 
@@ -195,6 +242,7 @@ function HoverCellTooltip({
         colors,
         alphas,
         windows,
+        displayCoordById,
         previewSize: 128,
       });
       if (cancelled) return;
@@ -211,6 +259,7 @@ function HoverCellTooltip({
     colors,
     alphas,
     windows,
+    displayCoordById,
   ]);
 
   if (!info || !info.object) return null;
@@ -277,6 +326,7 @@ export default function HoverPreview({
   neighNamesAnnotationOn = false,
   rawAnnotationById = new Map(),
   filteredIds = null,
+  displayCoordById = null,
   getWorldPosition = null,
   /** deck pickObject radius; larger for transparent OME spatial scatter */
   pickRadius = 6,
@@ -428,6 +478,7 @@ export default function HoverPreview({
         neighNamesAnnotationOn={neighNamesAnnotationOn}
         rawAnnotationById={rawAnnotationById}
         filteredIds={filteredIds}
+        displayCoordById={displayCoordById}
       />
     </>
   );

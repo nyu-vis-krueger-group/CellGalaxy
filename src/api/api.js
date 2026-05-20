@@ -53,6 +53,46 @@ export async function fetchCoords(signal) {
   }
 }
 
+/** Full spatial centroids (all CSV rows) for spatial hover pick. */
+export async function fetchSpatialCoords(signal) {
+  try {
+    const url = `${API_BASE}/public/spatial_coords.json?ts=${Date.now()}`;
+    const res = await fetch(url, { signal, cache: "no-store" });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch (e) {
+    console.warn("fetchSpatialCoords failed", e);
+    return [];
+  }
+}
+
+const _cellPreviewUrlCache = new Map();
+
+/** PNG preview for one Zarr cell (off-atlas spatial hover). */
+export function cellPreviewURL(cellId, channels, windows, size = 128) {
+  const chList = (Array.isArray(channels) ? channels : []).map((c) => Number(c)).filter(Number.isFinite);
+  if (chList.length === 0) return null;
+  const mins = [];
+  const maxs = [];
+  for (const ch of chList) {
+    const w = windows?.[ch] || {};
+    mins.push(Number.isFinite(w.min) ? w.min : 0);
+    maxs.push(Number.isFinite(w.max) ? w.max : 65535);
+  }
+  const key = `${cellId}|${chList.join(",")}|${mins.join(",")}|${maxs.join(",")}|${size}`;
+  const cached = _cellPreviewUrlCache.get(key);
+  if (cached) return cached;
+  const params = new URLSearchParams({
+    channels: chList.join(","),
+    win_min: mins.join(","),
+    win_max: maxs.join(","),
+    size: String(size),
+  });
+  const url = `${API_BASE}/cell/${cellId}/preview.png?${params}`;
+  _cellPreviewUrlCache.set(key, url);
+  return url;
+}
+
 export async function fetchUV(chunkId, tile, signal) {
   return fetchJSON(`${API_BASE}/atlas_uv/${chunkId}?tile=${tile}`, { signal });
 }

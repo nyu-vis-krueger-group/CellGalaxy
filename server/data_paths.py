@@ -43,5 +43,10 @@ def csv_sidecar_paths() -> tuple[str, str, str]:
     )
 
 
+def spatial_coords_path() -> str:
+    """All cells' spatial centroids (id + raw); used for spatial hover pick."""
+    return os.path.join(DATA_DIR, "spatial_coords.json")
+
+
 def cluster_channel_avg_csv_path() -> str:
     return os.path.join(DATA_DIR, "cluster_channel_avg.csv")

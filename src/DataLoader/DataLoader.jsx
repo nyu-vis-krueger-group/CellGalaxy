@@ -1,9 +1,10 @@
 // Loads meta/coords/atlas; selection + render state.
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   API_BASE,
   fetchMeta,
   fetchCoords,
+  fetchSpatialCoords,
   fetchUV,
   staticAtlasURL,
   headStaticAtlas,
@@ -30,7 +31,11 @@ export default function useDataLoader() {
   const [meta, setMeta] = useState(null);
   const [points, setPoints] = useState([]); // legacy default raw
   const [pointsRaw, setPointsRaw] = useState([]);
+  /** All spatial positions for hover pick (may exceed display atlas subset). */
+  const [pointsRawPick, setPointsRawPick] = useState([]);
   const [pointsUMAP, setPointsUMAP] = useState([]);
+  /** All cells projected to UMAP space (for geometric region selection). */
+  const [pointsUMAPPick, setPointsUMAPPick] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Render params (UI-bound)
@@ -237,12 +242,32 @@ export default function useDataLoader() {
     else limiterRef.current.queue.push(run);
   });
 
-  // coords.json rows
+  // coords.json rows (display / atlas subset)
   const [allCoords, setAllCoords] = useState([]);
+  /** spatial_coords.json — all cells' raw centroids for spatial hover. */
+  const [allSpatialCoords, setAllSpatialCoords] = useState([]);
+
+  const displayCoordById = useMemo(() => {
+    const m = new Map();
+    for (const c of allCoords || []) {
+      if (c && Number.isFinite(c.id)) m.set(c.id, c);
+    }
+    return m;
+  }, [allCoords]);
 
   const [selectionMode, setSelectionMode] = useState('none');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [selectedRegions, setSelectedRegions] = useState(() => []);
+  const [highlightedClusters, setHighlightedClusters] = useState(() => new Set());
+
+  const availableClusterLabels = useMemo(() => {
+    const labels = new Set();
+    for (const c of allCoords || []) {
+      const lbl = c?.label;
+      if (Number.isFinite(lbl)) labels.add(lbl);
+    }
+    return Array.from(labels).sort((a, b) => a - b);
+  }, [allCoords]);
   const clearSelection = () => {
     setSelectedIds(new Set());
     setSelectedRegions([]);
@@ -325,12 +350,53 @@ export default function useDataLoader() {
     return Math.min(sizeX, sizeY) * RAW_GRID_SAFETY;
   }
 
-  // Project raw + UMAP, normalize each separately (raw stays in pixel space when OME-TIFF is loaded)
+  const rawGetter = (p) =>
+    p?.raw
+      ? { x: p.raw.x, y: p.raw.y, z: p.raw.z ?? 0 }
+      : { x: 0, y: 0, z: 0 };
+
+  const umapGetter = (p) => {
+    if (is3D && p.umap3d) return { x: p.umap3d.x, y: p.umap3d.y, z: p.umap3d.z ?? 0 };
+    if (!is3D && p.umap2d) return { x: p.umap2d.x, y: p.umap2d.y, z: 0 };
+    return { x: 0, y: 0, z: 0 };
+  };
+
+  const computeBbox = (coordList, getter) => {
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < coordList.length; i++) {
+      const { x, y, z } = getter(coordList[i]);
+      const vx = x, vy = y, vz = z ?? 0;
+      if (vx < minX) minX = vx; if (vx > maxX) maxX = vx;
+      if (vy < minY) minY = vy; if (vy > maxY) maxY = vy;
+      if (vz < minZ) minZ = vz; if (vz > maxZ) maxZ = vz;
+    }
+    return { minX, maxX, minY, maxY, minZ, maxZ };
+  };
+
+  const projectCoordList = (coordList, getter, bbox) => {
+    const { minX, maxX, minY, maxY, minZ, maxZ } = bbox;
+    return coordList.map((src) => {
+      const { x, y, z } = getter(src);
+      return {
+        ...src,
+        label: src.label ?? (src.id % 11),
+        x: safeScale(x, minX, maxX),
+        y: -safeScale(y, minY, maxY),
+        z: safeScale(z ?? 0, minZ, maxZ),
+      };
+    });
+  };
+
+  // Project raw + UMAP; spatial pick uses full spatial_coords when available.
   const applyAllProjections = () => {
     if (!allCoords || allCoords.length === 0) {
       setPoints([]);
       setPointsRaw([]);
+      setPointsRawPick([]);
       setPointsUMAP([]);
+      setPointsUMAPPick([]);
       return;
     }
 
@@ -346,99 +412,33 @@ export default function useDataLoader() {
         };
       });
       setPointsRaw(rawProjected);
+      setPointsRawPick(rawProjected);
       setPoints(rawProjected);
-
-      const umapGetter = (p) => {
-        if (is3D && p.umap3d) return { x: p.umap3d.x, y: p.umap3d.y, z: p.umap3d.z ?? 0 };
-        if (!is3D && p.umap2d) return { x: p.umap2d.x, y: p.umap2d.y, z: 0 };
-        return { x: 0, y: 0, z: 0 };
-      };
-      const projectAndNormalize = (getter) => {
-        const projected = new Array(allCoords.length);
-        let minX = Infinity, maxX = -Infinity;
-        let minY = Infinity, maxY = -Infinity;
-        let minZ = Infinity, maxZ = -Infinity;
-
-        for (let i = 0; i < allCoords.length; i++) {
-          const src = allCoords[i];
-          const { x, y, z } = getter(src);
-          const item = { ...src, x, y, z: z ?? 0 };
-          projected[i] = item;
-
-          const vx = item.x;
-          const vy = item.y;
-          const vz = item.z || 0;
-          if (vx < minX) minX = vx; if (vx > maxX) maxX = vx;
-          if (vy < minY) minY = vy; if (vy > maxY) maxY = vy;
-          if (vz < minZ) minZ = vz; if (vz > maxZ) maxZ = vz;
-        }
-
-        for (let i = 0; i < projected.length; i++) {
-          const p = projected[i];
-          projected[i] = {
-            ...p,
-            label: p.label ?? (p.id % 11),
-            x: safeScale(p.x, minX, maxX),
-            y: -safeScale(p.y, minY, maxY),
-            z: safeScale(p.z || 0, minZ, maxZ),
-          };
-        }
-        return projected;
-      };
-      setPointsUMAP(projectAndNormalize(umapGetter));
+      const bbox = computeBbox(allCoords, umapGetter);
+      const umapProjected = projectCoordList(allCoords, umapGetter, bbox);
+      setPointsUMAP(umapProjected);
+      setPointsUMAPPick(umapProjected);
       return;
     }
 
-    const projectAndNormalize = (getter) => {
-      // Pass 1: project + bbox
-      const projected = new Array(allCoords.length);
-      let minX = Infinity, maxX = -Infinity;
-      let minY = Infinity, maxY = -Infinity;
-      let minZ = Infinity, maxZ = -Infinity;
-
-      for (let i = 0; i < allCoords.length; i++) {
-        const src = allCoords[i];
-        const { x, y, z } = getter(src);
-        const item = { ...src, x, y, z: z ?? 0 };
-        projected[i] = item;
-
-        const vx = item.x;
-        const vy = item.y;
-        const vz = item.z || 0;
-        if (vx < minX) minX = vx; if (vx > maxX) maxX = vx;
-        if (vy < minY) minY = vy; if (vy > maxY) maxY = vy;
-        if (vz < minZ) minZ = vz; if (vz > maxZ) maxZ = vz;
-      }
-
-      // Pass 2: normalize to [-1,1]-ish
-      for (let i = 0; i < projected.length; i++) {
-        const p = projected[i];
-        projected[i] = {
-          ...p,
-          label: p.label ?? (p.id % 11),
-          x: safeScale(p.x, minX, maxX),
-          y: -safeScale(p.y, minY, maxY),
-          z: safeScale(p.z || 0, minZ, maxZ),
-        };
-      }
-      return projected;
-    };
-
-    const rawGetter = (p) =>
-      p?.raw ? { x: p.raw.x, y: p.raw.y, z: 0 } : { x: 0, y: 0, z: 0 };
-    const scaledRaw = projectAndNormalize(rawGetter);
+    const bboxSource =
+      allSpatialCoords.length > 0 ? allSpatialCoords : allCoords;
+    const rawBbox = computeBbox(bboxSource, rawGetter);
+    const scaledRaw = projectCoordList(allCoords, rawGetter, rawBbox);
+    const pickSource =
+      allSpatialCoords.length > 0 ? allSpatialCoords : allCoords;
+    const scaledRawPick = projectCoordList(pickSource, rawGetter, rawBbox);
     setPointsRaw(scaledRaw);
-
-    const umapGetter = (p) => {
-      if (is3D && p.umap3d) return { x: p.umap3d.x, y: p.umap3d.y, z: p.umap3d.z ?? 0 };
-      if (!is3D && p.umap2d) return { x: p.umap2d.x, y: p.umap2d.y, z: 0 };
-      return { x: 0, y: 0, z: 0 };
-    };
-    const scaledUMAP = projectAndNormalize(umapGetter);
-    setPointsUMAP(scaledUMAP);
-
-    // Legacy `points` = raw
+    setPointsRawPick(scaledRawPick);
     setPoints(scaledRaw);
+    const umapBbox = computeBbox(allCoords, umapGetter);
+    setPointsUMAP(projectCoordList(allCoords, umapGetter, umapBbox));
+    const umapPickSource =
+      allSpatialCoords.length > 0 &&
+      allSpatialCoords.some((p) => p?.umap2d || p?.umap3d)
+        ? allSpatialCoords
+        : allCoords;
+    setPointsUMAPPick(projectCoordList(umapPickSource, umapGetter, umapBbox));
   };
 
   /** Fast path: upload flags only (OME-TIFF / etc.) — do not wait for meta or coords. */
@@ -470,10 +470,21 @@ export default function useDataLoader() {
       if (!Array.isArray(coords)) coords = [];
       setAllCoords(coords);
 
+      let spatialCoords = await fetchSpatialCoords(abort.signal);
+      if (!Array.isArray(spatialCoords)) spatialCoords = [];
+      if (spatialCoords.length === 0 && coords.length > 0) {
+        spatialCoords = coords.map((c) => ({
+          id: c.id,
+          raw: c.raw || { x: 0, y: 0, z: 0 },
+        }));
+      }
+      setAllSpatialCoords(spatialCoords);
+
       // Initial sizes from tile + raw span; UMAP capped by slider max
       const tilePx = metaJson?.atlas?.tile;
-      const fromTileAndRange = tilePx != null && coords.length > 0
-        ? imageSizeFromTileAndRawRange(tilePx, coords)
+      const spanCoords = spatialCoords.length > 0 ? spatialCoords : coords;
+      const fromTileAndRange = tilePx != null && spanCoords.length > 0
+        ? imageSizeFromTileAndRawRange(tilePx, spanCoords)
         : null;
       const UMAP_SIZE_CAP = 6;
       if (fromTileAndRange != null) {
@@ -561,7 +572,9 @@ export default function useDataLoader() {
       console.error("Failed to refresh data", error);
       setMeta({ error: "Failed to refresh data" });
       setAllCoords([]);
+      setAllSpatialCoords([]);
       setPoints([]);
+      setPointsRawPick([]);
       setChunkUV({});
       setAtlasURL({});
       setAtlasByChannel({});
@@ -587,10 +600,12 @@ export default function useDataLoader() {
     else {
       setPoints([]);
       setPointsRaw([]);
+      setPointsRawPick([]);
       setPointsUMAP([]);
+      setPointsUMAPPick([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCoords, omeTiffSpatialActive]);
+  }, [allCoords, allSpatialCoords, omeTiffSpatialActive, is3D]);
 
   // is3D flip → rebuild UMAP projection
   useEffect(() => {
@@ -724,7 +739,10 @@ export default function useDataLoader() {
     meta,
     points,
     pointsRaw,
+    pointsRawPick,
+    displayCoordById,
     pointsUMAP,
+    pointsUMAPPick,
     loading,
     chunkUV,
     atlasURL,
@@ -787,6 +805,9 @@ export default function useDataLoader() {
     setSelectedIds,
     selectedRegions,
     setSelectedRegions,
+    highlightedClusters,
+    setHighlightedClusters,
+    availableClusterLabels,
     clearSelection,
     filteredIds,
     setFilteredIds,

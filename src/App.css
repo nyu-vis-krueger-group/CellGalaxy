@@ -4,24 +4,60 @@
   width: 100vw;
 }
 
-/* Split viewers side by side */
+/* Split viewers side by side (columns applied on mouseup via splitRatio) */
 .viewer-split {
-  display: flex;
+  position: relative;
+  display: grid;
   height: 100vh;
   width: 100vw;
 }
 
+/* Drag preview only — panes resize after mouseup */
+.viewer-split-preview {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 30;
+}
+
 .viewer-pane {
   position: relative;
-  flex: 1 1 50%;
-  min-width: 0; /* allow DeckGL canvas to shrink */
-  border-right: 1px solid rgba(255,255,255,0.2);
+  min-width: 0;
+  min-height: 0;
   /* Treat each viewer-pane as a clipping container to prevent tooltips/previews crossing the center line */
   overflow: hidden;
 }
 
-.viewer-pane:last-child {
-  border-right: none;
+.viewer-split-handle {
+  flex: 0 0 8px;
+  position: relative;
+  z-index: 20;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.viewer-split-handle::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.25);
+  transition: background 0.15s, width 0.15s;
+}
+
+.viewer-split-handle:hover::before,
+.viewer-split--dragging .viewer-split-handle::before {
+  width: 2px;
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .viewer-label {

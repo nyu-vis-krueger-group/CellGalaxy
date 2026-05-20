@@ -63,4 +63,9 @@
   z-index: 14; /* keep below hover outline */
 }
 
+.cluster-highlight-outline {
+  z-index: 13;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
 

@@ -1,7 +1,15 @@
+import { clusterColor } from "../utils/clustering";
+
 export const defaultRegionColors = [
   [255, 140, 0, 255],  // orange
   [0, 200, 255, 255],  // cyan
 ];
+
+/** Per-cluster highlight outline color (RGBA) from clustering label. */
+export function clusterHighlightColor(label) {
+  const rgb = clusterColor(label);
+  return [rgb[0], rgb[1], rgb[2], 255];
+}
 
 export function makeRegionIndexGetter(selectedRegions) {
   const regions = Array.isArray(selectedRegions) ? selectedRegions : [];

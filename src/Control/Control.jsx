@@ -8,6 +8,7 @@ import ChannelManager from "../ChannelManager/ChannelManager";
 import SelectionPanel from "../SelectionPanel/SelectionPanel";
 import Filter from "../Filter/Filter";
 import ClusteringControl from "../ClusteringControl/ClusteringControl";
+import ClusterFilter from "../ClusterFilter/ClusterFilter";
 
 export default function Control({
   meta,
@@ -62,6 +63,9 @@ export default function Control({
   omeTiffRestoreNeedsClick = false,
   restoreOmeTiffFromDisk = async () => {},
   omePixelRangeByChannelId = {},
+  highlightedClusters = new Set(),
+  setHighlightedClusters = () => {},
+  availableClusterLabels = [],
 }) {
   const [collapsed, setCollapsed] = useState(false);
   return (
@@ -92,6 +96,13 @@ export default function Control({
           onClearLocalOmeTiff={clearLocalOmeTiff}
           omeTiffRestoreNeedsClick={omeTiffRestoreNeedsClick}
           onRestoreOmeTiffFromDisk={restoreOmeTiffFromDisk}
+          renderClusterFilter={() => (
+            <ClusterFilter
+              availableLabels={availableClusterLabels}
+              highlightedClusters={highlightedClusters}
+              setHighlightedClusters={setHighlightedClusters}
+            />
+          )}
         />
       {/* Channel management (moved above Selection) */}
       <ChannelManager

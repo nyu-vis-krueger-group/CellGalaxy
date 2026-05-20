@@ -31,7 +31,13 @@ export default function ImageLayers({
   rankKey = null,
   semanticSizeOn = false,
   samplingThreshold = 1.0,
+  /** Points used for invisible pick layer (spatial: all cells; visual may be sampled). */
+  pickPoints = null,
+  /** When true, sprites are not pickable; transparent scatter handles hover. */
+  hoverPickAll = false,
   selectedIds = null,
+  /** When false, selected ids still respect samplingThreshold (spatial→UMAP case). */
+  selectedBypassSampling = true,
   transitionsEnabled = true,
   /** Stroked cell markers for readability on top of bright OME-TIFF imagery */
   dotOutlineForBrightBackground = false,
@@ -61,6 +67,8 @@ export default function ImageLayers({
     return path.map(([x, y, z = 0]) => [x, h - y, z]);
   };
 
+  const effectivePickPoints = pickPoints ?? points;
+
   const selectedPoints = useMemo(() => {
     if (!points || !getRegionIndexForId) return [];
     const arr = [];
@@ -71,6 +79,26 @@ export default function ImageLayers({
     return arr;
   }, [points, getRegionIndexForId]);
   const hasSelection = selectedPoints.length > 0;
+
+  const pickScatterLayer = (idSuffix = "") => {
+    if (!hoverPickAll || !effectivePickPoints?.length) return null;
+    return new ScatterplotLayer({
+      id: `spatial-hover-pick${idSuffix}`,
+      data: effectivePickPoints,
+      getPosition: (d) => worldPos(d),
+      getFillColor: () => [255, 255, 255, 0],
+      getRadius: () => computedImageSize * 0.85,
+      radiusUnits: "pixels",
+      stroked: false,
+      pickable: true,
+      autoHighlight: false,
+      parameters: { depthTest: false },
+      updateTriggers: {
+        getRadius: [computedImageSize],
+        getPosition: [pixelYFlipHeight],
+      },
+    });
+  };
 
   const layers = useMemo(() => {
     if (!hasRenderableChannels) return [];
@@ -99,7 +127,7 @@ export default function ImageLayers({
           
           extensions: [new DataFilterExtension({ filterSize: 1 })],
           getFilterValue: (d) => {
-            if (selectedIds && selectedIds.has(d.id)) return 0;
+            if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
             return (d.id * 0.6180339887) % 1;
           },
           filterRange: [0, samplingThreshold],
@@ -129,7 +157,7 @@ export default function ImageLayers({
           distanceFadeEnabled: is3D,
           sizeUnits: "pixels",
           billboard: true,
-          pickable: true,
+          pickable: !hoverPickAll,
           autoHighlight: false,
           // Image (not ImageBitmap) for texture reliability; animate position only
           transitions: transitionsEnabled
@@ -266,7 +294,7 @@ export default function ImageLayers({
                 stroked: false,
                 extensions: [new DataFilterExtension({ filterSize: 1 })],
                 getFilterValue: (d) => {
-                  if (selectedIds && selectedIds.has(d.id)) return 0;
+                  if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
                   return (d.id * 0.6180339887) % 1;
                 },
                 filterRange: [0, samplingThreshold],
@@ -324,6 +352,9 @@ export default function ImageLayers({
         );
       }
 
+      const pickLayer = pickScatterLayer();
+      if (pickLayer) all.push(pickLayer);
+
       return all;
     }
 
@@ -341,7 +372,7 @@ export default function ImageLayers({
           getLineColor: () => [0, 0, 0, 210],
           extensions: [new DataFilterExtension({ filterSize: 1 })],
           getFilterValue: (d) => {
-            if (selectedIds && selectedIds.has(d.id)) return 0;
+            if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
             return (d.id * 0.6180339887) % 1;
           },
           filterRange: [0, samplingThreshold],
@@ -383,7 +414,7 @@ export default function ImageLayers({
           getPosition: (d) => worldPos(d),
           extensions: [new DataFilterExtension({ filterSize: 1 })],
           getFilterValue: (d) => {
-            if (selectedIds && selectedIds.has(d.id)) return 0;
+            if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
             return (d.id * 0.6180339887) % 1;
           },
           filterRange: [0, samplingThreshold],
@@ -463,11 +494,17 @@ export default function ImageLayers({
         })
       );
     }
+    const pickLayer = pickScatterLayer("-scatter");
+    if (pickLayer) base.push(pickLayer);
+
     return base;
   }, [
     meta,
     renderMode,
     points,
+    pickPoints,
+    hoverPickAll,
+    effectivePickPoints,
     pixelYFlipHeight,
     atlasURL,
     atlasByChannel,
@@ -492,6 +529,8 @@ export default function ImageLayers({
     omeSpatialScatterPickOnly,
     hasRenderableChannels,
     selectedIds,
+    selectedBypassSampling,
+    samplingThreshold,
   ]);
 
   return layers;

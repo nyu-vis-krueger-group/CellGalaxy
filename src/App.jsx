@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { VIEW_SINGLE } from "./constants/view";
 import {
   SPATIAL_SCROLL_ZOOM_SPEED,
@@ -8,6 +8,11 @@ import useDataLoader from "./DataLoader/DataLoader";
 import Viewer from "./Viewer/Viewer";
 import Control from "./Control/Control";
 import "./App.css";
+
+const SPLIT_RATIO_MIN = 0.15;
+const SPLIT_RATIO_MAX = 0.85;
+const SPLIT_RATIO_DEFAULT = 0.5;
+
 export default function App() {
   const dataLoader = useDataLoader();
   const {
@@ -20,20 +25,97 @@ export default function App() {
     clusterPreviewOn,
     ...rest
   } = dataLoader;
-  // viewMode: single | dual
-  const [viewMode, setViewMode] = React.useState(VIEW_SINGLE);
-  // No camera tween on mode switch
-  const [disableTransitions, setDisableTransitions] = React.useState(false);
-  React.useEffect(() => {
+  const [viewMode, setViewMode] = useState(VIEW_SINGLE);
+  const [splitRatio, setSplitRatio] = useState(SPLIT_RATIO_DEFAULT);
+  const splitRef = useRef(null);
+  const splitPreviewRef = useRef(null);
+  const splitDraggingRef = useRef(false);
+
+  const applySplitColumns = useCallback((ratio, el = splitRef.current) => {
+    if (!el) return;
+    const r = Math.min(SPLIT_RATIO_MAX, Math.max(SPLIT_RATIO_MIN, ratio));
+    el.style.gridTemplateColumns = `minmax(0, ${r}fr) 8px minmax(0, ${1 - r}fr)`;
+    return r;
+  }, []);
+
+  const ratioFromClientX = useCallback((clientX) => {
+    const el = splitRef.current;
+    if (!el) return splitRatio;
+    const { left, width } = el.getBoundingClientRect();
+    if (width <= 0) return splitRatio;
+    return Math.min(
+      SPLIT_RATIO_MAX,
+      Math.max(SPLIT_RATIO_MIN, (clientX - left) / width),
+    );
+  }, [splitRatio]);
+
+  const showSplitPreview = useCallback((clientX) => {
+    const el = splitRef.current;
+    const preview = splitPreviewRef.current;
+    if (!el || !preview) return;
+    const { left, width } = el.getBoundingClientRect();
+    if (width <= 0) return;
+    const ratio = ratioFromClientX(clientX);
+    preview.style.left = `${ratio * width}px`;
+    preview.style.display = "block";
+  }, [ratioFromClientX]);
+
+  const hideSplitPreview = useCallback(() => {
+    const preview = splitPreviewRef.current;
+    if (!preview) return;
+    preview.style.display = "none";
+  }, []);
+
+  const onSplitHandleMouseDown = useCallback(
+    (e) => {
+      e.preventDefault();
+      splitDraggingRef.current = true;
+      splitRef.current?.classList.add("viewer-split--dragging");
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      showSplitPreview(e.clientX);
+    },
+    [showSplitPreview],
+  );
+
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!splitDraggingRef.current) return;
+      showSplitPreview(e.clientX);
+    };
+    const endDrag = (e) => {
+      if (!splitDraggingRef.current) return;
+      splitDraggingRef.current = false;
+      splitRef.current?.classList.remove("viewer-split--dragging");
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      hideSplitPreview();
+      setSplitRatio(ratioFromClientX(e.clientX));
+    };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", endDrag);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", endDrag);
+    };
+  }, [showSplitPreview, hideSplitPreview, ratioFromClientX]);
+
+  const [disableTransitions, setDisableTransitions] = useState(false);
+  useEffect(() => {
     setDisableTransitions(true);
     const t = setTimeout(() => setDisableTransitions(false), 200);
     return () => clearTimeout(t);
   }, [viewMode]);
 
+  useLayoutEffect(() => {
+    if (viewMode !== "dual") return;
+    applySplitColumns(splitRatio);
+  }, [viewMode, splitRatio, applySplitColumns]);
+
   return (
     <div className="app-container">
       {viewMode === "dual" ? (
-        <div className="viewer-split">
+        <div className="viewer-split" ref={splitRef}>
           <div className="viewer-pane">
             <div className="viewer-label">Spatial</div>
             <Viewer
@@ -54,6 +136,16 @@ export default function App() {
               zoomSpeed={SPATIAL_SCROLL_ZOOM_SPEED}
             />
           </div>
+          <div
+            className="viewer-split-handle"
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuenow={Math.round(splitRatio * 100)}
+            aria-valuemin={SPLIT_RATIO_MIN * 100}
+            aria-valuemax={SPLIT_RATIO_MAX * 100}
+            aria-label="调整 Spatial 与 UMAP 视图宽度"
+            onMouseDown={onSplitHandleMouseDown}
+          />
           <div className="viewer-pane">
             <div className="viewer-label">UMAP</div>
             <Viewer
@@ -73,6 +165,11 @@ export default function App() {
               zoomSpeed={UMAP_SCROLL_ZOOM_SPEED}
             />
           </div>
+          <div
+            ref={splitPreviewRef}
+            className="viewer-split-preview"
+            aria-hidden="true"
+          />
         </div>
       ) : (
         <div className="viewer-split">
