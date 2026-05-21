@@ -45,8 +45,11 @@ export async function fetchCoords(signal) {
   try {
     const url = `${API_BASE}/public/coords.json?ts=${Date.now()}`;
     const res = await fetch(url, { signal, cache: "no-store" });
-    if (!res.ok) return [];
-    return await res.json();
+    if (res.ok) {
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    }
+    return [];
   } catch (e) {
     console.warn("fetchCoords failed", e);
     return [];

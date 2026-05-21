@@ -7,10 +7,12 @@ from fastapi.responses import JSONResponse
 from .config import DATA_DIR, ZARR_DIR, OME_TIFF_PATH
 from .data_paths import (
     channel_list_csv_path,
+    csv_sidecar_paths,
     data_csv_path,
     features_npy_path,
     generating_marker_path,
     raw_csv_json_paths,
+    spatial_coords_path,
     zooming_csv_path,
 )
 from .data_utils import get_channel_info, process_coord_row, generate_channel_info_only
@@ -76,6 +78,26 @@ async def upload_status():
     }
 
 
+def _artifact_ready(path: str, min_bytes: int = 8) -> bool:
+    try:
+        return os.path.isfile(path) and os.path.getsize(path) >= min_bytes
+    except OSError:
+        return False
+
+
+@router.get("/generation-status")
+async def upload_generation_status():
+    """Explicit pipeline state for channel_list upload polling (avoids stale HEAD/cache)."""
+    _, coords_json, channel_json = csv_sidecar_paths()
+    spatial_json = spatial_coords_path()
+    return {
+        "generating": os.path.exists(generating_marker_path()),
+        "coords_ready": _artifact_ready(coords_json),
+        "channel_ready": _artifact_ready(channel_json),
+        "spatial_ready": _artifact_ready(spatial_json, min_bytes=64),
+    }
+
+
 @router.get("/channels")
 async def get_channels():
     try:
@@ -96,8 +118,7 @@ async def get_channels():
         if not os.path.exists(csv_path):
             return {"channels": [], "total_channels": 0}
         df = pd.read_csv(csv_path)
-        img = open_zarr()
-        channels = get_channel_info(df, img)
+        channels = get_channel_info(df)
         return {"channels": channels, "total_channels": len(channels)}
     except Exception:
         return {"channels": [], "total_channels": 0}

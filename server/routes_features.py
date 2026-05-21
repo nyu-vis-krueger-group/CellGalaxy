@@ -22,6 +22,12 @@ _GLOBAL_DIFFS_SORTED: np.ndarray | None = None
 _UMAP2: np.ndarray | None = None
 
 
+def invalidate_data_csv_caches() -> None:
+    """Drop in-memory caches tied to data.csv (call after CSV upload/delete)."""
+    global _UMAP2
+    _UMAP2 = None
+
+
 def _ensure_features() -> Tuple[np.ndarray, np.ndarray]:
     """Load features and a L2-normalized copy, cached in memory."""
     global _FEAT_RAW, _FEAT_NORM

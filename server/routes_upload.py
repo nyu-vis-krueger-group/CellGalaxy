@@ -3,6 +3,18 @@ import zipfile
 
 from fastapi import APIRouter, File, UploadFile, HTTPException, Request
 
+_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
+
+
+async def _stream_upload_to_path(upload: UploadFile, dest: str) -> None:
+    """Write multipart upload to disk in chunks (avoid loading whole file into RAM)."""
+    with open(dest, "wb") as out:
+        while True:
+            chunk = await upload.read(_UPLOAD_CHUNK_BYTES)
+            if not chunk:
+                break
+            out.write(chunk)
+
 from .config import DATA_DIR, ZARR_DIR, remove_path
 from .data_paths import (
     channel_list_csv_path,
@@ -15,7 +27,8 @@ from .data_paths import (
 )
 from .display_subset import clear_display_subset_artifacts
 from .zarr_utils import reset_zarr_handle
-from .data_utils import generate_channel_info_only, generate_json_files, generate_raw_json
+from .data_utils import generate_json_files, generate_raw_json
+from .routes_features import invalidate_data_csv_caches
 
 
 router = APIRouter()
@@ -23,7 +36,9 @@ router = APIRouter()
 
 @router.api_route("/upload/{file_type}", methods=["POST", "DELETE"])
 async def upload_or_delete(
-    file_type: str, request: Request, file: UploadFile | None = File(None)
+    file_type: str,
+    request: Request,
+    file: UploadFile | None = File(None),
 ):
     if file_type not in ["zarr", "csv", "raw", "feat", "channels", "zooming"]:
         raise HTTPException(status_code=400, detail="Unsupported file type")
@@ -42,6 +57,7 @@ async def upload_or_delete(
             remove_path(channel_json)
             remove_path(spatial_coords_path())
             clear_display_subset_artifacts()
+            invalidate_data_csv_caches()
             return {"message": "CSV data cleared"}
 
         if file_type == "raw":
@@ -76,18 +92,27 @@ async def upload_or_delete(
     )
     file_path = os.path.join(DATA_DIR, target_name)
 
-    with open(file_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
+    await _stream_upload_to_path(file, file_path)
 
     if file_type == "zarr":
         remove_path(ZARR_DIR)
         with zipfile.ZipFile(file_path, "r") as zip_ref:
             zip_ref.extractall(DATA_DIR)
         os.remove(file_path)
-        reset_zarr_handle()
+        # Keep atlas cache until channel_list upload rebuilds coords + atlases.
+        reset_zarr_handle(clear_cache=False)
+        clear_display_subset_artifacts()
+        # Coords / channel_info are rebuilt when channel_list is uploaded.
+        _, coords_json, _ = csv_sidecar_paths()
+        remove_path(coords_json)
+        remove_path(spatial_coords_path())
     elif file_type == "csv":
-        pass
+        clear_display_subset_artifacts()
+        invalidate_data_csv_caches()
+        # Stale sidecars until channel_list upload runs generate_json_files().
+        _, coords_json, _ = csv_sidecar_paths()
+        remove_path(coords_json)
+        remove_path(spatial_coords_path())
     elif file_type == "raw":
         raw_csv, raw_json = raw_csv_json_paths()
         try:
@@ -101,12 +126,22 @@ async def upload_or_delete(
     elif file_type == "zooming":
         pass
     elif file_type == "channels":
+        _, coords_json, channel_json = csv_sidecar_paths()
+        remove_path(coords_json)
+        remove_path(channel_json)
+        remove_path(spatial_coords_path())
         marker = generating_marker_path()
         try:
             with open(marker, "w", encoding="utf-8") as f:
                 f.write("generating")
-            # Channel list only affects channel_info.json (not full coords/spatial rebuild).
-            generate_channel_info_only()
+            # Block until coords + spatial + channel_info are written (keeps HTTP + overlay open).
+            await generate_json_files()
+            invalidate_data_csv_caches()
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate coords/channel info: {e}",
+            )
         finally:
             try:
                 if os.path.exists(marker):

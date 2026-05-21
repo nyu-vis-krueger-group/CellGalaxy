@@ -32,15 +32,15 @@ _TILE_SIZE: int | None = None
 _TILE_LOCK = threading.Lock()
 
 
-def reset_zarr_handle() -> None:
-    """reset global Zarr handle and related caches"""
+def reset_zarr_handle(*, clear_cache: bool = True) -> None:
+    """Reset process-level Zarr handle (optionally wipe generated atlas cache)."""
     global _IMG, _TILE_SIZE
     with _IMG_LOCK:
         _IMG = None
     with _TILE_LOCK:
         _TILE_SIZE = None
-    # clear cache directory
-    clear_cache_dir()
+    if clear_cache:
+        clear_cache_dir()
 
 
 def open_zarr():

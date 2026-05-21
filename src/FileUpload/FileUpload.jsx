@@ -1,14 +1,31 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import "./FileUpload.css";
+import { setUploadOverlay } from "../uploadOverlay";
 import {
   supportsOmeTiffHandlePersistence,
   saveOmeTiffFileHandle,
   clearOmeTiffFileHandle,
 } from "../utils/omeTiffLocalPersistence";
 
-const CHANNEL_OVERLAY_MIN_MS = 2000;
-const CHANNEL_POLL_MS = 400;
-const CHANNEL_POLL_MAX_MS = 120000;
+const POLL_MS = 500;
+const POLL_MAX_MS = 60 * 60 * 1000;
+
+async function waitUntilServerNotGenerating() {
+  const deadline = Date.now() + POLL_MAX_MS;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`/upload/status?ts=${Date.now()}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data?.generating) return true;
+      }
+    } catch {
+      /* retry */
+    }
+    await new Promise((r) => setTimeout(r, POLL_MS));
+  }
+  return false;
+}
 
 export default function FileUpload({
   onRefresh = async () => {},
@@ -41,12 +58,6 @@ export default function FileUpload({
     zooming: false,
   });
   const [open, setOpen] = useState(false);
-  /** Full-screen overlay for channel list pipeline (upload → generate → refresh). */
-  const [channelOverlayVisible, setChannelOverlayVisible] = useState(false);
-  const [channelOverlayMessage, setChannelOverlayMessage] = useState(
-    "Generating channel_info.json…"
-  );
-  const channelPipelineRunningRef = useRef(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -78,83 +89,43 @@ export default function FileUpload({
     fetchStatus();
   }, [fetchStatus]);
 
-  const channelInfoSignature = useCallback(async () => {
-    try {
-      const res = await fetch(`/public/channel_info.json?ts=${Date.now()}`, {
-        method: "HEAD",
-        cache: "no-store",
-      });
-      if (!(res.ok || res.status === 304)) return null;
-      const lm = res.headers?.get?.("last-modified") || "";
-      const len = res.headers?.get?.("content-length") || "";
-      return `${lm}|${len}`;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const waitForChannelPipeline = useCallback(
-    async (priorSignature) => {
-      const deadline = Date.now() + CHANNEL_POLL_MAX_MS;
-      while (Date.now() < deadline) {
-        const statusData = await fetchStatus();
-        const sig = await channelInfoSignature();
-        const infoChanged = sig != null && sig !== priorSignature;
-        const generating = Boolean(statusData?.generating);
-        if (infoChanged && !generating) return true;
-        await new Promise((r) => setTimeout(r, CHANNEL_POLL_MS));
-      }
-      const sig = await channelInfoSignature();
-      return sig != null && sig !== priorSignature;
-    },
-    [fetchStatus, channelInfoSignature]
-  );
-
   const runChannelPipeline = useCallback(
     async (file) => {
-      if (channelPipelineRunningRef.current) return;
-      channelPipelineRunningRef.current = true;
-      const startedAt = Date.now();
-      const priorSignature = await channelInfoSignature();
-      setChannelOverlayVisible(true);
-      setChannelOverlayMessage("Uploading channel list…");
-      setProcessing((prev) => ({ ...prev, channels: true }));
       setBusy(true);
+      setProcessing((prev) => ({ ...prev, channels: true }));
+      setUploadOverlay(true, "Uploading channel list…");
 
       try {
         const formData = new FormData();
         formData.append("file", file);
+        setUploadOverlay(true, "Generating coords & channel_info… (may take several minutes)");
         const response = await fetch("/upload/channels", {
           method: "POST",
           body: formData,
         });
         if (!response.ok) {
-          throw new Error(`upload failed: ${response.statusText}`);
+          const text = await response.text().catch(() => "");
+          throw new Error(`upload failed: ${response.status} ${text}`);
         }
 
-        setChannelOverlayMessage("Generating channel_info.json…");
-        await waitForChannelPipeline(priorSignature);
-
-        const elapsed = Date.now() - startedAt;
-        const remain = Math.max(0, CHANNEL_OVERLAY_MIN_MS - elapsed);
-        if (remain > 0) {
-          await new Promise((r) => setTimeout(r, remain));
-        }
-
-        setChannelOverlayMessage("Loading channels…");
+        setUploadOverlay(true, "Loading channels & atlases…");
         await fetchStatus();
         await onRefresh({ blockingAtlasPrefetch: true });
         await fetchStatus();
       } catch (err) {
         console.error("channel pipeline error", err);
+        setUploadOverlay(true, "Waiting for server to finish generating…");
       } finally {
-        channelPipelineRunningRef.current = false;
-        setChannelOverlayVisible(false);
-        setProcessing((prev) => ({ ...prev, channels: false }));
         setBusy(false);
+        setProcessing((prev) => ({ ...prev, channels: false }));
+        await fetchStatus();
+        if (!(await waitUntilServerNotGenerating())) {
+          console.warn("Timed out waiting for server .generating to clear");
+        }
+        setUploadOverlay(false);
       }
     },
-    [channelInfoSignature, fetchStatus, waitForChannelPipeline, onRefresh]
+    [fetchStatus, onRefresh]
   );
 
   useEffect(() => {
@@ -167,6 +138,11 @@ export default function FileUpload({
     return () => document.removeEventListener("click", onDocClick);
   }, [open]);
 
+  const refreshAfterLightUpload = useCallback(async () => {
+    await fetchStatus();
+    await onRefresh({ uploadOnly: true, skipLoading: true });
+  }, [fetchStatus, onRefresh]);
+
   const handleFileUpload = async (fileType, file) => {
     if (!file) return;
     if (fileType === "channels") {
@@ -176,6 +152,14 @@ export default function FileUpload({
 
     setBusy(true);
     setProcessing((prev) => ({ ...prev, [fileType]: true }));
+    const labels = {
+      zarr: "Uploading Zarr…",
+      csv: "Uploading Raw Data…",
+      raw: "Uploading Meta Data…",
+      feat: "Uploading Features…",
+      zooming: "Uploading Zooming Data…",
+    };
+    setUploadOverlay(true, labels[fileType] || "Uploading…");
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -184,17 +168,14 @@ export default function FileUpload({
         body: formData,
       });
       if (response.ok) {
-        if (fileType === "csv") {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-        await fetchStatus();
-        await onRefresh();
+        await refreshAfterLightUpload();
       } else {
         console.error(`${fileType} file upload failed:`, response.statusText);
       }
     } catch (error) {
       console.error(`${fileType} file upload error:`, error);
     } finally {
+      setUploadOverlay(false);
       setBusy(false);
       setProcessing((prev) => ({ ...prev, [fileType]: false }));
     }
@@ -263,23 +244,38 @@ export default function FileUpload({
   };
 
   const omeTiffBound = Boolean(omeTiffFile) || omeTiffRestoreNeedsClick;
+  const uploadBusy =
+    busy ||
+    processing.csv ||
+    processing.zarr ||
+    processing.raw ||
+    processing.feat ||
+    processing.channels ||
+    processing.zooming;
 
   const handleClear = async (fileType) => {
     setBusy(true);
     if (fileType !== "channels") {
       setProcessing((prev) => ({ ...prev, [fileType]: true }));
     }
+    setUploadOverlay(true, "Clearing…");
     try {
       const response = await fetch(`/upload/${fileType}`, { method: "DELETE" });
       if (response.ok) {
-        await fetchStatus();
-        await onRefresh();
+        if (fileType === "channels") {
+          setUploadOverlay(true, "Refreshing…");
+          await fetchStatus();
+          await onRefresh({ blockingAtlasPrefetch: true });
+        } else {
+          await refreshAfterLightUpload();
+        }
       } else {
         console.error(`${fileType} file clear failed:`, response.statusText);
       }
     } catch (error) {
       console.error(`${fileType} file clear error:`, error);
     } finally {
+      setUploadOverlay(false);
       setBusy(false);
       if (fileType !== "channels") {
         setProcessing((prev) => ({ ...prev, [fileType]: false }));
@@ -287,60 +283,19 @@ export default function FileUpload({
     }
   };
 
-  const showOverlay =
-    channelOverlayVisible ||
-    busy ||
-    processing.csv ||
-    processing.zarr ||
-    processing.raw ||
-    processing.feat ||
-    processing.channels ||
-    processing.zooming ||
-    status.generating;
-
   return (
-    <>
-      {showOverlay && (
-        <div className="fullscreen-processing-overlay">
-          <div className="processing-content">
-            <div className="processing-spinner"></div>
-            {channelOverlayVisible && (
-              <div className="processing-text">{channelOverlayMessage}</div>
-            )}
-            {!channelOverlayVisible && busy && !processing.csv && !processing.zarr && !processing.raw && !processing.feat && !processing.zooming && !processing.channels && (
-              <div className="processing-text">Processing…</div>
-            )}
-            {processing.csv && <div className="processing-text">uploading Raw Data…</div>}
-            {processing.zarr && <div className="processing-text">uploading Image Data…</div>}
-            {processing.raw && <div className="processing-text">uploading Meta Data…</div>}
-            {processing.feat && <div className="processing-text">uploading Features…</div>}
-            {processing.zooming && <div className="processing-text">uploading Zooming Data…</div>}
-            {!channelOverlayVisible && status.generating && (
-              <div className="processing-text">Generating channel_info.json…</div>
-            )}
-          </div>
-        </div>
-      )}
-      <div className="file-upload-section">
-        <div className="upload-toolbar-row">
+    <div className="file-upload-section">
+      <div className="upload-toolbar-row">
         <div className="upload-single">
           <button
             type="button"
             className="upload-main-btn"
             onClick={() => setOpen((v) => !v)}
-            disabled={busy || channelOverlayVisible}
+            disabled={uploadBusy}
             aria-haspopup="menu"
             aria-expanded={open}
           >
-            {processing.csv ||
-            processing.zarr ||
-            processing.raw ||
-            processing.feat ||
-            processing.channels ||
-            processing.zooming ||
-            channelOverlayVisible
-              ? "Uploading…"
-              : "Upload"}
+            {uploadBusy ? "Uploading…" : "Upload"}
           </button>
           {open && (
             <div className="upload-menu" role="menu">
@@ -351,7 +306,7 @@ export default function FileUpload({
                     setOpen(false);
                     handleOmeTiffLocalPick();
                   }}
-                  disabled={busy || omeTiffBound || channelOverlayVisible}
+                  disabled={uploadBusy || omeTiffBound}
                 >
                   OME-TIFF
                 </button>
@@ -361,7 +316,7 @@ export default function FileUpload({
                     setOpen(false);
                     handleClearLocalOmeTiff();
                   }}
-                  disabled={busy || !omeTiffBound || channelOverlayVisible}
+                  disabled={uploadBusy || !omeTiffBound}
                   title="Clear Local OME-TIFF"
                   aria-label="Clear Local OME-TIFF"
                 />
@@ -373,14 +328,14 @@ export default function FileUpload({
                     setOpen(false);
                     handleFileSelect("zarr");
                   }}
-                  disabled={busy || status.zarr || channelOverlayVisible}
+                  disabled={uploadBusy || status.zarr}
                 >
                   Zarr Image (zip)
                 </button>
                 <button
                   className={`upload-menu-clear${status.zarr ? " has-file" : ""}`}
                   onClick={() => handleClear("zarr")}
-                  disabled={busy || channelOverlayVisible}
+                  disabled={uploadBusy}
                   title="Clear Zarr"
                   aria-label="Clear Zarr"
                 />
@@ -392,14 +347,14 @@ export default function FileUpload({
                     setOpen(false);
                     handleFileSelect("csv");
                   }}
-                  disabled={busy || status.csv || channelOverlayVisible}
+                  disabled={uploadBusy || status.csv}
                 >
                   Raw Data (csv)
                 </button>
                 <button
                   className={`upload-menu-clear${status.csv ? " has-file" : ""}`}
                   onClick={() => handleClear("csv")}
-                  disabled={busy || channelOverlayVisible}
+                  disabled={uploadBusy}
                   title="Clear CSV"
                   aria-label="Clear CSV"
                 />
@@ -411,14 +366,14 @@ export default function FileUpload({
                     setOpen(false);
                     handleFileSelect("zooming");
                   }}
-                  disabled={busy || status.zooming || channelOverlayVisible}
+                  disabled={uploadBusy || status.zooming}
                 >
                   Zooming Cluster (csv)
                 </button>
                 <button
                   className={`upload-menu-clear${status.zooming ? " has-file" : ""}`}
                   onClick={() => handleClear("zooming")}
-                  disabled={busy || channelOverlayVisible}
+                  disabled={uploadBusy}
                   title="Clear Zooming Data"
                   aria-label="Clear Zooming Data"
                 />
@@ -430,14 +385,14 @@ export default function FileUpload({
                     setOpen(false);
                     handleFileSelect("channels");
                   }}
-                  disabled={busy || status.channels || channelOverlayVisible}
+                  disabled={uploadBusy || status.channels}
                 >
                   Channel List (csv)
                 </button>
                 <button
                   className={`upload-menu-clear${status.channels ? " has-file" : ""}`}
                   onClick={() => handleClear("channels")}
-                  disabled={busy || channelOverlayVisible}
+                  disabled={uploadBusy}
                   title="Clear Channels"
                   aria-label="Clear Channels"
                 />
@@ -449,14 +404,14 @@ export default function FileUpload({
                     setOpen(false);
                     handleFileSelect("feat");
                   }}
-                  disabled={busy || status.feat || channelOverlayVisible}
+                  disabled={uploadBusy || status.feat}
                 >
                   Features (npy)
                 </button>
                 <button
                   className={`upload-menu-clear${status.feat ? " has-file" : ""}`}
                   onClick={() => handleClear("feat")}
-                  disabled={busy || channelOverlayVisible}
+                  disabled={uploadBusy}
                   title="Clear Features"
                   aria-label="Clear Features"
                 />
@@ -468,14 +423,14 @@ export default function FileUpload({
                     setOpen(false);
                     handleFileSelect("raw");
                   }}
-                  disabled={busy || status.raw || channelOverlayVisible}
+                  disabled={uploadBusy || status.raw}
                 >
                   Meta Data (csv)
                 </button>
                 <button
                   className={`upload-menu-clear${status.raw ? " has-file" : ""}`}
                   onClick={() => handleClear("raw")}
-                  disabled={busy || channelOverlayVisible}
+                  disabled={uploadBusy}
                   title="Clear Raw"
                   aria-label="Clear Raw"
                 />
@@ -484,23 +439,22 @@ export default function FileUpload({
           )}
         </div>
         {typeof renderClusterFilter === "function" ? renderClusterFilter() : null}
-        </div>
-        {omeTiffRestoreNeedsClick && !omeTiffFile && (
-          <div className="ome-tiff-restore-hint" role="status">
-            <span className="ome-tiff-restore-text">
-              OME-TIFF path saved. After reload, grant access again to read.
-            </span>
-            <button
-              type="button"
-              className="ome-tiff-restore-btn"
-              disabled={busy || channelOverlayVisible}
-              onClick={() => onRestoreOmeTiffFromDisk()}
-            >
-              Restore file
-            </button>
-          </div>
-        )}
       </div>
-    </>
+      {omeTiffRestoreNeedsClick && !omeTiffFile && (
+        <div className="ome-tiff-restore-hint" role="status">
+          <span className="ome-tiff-restore-text">
+            OME-TIFF path saved. After reload, grant access again to read.
+          </span>
+          <button
+            type="button"
+            className="ome-tiff-restore-btn"
+            disabled={uploadBusy}
+            onClick={() => onRestoreOmeTiffFromDisk()}
+          >
+            Restore file
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

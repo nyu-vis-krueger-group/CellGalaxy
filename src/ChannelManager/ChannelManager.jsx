@@ -15,26 +15,13 @@ export default function ChannelManager({
   const [serverChannelInfo, setServerChannelInfo] = useState({});
   const [tooltip, setTooltip] = useState({ show: false, value: '', x: 0, y: 0 });
 
-  // pixel_value_range → slider bounds + auto window
+  // OME-TIFF metadata / pixel sampling → slider bounds + auto window
   const getChannelRanges = (channel) => {
     const channelId = Number(channel?.id);
-    const omePv =
-      Number.isFinite(channelId) && omePixelRangeByChannelId && omePixelRangeByChannelId[channelId]
+    const pv =
+      Number.isFinite(channelId) && omePixelRangeByChannelId?.[channelId]
         ? omePixelRangeByChannelId[channelId]
-        : null;
-    const pv = omePv || channel?.pixel_value_range || {};
-    const dataMin = Number.isFinite(pv.data_min)
-      ? pv.data_min
-      : (Number.isFinite(pv.min) ? pv.min : 0);
-    const dataMax = Number.isFinite(pv.data_max)
-      ? pv.data_max
-      : (Number.isFinite(pv.max) ? pv.max : 65535);
-    const autoMin = Number.isFinite(pv.auto_min) ? pv.auto_min : dataMin;
-    const autoMax = Number.isFinite(pv.auto_max) ? pv.auto_max : dataMax;
-    return { dataMin, dataMax, autoMin, autoMax };
-  };
-  const getServerChannelRanges = (channel) => {
-    const pv = channel?.pixel_value_range || {};
+        : {};
     const dataMin = Number.isFinite(pv.data_min)
       ? pv.data_min
       : (Number.isFinite(pv.min) ? pv.min : 0);
@@ -108,12 +95,11 @@ export default function ChannelManager({
         const ome = omePixelRangeByChannelId?.[channelId];
         if (!ome) continue;
         const cur = prev?.[channelId];
-        const server = getServerChannelRanges(channel);
-        const isCurrentServerAuto =
+        const isDefaultWindow =
           cur &&
-          Math.abs((cur.min ?? NaN) - server.autoMin) < eps &&
-          Math.abs((cur.max ?? NaN) - server.autoMax) < eps;
-        if (!cur || isCurrentServerAuto) {
+          Math.abs((cur.min ?? NaN) - 0) < eps &&
+          Math.abs((cur.max ?? NaN) - 65535) < eps;
+        if (!cur || isDefaultWindow) {
           next[channelId] = { min: ome.auto_min, max: ome.auto_max };
           changed = true;
         }

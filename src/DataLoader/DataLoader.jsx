@@ -457,11 +457,34 @@ export default function useDataLoader() {
 
   const refreshData = useCallback(async (opts = {}) => {
     const skipLoading = opts?.skipLoading === true;
+    const uploadOnly = opts?.uploadOnly === true;
     if (!skipLoading) setLoading(true);
     try {
       const abort = new AbortController();
       // OME-TIFF / upload flags first so Spatial view can switch before heavy meta+coords
       await refreshUploadStatus();
+
+      if (uploadOnly) {
+        setAllCoords([]);
+        setAllSpatialCoords([]);
+        setPoints([]);
+        setPointsRaw([]);
+        setPointsRawPick([]);
+        setPointsUMAP([]);
+        setPointsUMAPPick([]);
+        setChunkUV({});
+        setAtlasURL({});
+        setAtlasByChannel({});
+        setFetchingChunks(new Set());
+        try {
+          const metaJson = await fetchMeta(abort.signal);
+          setMeta(metaJson);
+        } catch (_) {
+          /* keep previous meta until channel_list rebuild */
+        }
+        setDataVersion((v) => v + 1);
+        return;
+      }
 
       let metaJson = await fetchMeta(abort.signal);
       setMeta(metaJson);
