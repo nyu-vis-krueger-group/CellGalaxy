@@ -1,8 +1,11 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import DATA_DIR, CACHE_DIR, ZARR_DIR
+from .data_paths import generating_marker_path
 from .routes_upload import router as upload_router
 from .routes_meta import router as meta_router
 from .routes_atlas import router as atlas_router
@@ -14,6 +17,16 @@ from .routes_llm import router as llm_router
 def create_app() -> FastAPI:
     """Create and configure FastAPI application instance."""
     app = FastAPI()
+
+    @app.on_event("startup")
+    def _clear_stale_generating_marker() -> None:
+        """Orphan public/.generating should not block UI after a crashed run."""
+        marker = generating_marker_path()
+        try:
+            if os.path.isfile(marker):
+                os.remove(marker)
+        except OSError:
+            pass
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000"],

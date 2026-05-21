@@ -1,4 +1,6 @@
+import asyncio
 import os
+import time
 import zipfile
 
 from fastapi import APIRouter, File, UploadFile, HTTPException, Request
@@ -29,6 +31,32 @@ from .display_subset import clear_display_subset_artifacts
 from .zarr_utils import reset_zarr_handle
 from .data_utils import generate_json_files, generate_raw_json
 from .routes_features import invalidate_data_csv_caches
+
+
+def _artifact_ready(path: str, min_bytes: int = 8) -> bool:
+    try:
+        return os.path.isfile(path) and os.path.getsize(path) >= min_bytes
+    except OSError:
+        return False
+
+
+def _channel_generation_complete() -> bool:
+    _, coords_json, channel_json = csv_sidecar_paths()
+    return (
+        _artifact_ready(coords_json)
+        and _artifact_ready(channel_json)
+        and _artifact_ready(spatial_coords_path(), min_bytes=64)
+    )
+
+
+async def _wait_until_marker_cleared(marker: str, timeout_s: float = 7200.0) -> None:
+    """Do not finish the upload HTTP response while public/.generating still exists."""
+    deadline = time.monotonic() + timeout_s
+    while os.path.isfile(marker):
+        if time.monotonic() >= deadline:
+            print(f"Warning: timed out waiting for {marker} to be removed")
+            return
+        await asyncio.sleep(0.25)
 
 
 router = APIRouter()
@@ -92,6 +120,41 @@ async def upload_or_delete(
     )
     file_path = os.path.join(DATA_DIR, target_name)
 
+    if file_type == "channels":
+        channel_marker = generating_marker_path()
+        try:
+            with open(channel_marker, "w", encoding="utf-8") as f:
+                f.write("generating")
+            await _stream_upload_to_path(file, file_path)
+            _, coords_json, channel_json = csv_sidecar_paths()
+            remove_path(coords_json)
+            remove_path(channel_json)
+            remove_path(spatial_coords_path())
+            await generate_json_files()
+            invalidate_data_csv_caches()
+        except Exception as e:
+            if isinstance(e, HTTPException):
+                raise
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate coords/channel info: {e}",
+            ) from e
+        finally:
+            # Keep .generating until JSON sidecars exist; only clear when delete succeeds.
+            if _channel_generation_complete():
+                try:
+                    if os.path.exists(channel_marker):
+                        os.remove(channel_marker)
+                    if os.path.isfile(channel_marker):
+                        print(
+                            f"Warning: {channel_marker} still present after remove; "
+                            "UI will keep showing generating state."
+                        )
+                except OSError as exc:
+                    print(f"Warning: failed to remove {channel_marker}: {exc}")
+        await _wait_until_marker_cleared(channel_marker)
+        return {"message": f"{file.filename} uploaded successfully"}
+
     await _stream_upload_to_path(file, file_path)
 
     if file_type == "zarr":
@@ -125,30 +188,6 @@ async def upload_or_delete(
         pass
     elif file_type == "zooming":
         pass
-    elif file_type == "channels":
-        _, coords_json, channel_json = csv_sidecar_paths()
-        remove_path(coords_json)
-        remove_path(channel_json)
-        remove_path(spatial_coords_path())
-        marker = generating_marker_path()
-        try:
-            with open(marker, "w", encoding="utf-8") as f:
-                f.write("generating")
-            # Block until coords + spatial + channel_info are written (keeps HTTP + overlay open).
-            await generate_json_files()
-            invalidate_data_csv_caches()
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to generate coords/channel info: {e}",
-            )
-        finally:
-            try:
-                if os.path.exists(marker):
-                    os.remove(marker)
-            except Exception:
-                pass
-
     return {"message": f"{file.filename} uploaded successfully"}
 
 

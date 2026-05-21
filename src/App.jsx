@@ -7,7 +7,7 @@ import {
 import useDataLoader from "./DataLoader/DataLoader";
 import Viewer from "./Viewer/Viewer";
 import Control from "./Control/Control";
-import UploadOverlay from "./UploadOverlay/UploadOverlay";
+import { UploadBusyProvider } from "./UploadBusy/UploadBusyProvider";
 import "./App.css";
 
 const SPLIT_RATIO_MIN = 0.15;
@@ -114,8 +114,8 @@ export default function App() {
   }, [viewMode, splitRatio, applySplitColumns]);
 
   return (
+    <UploadBusyProvider>
     <div className="app-container">
-      <UploadOverlay />
       {viewMode === "dual" ? (
         <div className="viewer-split" ref={splitRef}>
           <div className="viewer-pane">
@@ -202,5 +202,6 @@ export default function App() {
       )}
       <Control {...dataLoader} viewMode={viewMode} setViewMode={setViewMode} />
     </div>
+    </UploadBusyProvider>
   );
 }

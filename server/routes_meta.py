@@ -60,11 +60,29 @@ def _raw_annotation_columns() -> dict:
     return out
 
 
+def _generating_marker_active() -> bool:
+    """True while public/.generating exists (same path upload route writes)."""
+    path = generating_marker_path()
+    try:
+        return os.path.isfile(path)
+    except OSError:
+        return False
+
+
+@router.get("/upload/generating")
+async def upload_generating():
+    """Lightweight poll for UI overlay — only reflects .generating marker file."""
+    path = generating_marker_path()
+    active = _generating_marker_active()
+    return {"generating": active, "marker_path": path}
+
+
 @router.get("/upload/status")
 async def upload_status():
     csv_path = data_csv_path()
     raw_csv, raw_json = raw_csv_json_paths()
     raw_cols = _raw_annotation_columns()
+    generating = _generating_marker_active()
     return {
         "zarr": _has_zarr(),
         "csv": os.path.exists(csv_path),
@@ -74,7 +92,7 @@ async def upload_status():
         "channels": os.path.exists(channel_list_csv_path()),
         "zooming": os.path.exists(zooming_csv_path()),
         "ome_tiff": os.path.exists(OME_TIFF_PATH),
-        "generating": os.path.exists(generating_marker_path()),
+        "generating": generating,
     }
 
 
@@ -91,7 +109,7 @@ async def upload_generation_status():
     _, coords_json, channel_json = csv_sidecar_paths()
     spatial_json = spatial_coords_path()
     return {
-        "generating": os.path.exists(generating_marker_path()),
+        "generating": _generating_marker_active(),
         "coords_ready": _artifact_ready(coords_json),
         "channel_ready": _artifact_ready(channel_json),
         "spatial_ready": _artifact_ready(spatial_json, min_bytes=64),

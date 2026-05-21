@@ -382,13 +382,8 @@ def generate_channel_info_only() -> Optional[List[Dict[str, Any]]]:
     return None
 
 
-async def generate_json_files() -> None:
-    """Generate coords.json, spatial_coords.json, and channel_info.json.
-
-    Invoked after channel_list.csv upload (unified upload pipeline).
-    - coords.json / spatial_coords.json: from data.csv (+ zarr subset when present)
-    - channel_info.json: prefer channel_list.csv; fallback to data.csv columns
-    """
+def run_generate_json_files() -> None:
+    """Sync CPU-bound JSON generation (run via asyncio.to_thread from async callers)."""
     csv_path = os.path.join(DATA_DIR, "data.csv")
     try:
         # coords.json generation (requires data.csv + zarr)
@@ -444,12 +439,20 @@ async def generate_json_files() -> None:
         print(f"Generated JSON files failed: {str(e)}")
 
 
+async def generate_json_files() -> None:
+    """Generate coords.json, spatial_coords.json, and channel_info.json."""
+    import asyncio
+
+    await asyncio.to_thread(run_generate_json_files)
+
+
 __all__ = [
     "generate_raw_json",
     "process_coord_row",
     "get_channel_info",
     "get_channel_info_from_entries",
     "generate_channel_info_only",
+    "run_generate_json_files",
     "generate_json_files",
 ]
 

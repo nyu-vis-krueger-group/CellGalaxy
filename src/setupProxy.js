@@ -7,6 +7,7 @@ module.exports = function setupProxy(app) {
   app.use(
     [
       "/upload",
+      "/generation-status",
       "/meta",
       "/coords",
       "/channels",
