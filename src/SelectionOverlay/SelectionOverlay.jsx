@@ -24,6 +24,8 @@ export default function SelectionOverlay({
   selectedRegions = [],
   setSelectedRegions = () => {},
   setSelectedIds = () => {},
+  /** Reset to pan/zoom (none) after box/lasso gesture. */
+  setSelectionMode = () => {},
   onBeginSelection = () => {},
   // Children get drag handlers + isSelecting
   children,
@@ -77,6 +79,7 @@ export default function SelectionOverlay({
 
   const onDragEnd = (info) => {
     if (!isSelecting) return;
+    const modeAtEnd = selectionMode;
     const deck = deckRef.current?.deck;
     const viewport = deck?.getViewports()[0];
     const ids = new Set();
@@ -145,6 +148,17 @@ export default function SelectionOverlay({
     setSelectedRegions(newRegions);
     setSelectedIds(union);
     try { window.__selectionOwner = viewerId; } catch {}
+
+    if (
+      typeof setSelectionMode === "function" &&
+      (modeAtEnd === SELECTION_BOX || modeAtEnd === SELECTION_LASSO)
+    ) {
+      if (!isAdditive) {
+        setSelectionMode(SELECTION_NONE);
+      } else if (newRegions.length >= 2) {
+        setSelectionMode(SELECTION_NONE);
+      }
+    }
 
     setIsSelecting(false);
     additiveRef.current = false;

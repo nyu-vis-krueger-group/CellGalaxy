@@ -85,6 +85,7 @@ const Viewer = ({
 
   // Selection
   selectionMode = "none",
+  setSelectionMode = () => {},
   selectedIds = new Set(),
   setSelectedIds = () => {},
   selectedRegions = [],
@@ -1237,6 +1238,7 @@ const Viewer = ({
         selectedRegions={selectedRegions}
         setSelectedRegions={setSelectedRegions}
         setSelectedIds={setSelectedIds}
+        setSelectionMode={setSelectionMode}
         onBeginSelection={() => {
           if (toolbar.show) setToolbar({ show: false, x: 0, y: 0, object: null });
         }}

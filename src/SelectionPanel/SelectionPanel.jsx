@@ -29,14 +29,14 @@ export default function SelectionPanel({
         <button
           className={`selection-mode-btn ${selectionMode === SELECTION_BOX ? "active" : ""}`}
           onClick={() => setSelectionMode(SELECTION_BOX)}
-          title="Drag to draw a rectangle"
+          title="Drag a rectangle; returns to pan/zoom when done (Shift: draw two for compare)"
         >
           <img src="/icons/box.svg" alt="Box" />
         </button>
         <button
           className={`selection-mode-btn ${selectionMode === SELECTION_LASSO ? "active" : ""}`}
           onClick={() => setSelectionMode(SELECTION_LASSO)}
-          title="Drag to draw a lasso"
+          title="Drag a lasso; returns to pan/zoom when done (Shift: draw two for compare)"
         >
           <img src="/icons/lasso.svg" alt="Lasso" />
         </button>
