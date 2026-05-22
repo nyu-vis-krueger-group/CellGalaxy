@@ -19,6 +19,13 @@
   image-rendering: auto;
 }
 
+.hover-preview-deck-wrapper,
+.hover-preview-deck-empty {
+  width: 128px;
+  height: 128px;
+  display: block;
+}
+
 .hover-preview-annotation {
   margin-top: 6px;
   padding: 6px 8px;

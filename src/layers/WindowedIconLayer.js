@@ -1,9 +1,11 @@
 // IconLayer + intensity window in FS (windowUniforms, v9 shaderInputs).
+// Window on icon alpha, then × channelAlpha × toneGain (same order as hover preview).
 import { IconLayer } from '@deck.gl/layers';
+import { TONE_GAIN } from '../utils/intensityWindow';
 import { windowUniforms } from './windowUniforms';
 
-const DEFAULT_MIN = 0.0; // normalized
-const DEFAULT_MAX = 1.0; // normalized
+const DEFAULT_MIN = 0.0;
+const DEFAULT_MAX = 1.0;
 
 export default class WindowedIconLayer extends IconLayer {
   getShaders() {
@@ -13,23 +15,25 @@ export default class WindowedIconLayer extends IconLayer {
       modules: [...(shaders.modules || []), windowUniforms],
       inject: {
         'fs:DECKGL_FILTER_COLOR': `
-float t = color.a;
+float iconA = color.a;
+float t = iconA;
 if (window.flatColor < 0.5) {
-  if (t <= window.windowMin) {
+  if (iconA <= window.windowMin) {
     t = 0.0;
-  } else if (t >= window.windowMax) {
+  } else if (iconA >= window.windowMax) {
     t = 1.0;
   } else {
     float span = max(window.windowMax - window.windowMin, 1e-6);
-    t = (t - window.windowMin) / span;
+    t = (iconA - window.windowMin) / span;
   }
 } else {
   t = 1.0;
 }
-color.rgb *= t;
+float v = t * window.channelAlpha;
+color.rgb = min(color.rgb * v * window.toneGain, vec3(1.0));
 color.a = 1.0;
 `,
-      }
+      },
     };
   }
 
@@ -41,6 +45,8 @@ color.a = 1.0;
           windowMin: this.props.windowMin ?? DEFAULT_MIN,
           windowMax: this.props.windowMax ?? DEFAULT_MAX,
           flatColor: this.props.flatColor ? 1.0 : 0.0,
+          channelAlpha: this.props.channelAlpha ?? 1.0,
+          toneGain: this.props.toneGain ?? TONE_GAIN,
         },
       });
     }

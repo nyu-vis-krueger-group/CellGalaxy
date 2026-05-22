@@ -227,6 +227,7 @@ def render_cell_preview_png(
     alphas = channel_alphas or {}
     wins = channel_windows or {}
 
+    tone_gain = 1.35  # sync with src/utils/intensityWindow.js TONE_GAIN
     accum = np.zeros((int(H), int(W), 4), dtype=np.float32)
     for ch in channels:
         ci = int(ch)
@@ -239,19 +240,16 @@ def render_cell_preview_png(
         col = colors.get(ci, (255, 255, 255))
         alpha01 = float(min(1.0, max(0.0, alphas.get(ci, 1.0))))
         v = t * alpha01
-        accum[..., 0] += col[0] * v
-        accum[..., 1] += col[1] * v
-        accum[..., 2] += col[2] * v
+        accum[..., 0] += np.clip(col[0] * v * tone_gain, 0, 255)
+        accum[..., 1] += np.clip(col[1] * v * tone_gain, 0, 255)
+        accum[..., 2] += np.clip(col[2] * v * tone_gain, 0, 255)
         accum[..., 3] = np.maximum(accum[..., 3], v)
 
-    tone_gain = 1.35
     rgba = np.zeros((int(H), int(W), 4), dtype=np.uint8)
-    a = accum[..., 3]
-    mask = a >= (5.0 / 255.0)
-    rgba[..., 0] = np.where(mask, np.clip(accum[..., 0] * tone_gain, 0, 255), 0)
-    rgba[..., 1] = np.where(mask, np.clip(accum[..., 1] * tone_gain, 0, 255), 0)
-    rgba[..., 2] = np.where(mask, np.clip(accum[..., 2] * tone_gain, 0, 255), 0)
-    rgba[..., 3] = np.where(mask, np.clip(a * 255.0, 0, 255), 0).astype(np.uint8)
+    rgba[..., 0] = np.clip(accum[..., 0], 0, 255).astype(np.uint8)
+    rgba[..., 1] = np.clip(accum[..., 1], 0, 255).astype(np.uint8)
+    rgba[..., 2] = np.clip(accum[..., 2], 0, 255).astype(np.uint8)
+    rgba[..., 3] = np.clip(accum[..., 3] * 255.0, 0, 255).astype(np.uint8)
 
     pil = Image.fromarray(rgba, mode="RGBA")
     if out_size > 0 and (int(H) != out_size or int(W) != out_size):

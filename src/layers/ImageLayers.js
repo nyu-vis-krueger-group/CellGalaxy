@@ -3,6 +3,12 @@ import { ScatterplotLayer, PathLayer } from "@deck.gl/layers";
 import { DataFilterExtension } from "@deck.gl/extensions";
 import WindowedIconLayer from "./WindowedIconLayer";
 import { clusterColor } from "../utils/clustering";
+import {
+  TONE_GAIN,
+  combinedRawWindow,
+  rawWindowToNormalized01,
+  windowFromChannel,
+} from "../utils/intensityWindow";
 import { ease } from "../utils/utils";
 
 export default function ImageLayers({
@@ -180,13 +186,7 @@ export default function ImageLayers({
 
             const col = colors?.[ch] || [255, 255, 255];
             const alpha01 = Math.min(1, Math.max(0, alphas?.[ch] ?? 1));
-            const a = Math.round(alpha01 * 255);
-
-            const w = windows?.[ch];
-            const wMin = w && Number.isFinite(w.min) ? w.min : 0;
-            const wMax = w && Number.isFinite(w.max) ? w.max : 65535;
-            const winMin01 = Math.max(0, Math.min(1, wMin / 65535));
-            const winMax01 = Math.max(0, Math.min(1, wMax / 65535));
+            const { winMin01, winMax01 } = windowFromChannel(ch, windows);
 
             all.push(
               new WindowedIconLayer({
@@ -197,7 +197,9 @@ export default function ImageLayers({
                 parameters: { depthTest: false, blend: true, blendFunc: [1, 1], blendEquation: 32774 },
                 windowMin: winMin01,
                 windowMax: winMax01,
-                premultiply: true,
+                channelAlpha: alpha01,
+                toneGain: TONE_GAIN,
+                premultiply: false,
                 getColor: (d) => {
                   const activeFilter = filteredIds && filteredIds.size > 0;
                   // Filter: hide non-matching
@@ -208,7 +210,7 @@ export default function ImageLayers({
                     col[0] ?? 255,
                     col[1] ?? 255,
                     col[2] ?? 255,
-                    a,
+                    255,
                   ];
                 },
                 updateTriggers: {
@@ -223,20 +225,27 @@ export default function ImageLayers({
         if (!clusterColorOn) {
                   const atlasMerged = !addedGray ? atlasURL?.[chunkId] : null;
           if (atlasMerged) {
+            const combo = combinedRawWindow(channels, windows);
+            const { winMin01: mergedMin01, winMax01: mergedMax01 } = rawWindowToNormalized01(
+              combo.min,
+              combo.max,
+            );
             all.push(
               new WindowedIconLayer({
                 ...baseConfig,
                 id: `icon-merged-${chunkId}`,
                 iconAtlas: String(atlasMerged),
                 parameters: { depthTest: true, blend: true, blendFunc: [1, 1], blendEquation: 32774 },
-                windowMin: 0.0,
-                windowMax: 1.0,
+                windowMin: mergedMin01,
+                windowMax: mergedMax01,
+                channelAlpha: 1.0,
+                toneGain: TONE_GAIN,
+                premultiply: false,
                 getColor: (d) => {
                   const activeFilter = filteredIds && filteredIds.size > 0;
                   if (activeFilter && !filteredIds.has(d.id)) {
                     return [255, 255, 255, 0];
                   }
-                  // Selection = outline only, not brightness
                   return [255, 255, 255, 255];
                 },
                 updateTriggers: {
@@ -261,7 +270,9 @@ export default function ImageLayers({
                 windowMin: 0.0,
                 windowMax: 1.0,
                 flatColor: true,
-                premultiply: true,
+                channelAlpha: 1.0,
+                toneGain: 1.0,
+                premultiply: false,
                 getColor: (d) => {
                   const rIdx = getRegionIndexForId?.(d.id);
                   if (hasSelection && !(typeof rIdx === "number" && rIdx >= 0)) {

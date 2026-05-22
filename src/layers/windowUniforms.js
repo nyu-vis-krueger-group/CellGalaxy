@@ -1,9 +1,11 @@
-// Window uniforms for WindowedIconLayer (deck v9)
+// Window uniforms for WindowedIconLayer (deck v9) — matches hover intensityWindow.js
 const uniformBlock = `\
 uniform windowUniforms {
   float windowMin;
   float windowMax;
   float flatColor;
+  float channelAlpha;
+  float toneGain;
 } window;
 `;
 export const windowUniforms = {
@@ -14,5 +16,7 @@ export const windowUniforms = {
     windowMin: 'f32',
     windowMax: 'f32',
     flatColor: 'f32',
+    channelAlpha: 'f32',
+    toneGain: 'f32',
   },
 };

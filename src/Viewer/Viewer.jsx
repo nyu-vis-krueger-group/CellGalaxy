@@ -1501,13 +1501,22 @@ const Viewer = ({
       <HoverPreview
         deckRef={deckRef}
         containerRef={containerRef}
+        meta={meta}
+        renderMode={effectiveRenderMode}
+        suppressSpriteAtlases={rawUsesOmeTiff}
         iconMappingsByChunk={iconMappingsByChunk}
         chunkUV={chunkUV}
         atlasByChannel={atlasByChannel}
+        atlasURL={atlasURL}
         channels={channels}
         colors={colors}
         alphas={alphas}
         windows={windows}
+        clusterColorOn={clusterColorOn}
+        clusterOpacity={clusterOpacity}
+        clusterLineWidth={clusterLineWidth}
+        clusterOutlineOn={clusterOutlineOn}
+        labelKey={clusterLabelKey}
         computedImageSize={computedImageSize}
         hoverEnabled={selectionMode === SELECTION_NONE && hasActiveChannels}
         selectedIds={selectedIds}
@@ -1518,6 +1527,7 @@ const Viewer = ({
         displayCoordById={displayCoordById}
         getWorldPosition={rawToWorld}
         pickRadius={rawUsesOmeTiff ? 14 : hoverPickAll ? 10 : 6}
+        isUMAPView={isUMAPView}
       />
 
       {/* Selection outlines */}

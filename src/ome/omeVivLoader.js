@@ -2,6 +2,7 @@
 import { loadOmeTiff } from "@vivjs/loaders";
 import { Matrix4 } from "math.gl";
 import { assert, MAX_CHANNELS } from "./omeTiffUtils.js";
+import { INTENSITY_FULL_RANGE, scaleRgbByToneGain, resolveRawWindow } from "../utils/intensityWindow.js";
 
 export { MAX_CHANNELS };
 
@@ -272,29 +273,23 @@ export function buildMultiscaleImageLayerProps(source, ui) {
       throw new Error("Unsupported OME loader backend");
     }
 
-    const w = windows?.[chIdx];
     const cRange =
       Number.isFinite(selectedOmeC) &&
       channelRanges[selectedOmeC]
         ? channelRanges[selectedOmeC]
         : null;
-    const wMin = w && Number.isFinite(w.min)
-      ? w.min
-      : Number.isFinite(cRange?.autoMin)
-        ? cRange.autoMin
-        : 0;
-    const wMax = w && Number.isFinite(w.max)
-      ? w.max
-      : Number.isFinite(cRange?.autoMax)
-        ? cRange.autoMax
-        : 65535;
+    const fallback = {
+      min: Number.isFinite(cRange?.autoMin) ? cRange.autoMin : 0,
+      max: Number.isFinite(cRange?.autoMax) ? cRange.autoMax : INTENSITY_FULL_RANGE,
+    };
+    const { min: wMin, max: wMax } = resolveRawWindow(windows?.[chIdx], fallback);
     contrastLimits.push([wMin, wMax]);
     const rMin = Number.isFinite(cRange?.dataMin) ? cRange.dataMin : wMin;
     const rMax = Number.isFinite(cRange?.dataMax) ? cRange.dataMax : wMax;
     contrastLimitsRange.push([Math.min(rMin, rMax), Math.max(rMin, rMax)]);
 
     const rgb = colors?.[chIdx] || [255, 255, 255];
-    vivColors.push([rgb[0], rgb[1], rgb[2]]);
+    vivColors.push(scaleRgbByToneGain(rgb));
 
     const a = alphas?.[chIdx];
     channelsVisible.push(a == null || a > 0.01);
