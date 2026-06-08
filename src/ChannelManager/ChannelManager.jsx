@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
+import {
+  fetchChannelInfoMaps,
+  defaultChannelColor,
+  pickChannelColor,
+} from "../utils/channelInfo";
 import "./ChannelManager.css";
 
 export default function ChannelManager({
@@ -8,6 +13,7 @@ export default function ChannelManager({
   setColors = () => {},
   windows = {},
   setWindows = () => {},
+  channelZarrIndexById = {},
   dataVersion = 0,
   omePixelRangeByChannelId = {},
 }) {
@@ -34,22 +40,24 @@ export default function ChannelManager({
   };
 
   useEffect(() => {
-    const fetchChannelInfo = async () => {
+    let cancelled = false;
+    (async () => {
       try {
-        const response = await fetch(`/public/channel_info.json?ts=${Date.now()}`, { cache: 'no-store' });
-        if (!response.ok) {
-          setServerChannelInfo({});
-          return;
-        }
-        const data = await response.json();
-        setServerChannelInfo(data);
+        const parsed = await fetchChannelInfoMaps(undefined);
+        if (cancelled) return;
+        setServerChannelInfo(
+          parsed?.catalog?.length
+            ? { channels: parsed.catalog.map(({ id, name }) => ({ id, name })) }
+            : {},
+        );
       } catch (err) {
         console.error("channel_info fetch failed", err);
-        setServerChannelInfo({});
+        if (!cancelled) setServerChannelInfo({});
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-
-    fetchChannelInfo();
   }, [dataVersion]);
 
   const channelInfo = useMemo(() => serverChannelInfo, [serverChannelInfo]);
@@ -112,11 +120,6 @@ export default function ChannelManager({
     (ch) => !selected.includes(ch.id)
   ) || [];
 
-  const palette = [
-    [255, 0, 0], [0, 255, 0], [0, 128, 255], [255, 255, 0], [255, 0, 255],
-    [0, 255, 255], [255, 128, 0], [128, 0, 255], [0, 255, 128], [255, 0, 128]
-  ];
-  
   const toHex = (rgb) => {
     const [r, g, b] = rgb || [255, 255, 255];
     return `#${[r, g, b].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('')}`;
@@ -127,14 +130,15 @@ export default function ChannelManager({
     return match ? [parseInt(match[1], 16), parseInt(match[2], 16), parseInt(match[3], 16)] : [255, 255, 255];
   };
   
-  const defaultColorFor = (id) => palette[id % palette.length];
+  const defaultColorFor = (id) => defaultChannelColor(id);
 
   const addChannel = (channel) => {
     setSelected(prev => [...prev, channel.id]);
-    if (!colors[channel.id]) {
-      const c = defaultColorFor(channel.id);
-      setColors((prev) => ({ ...prev, [channel.id]: c }));
-    }
+    setColors((prev) => {
+      if (prev[channel.id]) return prev;
+      const c = pickChannelColor(channel.id, prev);
+      return { ...prev, [channel.id]: c };
+    });
     const { autoMin, autoMax } = getChannelRanges(channel);
     setWindows((prev) => (
       prev[channel.id]
@@ -216,6 +220,10 @@ export default function ChannelManager({
                     onClick={() => addChannel(channel)}
                   >
                     {channel.name}
+                    {channelZarrIndexById[channel.id] == null &&
+                    Object.keys(channelZarrIndexById).length > 0 ? (
+                      <span className="channel-source-tag"> OME</span>
+                    ) : null}
                   </div>
                 ))
               ) : (

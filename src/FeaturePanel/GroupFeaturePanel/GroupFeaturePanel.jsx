@@ -3,11 +3,12 @@ import "../../FeatureDock/FeatureDock.css";
 import "./GroupFeaturePanel.css";
 import { fetchViolinGlobalKDE, fetchViolinSelectionKDE } from "../../api/api";
 import { useChannelNames } from "../../hooks/useChannelNames";
-import { kde1d } from "../../utils/utils";
+import { kde1d, mapLogicalChannelsToZarr } from "../../utils/utils";
 
 export default function GroupFeaturePanel({
   data,
   channels,
+  channelZarrIndexById = {},
   colors,
 
 }) {
@@ -25,7 +26,10 @@ export default function GroupFeaturePanel({
         const MAX_GLOBAL = 80000;
         const MAX_SELECTION = 30000;
         const GRID = 192;
-        const activeChs = Array.isArray(channels) && channels.length > 0 ? channels.map((c) => Number(c)) : [];
+        const activeChs = mapLogicalChannelsToZarr(
+          Array.isArray(channels) ? channels : [],
+          channelZarrIndexById,
+        );
         if (activeChs.length === 0) {
           setViolinData(null);
           setViolinMsg("No active channels");
@@ -61,7 +65,7 @@ export default function GroupFeaturePanel({
     return () => {
       abort = true;
     };
-  }, [data]);
+  }, [data, channels, channelZarrIndexById]);
 
   useEffect(() => {
     const canvas = violinRef.current;
@@ -177,9 +181,18 @@ export default function GroupFeaturePanel({
     ctx.font = "14px sans-serif";
     for (let i = 0; i < C; i++) {
       const cx = marginL + i * colW + colW * 0.5;
-      const chIdx = chs[i];
-      const label = channelNames.get(chIdx) || (channels?.[chIdx]?.name) || `ch${chIdx}`;
-      const col = colors?.[chIdx] || [230,230,235];
+      const zarrIdx = chs[i];
+      let logicalId = zarrIdx;
+      if (channelZarrIndexById && typeof channelZarrIndexById === "object") {
+        for (const [lid, zc] of Object.entries(channelZarrIndexById)) {
+          if (Number(zc) === Number(zarrIdx)) {
+            logicalId = Number(lid);
+            break;
+          }
+        }
+      }
+      const label = channelNames.get(logicalId) || `ch${logicalId}`;
+      const col = colors?.[logicalId] || [230,230,235];
       ctx.fillStyle = `rgba(${col[0] ?? 230},${col[1] ?? 230},${col[2] ?? 235},0.95)`;
       ctx.fillText(label, cx, h - 10);
     }

@@ -5,8 +5,6 @@ import WindowedIconLayer from "./WindowedIconLayer";
 import { clusterColor } from "../utils/clustering";
 import {
   TONE_GAIN,
-  combinedRawWindow,
-  rawWindowToNormalized01,
   windowFromChannel,
 } from "../utils/intensityWindow";
 import { ease } from "../utils/utils";
@@ -176,13 +174,10 @@ export default function ImageLayers({
             getFilterValue: [selectedPoints.length],
           },
         };
-        let addedGray = false;
-
         if (!clusterColorOn) {
           for (const ch of channels) {
             const atlasGray = atlasByChannel?.[chunkId]?.[ch];
             if (!atlasGray) continue;
-            addedGray = true;
 
             const col = colors?.[ch] || [255, 255, 255];
             const alpha01 = Math.min(1, Math.max(0, alphas?.[ch] ?? 1));
@@ -216,41 +211,6 @@ export default function ImageLayers({
                 updateTriggers: {
                   ...baseConfig.updateTriggers,
                   getColor: [filteredIds, colors, alphas, windows],
-                  getFilterValue: [selectedPoints.length],
-                },
-              })
-            );
-          }
-        }
-        if (!clusterColorOn) {
-                  const atlasMerged = !addedGray ? atlasURL?.[chunkId] : null;
-          if (atlasMerged) {
-            const combo = combinedRawWindow(channels, windows);
-            const { winMin01: mergedMin01, winMax01: mergedMax01 } = rawWindowToNormalized01(
-              combo.min,
-              combo.max,
-            );
-            all.push(
-              new WindowedIconLayer({
-                ...baseConfig,
-                id: `icon-merged-${chunkId}`,
-                iconAtlas: String(atlasMerged),
-                parameters: { depthTest: true, blend: true, blendFunc: [1, 1], blendEquation: 32774 },
-                windowMin: mergedMin01,
-                windowMax: mergedMax01,
-                channelAlpha: 1.0,
-                toneGain: TONE_GAIN,
-                premultiply: false,
-                getColor: (d) => {
-                  const activeFilter = filteredIds && filteredIds.size > 0;
-                  if (activeFilter && !filteredIds.has(d.id)) {
-                    return [255, 255, 255, 0];
-                  }
-                  return [255, 255, 255, 255];
-                },
-                updateTriggers: {
-                  ...baseConfig.updateTriggers,
-                  getColor: [filteredIds, selectedPoints.length],
                   getFilterValue: [selectedPoints.length],
                 },
               })

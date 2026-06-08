@@ -63,6 +63,7 @@ export default function Control({
   omeTiffRestoreNeedsClick = false,
   restoreOmeTiffFromDisk = async () => {},
   omePixelRangeByChannelId = {},
+  channelZarrIndexById = {},
   highlightedClusters = new Set(),
   setHighlightedClusters = () => {},
   availableClusterLabels = [],
@@ -114,6 +115,7 @@ export default function Control({
         setWindows={setWindows}
         dataVersion={dataVersion}
         omePixelRangeByChannelId={omePixelRangeByChannelId}
+        channelZarrIndexById={channelZarrIndexById}
       />
       {/* Selection panel */}
       <SelectionPanel

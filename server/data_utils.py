@@ -240,7 +240,9 @@ def _read_channel_entries_from_csv(path: str) -> List[Dict[str, Any]]:
       - Prefer column header 'channel_name' (case-insensitive)
       - Fallbacks: 'name', 'channel', 'marker'
       - If an id column exists (e.g., 'channel_id', 'id', 'index'), map names by id
-      - Optional raw index columns: 'raw_index', 'raw', 'ome_index', 'ome_c', 'c'
+      - Optional zarr index columns: 'zarr_index', 'zarr_c', 'index_in_zarr'
+      - Optional legacy raw index columns: 'raw_index', 'raw', 'ome_index', 'ome_c', 'c'
+      - channel_id is the OME-TIFF 0-based channel index; zarr_index maps to Zarr c (empty = OME-only)
       - If no id column, keep file order
     """
     if not os.path.exists(path):
@@ -270,7 +272,13 @@ def _read_channel_entries_from_csv(path: str) -> List[Dict[str, Any]]:
         if k in lower_map:
             id_col = lower_map[k]
             break
-    # pick raw index column if any (1-based OME channel index from CSV)
+    zarr_idx_key_candidates = ["zarr_index", "zarr_c", "index_in_zarr", "zarr"]
+    zarr_idx_col = None
+    for k in zarr_idx_key_candidates:
+        if k in lower_map:
+            zarr_idx_col = lower_map[k]
+            break
+    # Legacy raw index column (1-based OME); prefer channel_id as ome_c when present
     raw_idx_key_candidates = ["raw_index", "raw", "ome_index", "ome_c", "c"]
     raw_idx_col = None
     for k in raw_idx_key_candidates:
@@ -289,6 +297,17 @@ def _read_channel_entries_from_csv(path: str) -> List[Dict[str, Any]]:
             return None
         return iv if iv >= 1 else None
 
+    def _safe_zarr_index(v: Any) -> Optional[int]:
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s or s.lower() in ("na", "nan", "none", "-", "null"):
+            return None
+        iv = _safe_int(v)
+        if iv is None or iv < 0:
+            return None
+        return iv
+
     if id_col is not None:
         pairs = []
         for _, row in df.iterrows():
@@ -298,27 +317,34 @@ def _read_channel_entries_from_csv(path: str) -> List[Dict[str, Any]]:
                 continue
             nm = _clean_str(row.get(name_col, ""))
             raw_idx = _safe_raw_index(row.get(raw_idx_col)) if raw_idx_col else None
+            zarr_idx = _safe_zarr_index(row.get(zarr_idx_col)) if zarr_idx_col else None
             if nm:
-                pairs.append((rid, nm, raw_idx))
+                pairs.append((rid, nm, raw_idx, zarr_idx, zarr_idx_col is not None))
         if not pairs:
             return []
-        max_id = max(r for r, _, _ in pairs)
+        max_id = max(r for r, _, _, _, _ in pairs)
         out: List[Optional[Dict[str, Any]]] = [None for _ in range(max_id + 1)]
-        for rid, nm, raw_idx in pairs:
+        for rid, nm, raw_idx, zarr_idx, has_zarr_col in pairs:
             if 0 <= rid < len(out):
-                out[rid] = {
+                entry: Dict[str, Any] = {
                     "id": rid,
                     "name": nm,
                     "raw_index": raw_idx,
                 }
+                if has_zarr_col:
+                    entry["zarr_index"] = zarr_idx
+                out[rid] = entry
         # fill empty slots with defaults
         for i in range(len(out)):
             if out[i] is None:
-                out[i] = {
+                slot: Dict[str, Any] = {
                     "id": i,
                     "name": f"ch_{i}",
                     "raw_index": None,
                 }
+                if zarr_idx_col is not None:
+                    slot["zarr_index"] = None
+                out[i] = slot
         return [x for x in out if x is not None]
     else:
         entries: List[Dict[str, Any]] = []
@@ -327,29 +353,51 @@ def _read_channel_entries_from_csv(path: str) -> List[Dict[str, Any]]:
             if not s:
                 continue
             raw_idx = _safe_raw_index(row.get(raw_idx_col)) if raw_idx_col else None
-            entries.append({
+            entry: Dict[str, Any] = {
                 "id": len(entries),
                 "name": s,
                 "raw_index": raw_idx,
-            })
+            }
+            if zarr_idx_col is not None:
+                entry["zarr_index"] = _safe_zarr_index(row.get(zarr_idx_col))
+            entries.append(entry)
         return entries
 
 
 def get_channel_info_from_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Build channel info from channel_list.csv entries (contrast range comes from OME-TIFF client-side)."""
+    """Build channel info from channel_list.csv entries (contrast range comes from OME-TIFF client-side).
+
+    channel_id = OME-TIFF 0-based index (ome_c). zarr_index maps to Zarr c when present.
+    Legacy CSVs without zarr_index column: zarr_c defaults to channel_id.
+    """
+    has_zarr_column = any("zarr_index" in e for e in entries)
+
+    def _entry_zarr_c(e: Dict[str, Any], cid: int) -> Optional[int]:
+        if "zarr_index" in e:
+            z = _safe_int(e.get("zarr_index"))
+            if z is None:
+                return None
+            return int(z) if int(z) >= 0 else None
+        z = _safe_int(e.get("zarr_c"))
+        if z is not None and int(z) >= 0:
+            return int(z)
+        if not has_zarr_column:
+            return cid
+        return None
+
     channels: List[Dict[str, Any]] = []
     for e in entries:
         cid = _safe_int(e.get("id"))
         if cid is None:
             cid = len(channels)
         ch_name = str(e.get("name", "")).strip() or f"ch_{cid}"
-        raw_idx = _safe_int(e.get("raw_index"))
-        raw_idx_i = int(raw_idx) if raw_idx is not None and raw_idx >= 1 else None
+        ome_c = cid
+        zarr_c = _entry_zarr_c(e, cid)
         channels.append({
             "id": cid,
             "name": ch_name,
-            "raw_index": raw_idx_i,
-            "ome_c": (raw_idx_i - 1) if raw_idx_i is not None else None,
+            "ome_c": ome_c,
+            "zarr_c": zarr_c,
         })
     return sorted(channels, key=lambda x: x["id"])
 

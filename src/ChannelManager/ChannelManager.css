@@ -1,9 +1,9 @@
-.channel-manager {
-    width: 100%;
-    margin-bottom: 12px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #e0e0e0;
-  }
+.channel-source-tag {
+  margin-left: 4px;
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 400;
+}
   
 .channel-section-title {
   margin-bottom: 6px;

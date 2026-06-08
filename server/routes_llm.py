@@ -135,7 +135,21 @@ def compute_cluster_channel_avg() -> Dict[str, object]:
                     num_pixels_by_level[lvl][idx_cluster] += int(mask.sum()) * total_pixels_per_image
 
         ch_df = pd.read_csv(channels_csv)
-        ch_df = ch_df.sort_values("channel_id")
+        if "zarr_index" in ch_df.columns:
+            def _has_zarr(v: object) -> bool:
+                if pd.isna(v):
+                    return False
+                s = str(v).strip()
+                if not s or s.lower() in ("na", "nan", "none", "-", "null"):
+                    return False
+                try:
+                    return int(float(s)) >= 0
+                except Exception:
+                    return False
+
+            ch_df = ch_df[ch_df["zarr_index"].map(_has_zarr)].sort_values("zarr_index")
+        else:
+            ch_df = ch_df.sort_values("channel_id")
         channel_names = ch_df["channel_name"].tolist()
         if len(channel_names) != C:
             raise ValueError(

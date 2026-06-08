@@ -26,6 +26,49 @@ export function isSelectionOwnerUmap(owner) {
   return owner === "umap" || owner === "single-umap";
 }
 
+/** Whether channel_info mapping has been loaded (non-empty zarr map). */
+export function hasZarrChannelMap(zarrIndexById) {
+  return Boolean(zarrIndexById && Object.keys(zarrIndexById).length > 0);
+}
+
+/** True when logical channel id has an explicit Zarr atlas index. */
+export function channelHasZarr(logicalId, zarrIndexById) {
+  const z = zarrIndexById?.[logicalId];
+  return z != null && Number.isFinite(Number(z)) && Number(z) >= 0;
+}
+
+/** Logical channel ids (OME channel_id) that have a Zarr atlas. */
+export function filterChannelsForZarr(logicalChannels, zarrIndexById) {
+  if (!Array.isArray(logicalChannels) || !hasZarrChannelMap(zarrIndexById)) {
+    return [];
+  }
+  return logicalChannels.filter((id) => channelHasZarr(id, zarrIndexById));
+}
+
+/** Logical ids to render on UMAP / Zarr atlases (strict; OME-only channels excluded). */
+export function resolveZarrLogicalChannels(logicalChannels, zarrIndexById) {
+  return filterChannelsForZarr(logicalChannels, zarrIndexById);
+}
+
+/** Map logical channel id → Zarr c index; null when unavailable. */
+export function logicalToZarrC(logicalId, zarrIndexById) {
+  if (!hasZarrChannelMap(zarrIndexById)) {
+    return null;
+  }
+  const z = zarrIndexById?.[logicalId];
+  if (z != null && Number.isFinite(Number(z)) && Number(z) >= 0) {
+    return Number(z);
+  }
+  return null;
+}
+
+/** Logical ids → Zarr c indices (for violin / cell preview APIs). */
+export function mapLogicalChannelsToZarr(logicalChannels, zarrIndexById) {
+  return resolveZarrLogicalChannels(logicalChannels, zarrIndexById)
+    .map((id) => logicalToZarrC(id, zarrIndexById))
+    .filter((z) => z != null);
+}
+
 /** Ray-cast: point [px,py] inside polygon [[x,y],...]. */
 export function pointInPolygon([px, py], polygon) {
     let inside = false;
@@ -318,6 +361,48 @@ export function computeConvexHull2D(pts) {
   return hull;
 }
 
+
+export const CLUSTER_MARKER_RADIUS_SCALE_SPRITES = 0.76;
+export const CLUSTER_MARKER_RADIUS_SCALE_POINTS = 0.72;
+
+/** OME spatial: project tilePx world units to screen CSS px at a cell center. */
+export function tileWorldSpanToScreenPx(viewport, worldCenter, tilePx) {
+  if (!viewport || !worldCenter || !Number.isFinite(tilePx) || tilePx <= 0) {
+    return null;
+  }
+  const [x, y, z = 0] = worldCenter;
+  const p0 = viewport.project([x, y, z]);
+  const p1 = viewport.project([x + tilePx, y, z]);
+  const dx = Math.abs((p1?.[0] ?? 0) - (p0?.[0] ?? 0));
+  const dy = Math.abs((p1?.[1] ?? 0) - (p0?.[1] ?? 0));
+  const span = Math.max(dx, dy);
+  return Number.isFinite(span) && span > 0 ? span : null;
+}
+
+/**
+ * Hover / selection outline side length (CSS px), aligned with rendered marker extent.
+ * OME spatial uses world tile span; UMAP/sprites use computedImageSize (cluster disks use diameter).
+ */
+export function resolveTileOutlineSize({
+  computedImageSize,
+  zoom = 0,
+  tilePx = 16,
+  rawUsesOmeTiff = false,
+  clusterColorOn = false,
+  renderMode = "sprites",
+}) {
+  if (rawUsesOmeTiff && Number.isFinite(tilePx) && tilePx > 0) {
+    return Math.max(6, tilePx * Math.pow(2, zoom ?? 0));
+  }
+  if (clusterColorOn) {
+    const radiusScale =
+      renderMode === "sprites"
+        ? CLUSTER_MARKER_RADIUS_SCALE_SPRITES
+        : CLUSTER_MARKER_RADIUS_SCALE_POINTS;
+    return Math.max(6, 2 * radiusScale * computedImageSize);
+  }
+  return Math.max(6, computedImageSize);
+}
 
 /**
  * Project world positions to DOM coords over the canvas (previews, labels, ranking).

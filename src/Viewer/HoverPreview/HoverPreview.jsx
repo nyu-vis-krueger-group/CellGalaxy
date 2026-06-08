@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./HoverPreview.css";
-import { projectItemsToScreen } from "../../utils/utils";
+import {
+  projectItemsToScreen,
+  tileWorldSpanToScreenPx,
+  mapLogicalChannelsToZarr,
+} from "../../utils/utils";
 import {
   HOVER_ICON_SUPERSAMPLE,
   TONE_GAIN,
@@ -141,6 +145,7 @@ export async function drawCellPreviewToCanvas({
   windows,
   displayCoordById = null,
   previewSize = 128,
+  channelZarrIndexById = null,
 }) {
   if (!canvas || !object) return;
   const resolved = resolveDisplayObject(object, displayCoordById);
@@ -228,9 +233,22 @@ export async function drawCellPreviewToCanvas({
 
   if (!drewPreview) {
     if (!mapping || !uvMeta) {
+      const zarrChList = mapLogicalChannelsToZarr(chList, channelZarrIndexById);
+      const zarrWindows =
+        channelZarrIndexById && Object.keys(channelZarrIndexById).length > 0
+          ? Object.fromEntries(
+              chList
+                .map((logicalId) => {
+                  const z = channelZarrIndexById[logicalId];
+                  if (z == null || !windows?.[logicalId]) return null;
+                  return [z, windows[logicalId]];
+                })
+                .filter(Boolean),
+            )
+          : windows;
       const previewUrl =
-        chList.length > 0 && Number.isFinite(resolved.id)
-          ? cellPreviewURL(resolved.id, chList, windows, previewSize)
+        zarrChList.length > 0 && Number.isFinite(resolved.id)
+          ? cellPreviewURL(resolved.id, zarrChList, zarrWindows, previewSize)
           : null;
       if (previewUrl) {
         await drawCellPreviewFromUrl(canvas, previewUrl, previewSize);
@@ -301,6 +319,7 @@ function HoverCellTooltip({
   rawAnnotationById = new Map(),
   filteredIds = null,
   displayCoordById = null,
+  channelZarrIndexById = null,
 }) {
   const canvasRef = useRef(null);
   const resolved = resolveDisplayObject(info?.object, displayCoordById);
@@ -352,6 +371,7 @@ function HoverCellTooltip({
         windows,
         displayCoordById,
         previewSize: PREVIEW_SIZE,
+        channelZarrIndexById,
       });
       if (cancelled) return;
     })();
@@ -370,6 +390,7 @@ function HoverCellTooltip({
     alphas,
     windows,
     displayCoordById,
+    channelZarrIndexById,
   ]);
 
   if (!info || !info.object) return null;
@@ -473,10 +494,14 @@ export default function HoverPreview({
   rawAnnotationById = new Map(),
   filteredIds = null,
   displayCoordById = null,
+  channelZarrIndexById = {},
   getWorldPosition = null,
   pickRadius = 6,
   hoverRingScale = 1,
   isUMAPView = false,
+  outlineSize = null,
+  rawUsesOmeTiff = false,
+  tilePx = 16,
 }) {
   const toWorld =
     typeof getWorldPosition === "function"
@@ -575,10 +600,30 @@ export default function HoverPreview({
       return;
     }
     const { x, y } = projected[0];
-    const baseSize = computedImageSize * hoverRingScale;
-    const size = Math.max(6, baseSize);
+    let size = outlineSize ?? computedImageSize;
+    if (rawUsesOmeTiff && Number.isFinite(tilePx) && tilePx > 0) {
+      const deckInstance = deckRef.current?.deck;
+      const viewport = deckInstance?.getViewports?.()?.[0];
+      const world = toWorld(hoverInfo.object);
+      const span =
+        viewport && world
+          ? tileWorldSpanToScreenPx(viewport, world, tilePx)
+          : null;
+      if (span != null) size = span;
+    }
+    size = Math.max(6, size * hoverRingScale);
     setOutlineRect({ left: x - size / 2, top: y - size / 2, size });
-  }, [hoverInfo, deckRef, containerRef, computedImageSize, toWorld, hoverRingScale]);
+  }, [
+    hoverInfo,
+    deckRef,
+    containerRef,
+    computedImageSize,
+    outlineSize,
+    rawUsesOmeTiff,
+    tilePx,
+    toWorld,
+    hoverRingScale,
+  ]);
 
   if (!hoverInfo?.object) return null;
 
@@ -621,6 +666,7 @@ export default function HoverPreview({
         rawAnnotationById={rawAnnotationById}
         filteredIds={filteredIds}
         displayCoordById={displayCoordById}
+        channelZarrIndexById={channelZarrIndexById}
       />
     </>
   );

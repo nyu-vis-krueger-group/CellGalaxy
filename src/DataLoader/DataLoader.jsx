@@ -22,6 +22,8 @@ import {
   openOmeTiffFromFile,
   computeOmeChannelRangeFromPixels,
 } from "../ome/omeVivLoader";
+import { logicalToZarrC, resolveZarrLogicalChannels, hasZarrChannelMap } from "../utils/utils";
+import { fetchChannelInfoMaps } from "../utils/channelInfo";
 
 const OME_TIFF_PUBLIC_PATH = "/public/image.ome.tif";
 
@@ -81,12 +83,12 @@ export default function useDataLoader() {
   /** Handle persisted; after reload user must click to complete requestPermission. */
   const [omeTiffRestoreNeedsClick, setOmeTiffRestoreNeedsClick] = useState(false);
   const omeTiffSpatialActive = Boolean(omeTiffFile) || omeTiffPresent;
-  /** channel_id (UI) → OME 0-based c from channel_info.json ome_c (from raw_index). */
+  /** channel_id (UI) → OME 0-based c (same as channel_id in channel_info.json). */
   const [channelOmeIndexById, setChannelOmeIndexById] = useState({});
+  /** channel_id (UI) → Zarr 0-based c; omitted / null = OME-only channel. */
+  const [channelZarrIndexById, setChannelZarrIndexById] = useState({});
   /** channel_id (UI) -> channel display name, from channel_info.json */
   const [channelNameById, setChannelNameById] = useState({});
-  /** channel_id (UI) -> whether explicit ome index exists in channel_info */
-  const [channelHasExplicitOmeIndexById, setChannelHasExplicitOmeIndexById] = useState({});
   /** channel_id (UI) -> pixel range derived from OME-TIFF metadata */
   const [omePixelRangeByChannelId, setOmePixelRangeByChannelId] = useState({});
 
@@ -99,48 +101,11 @@ export default function useDataLoader() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const res = await fetch(`/public/channel_info.json?ts=${Date.now()}`, { cache: "no-store" });
-        if (!res.ok) {
-          if (!cancelled) setChannelOmeIndexById({});
-          return;
-        }
-        const data = await res.json();
-        const m = {};
-        const n = {};
-        const explicit = {};
-        for (const ch of data?.channels || []) {
-          const id = Number(ch?.id);
-          if (!Number.isFinite(id)) continue;
-          n[id] = typeof ch?.name === "string" ? ch.name : "";
-          const raw = ch.raw_index != null && ch.raw_index !== "" ? Number(ch.raw_index) : NaN;
-          let omeC;
-          // raw_index: 1-based OME channel index in file → Viv c = raw_index - 1
-          if (Number.isFinite(raw) && raw >= 1) {
-            omeC = Math.max(0, Math.floor(raw) - 1);
-            explicit[id] = true;
-            // JSON null → Number(null) is 0 (finite): must not treat as explicit ome_c.
-          } else if (ch?.ome_c != null && ch.ome_c !== "" && Number.isFinite(Number(ch.ome_c))) {
-            omeC = Number(ch.ome_c);
-            explicit[id] = true;
-          } else {
-            omeC = id;
-            explicit[id] = false;
-          }
-          m[id] = omeC;
-        }
-        if (!cancelled) {
-          setChannelOmeIndexById(m);
-          setChannelNameById(n);
-          setChannelHasExplicitOmeIndexById(explicit);
-        }
-      } catch {
-        if (!cancelled) {
-          setChannelOmeIndexById({});
-          setChannelNameById({});
-          setChannelHasExplicitOmeIndexById({});
-        }
-      }
+      const parsed = await fetchChannelInfoMaps(undefined);
+      if (cancelled || !parsed) return;
+      setChannelOmeIndexById(parsed.omeMap);
+      setChannelZarrIndexById(parsed.zarrMap);
+      setChannelNameById(parsed.names);
     })();
     return () => {
       cancelled = true;
@@ -170,25 +135,11 @@ export default function useDataLoader() {
         if (cancelled) return;
 
         const mapped = {};
-        const omeNameToIdx = {};
-        for (let i = 0; i < (source?.names?.length || 0); i++) {
-          const key = String(source.names[i] || "").trim().toLowerCase();
-          if (key && !Object.prototype.hasOwnProperty.call(omeNameToIdx, key)) {
-            omeNameToIdx[key] = i;
-          }
-        }
         const selectedList = Array.isArray(channels)
           ? channels.map((x) => Number(x)).filter((x) => Number.isFinite(x))
           : [];
         for (const id of selectedList) {
-          const explicit = Boolean(channelHasExplicitOmeIndexById?.[id]);
-          let omeIdx = Number(channelOmeIndexById?.[id]);
-          if (!explicit) {
-            const nm = String(channelNameById?.[id] || "").trim().toLowerCase();
-            if (nm && Object.prototype.hasOwnProperty.call(omeNameToIdx, nm)) {
-              omeIdx = Number(omeNameToIdx[nm]);
-            }
-          }
+          const omeIdx = Number(channelOmeIndexById?.[id] ?? id);
           if (!Number.isFinite(id) || !Number.isFinite(omeIdx) || omeIdx < 0) continue;
           const fromMetadata = source?.channelRanges?.[omeIdx];
           const computed = await computeOmeChannelRangeFromPixels(source, omeIdx);
@@ -215,7 +166,6 @@ export default function useDataLoader() {
     omeTiffPresent,
     channelOmeIndexById,
     channelNameById,
-    channelHasExplicitOmeIndexById,
     channels,
   ]);
 
@@ -503,6 +453,13 @@ export default function useDataLoader() {
       }
       setAllSpatialCoords(spatialCoords);
 
+      const channelInfo = await fetchChannelInfoMaps(abort.signal);
+      if (channelInfo) {
+        setChannelOmeIndexById(channelInfo.omeMap);
+        setChannelZarrIndexById(channelInfo.zarrMap);
+        setChannelNameById(channelInfo.names);
+      }
+
       // Initial sizes from tile + raw span; UMAP capped by slider max
       const tilePx = metaJson?.atlas?.tile;
       const spanCoords = spatialCoords.length > 0 ? spatialCoords : coords;
@@ -549,12 +506,39 @@ export default function useDataLoader() {
         const tile = metaJson.atlas.tile;
         const chunkIds = [...new Set(coords.map((p) => p.chunk_id))];
         const selectedCh = channelsRef.current;
-        const channelIds =
+        let zarrMap = {};
+        try {
+          const chRes = await fetch(`/public/channel_info.json?ts=${Date.now()}`, {
+            cache: "no-store",
+            signal: abort.signal,
+          });
+          if (chRes.ok) {
+            const chData = await chRes.json();
+            for (const ch of chData?.channels || []) {
+              const logicalId = Number(ch?.id);
+              const zarrC = ch?.zarr_c ?? ch?.zarr_index;
+              if (
+                Number.isFinite(logicalId) &&
+                zarrC != null &&
+                zarrC !== "" &&
+                Number.isFinite(Number(zarrC)) &&
+                Number(zarrC) >= 0
+              ) {
+                zarrMap[logicalId] = Number(zarrC);
+              }
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+        const logicalChannelIds =
           Array.isArray(selectedCh) && selectedCh.length > 0
             ? [...selectedCh]
-            : typeof metaJson.C === "number" && metaJson.C > 0
-              ? Array.from({ length: metaJson.C }, (_, i) => i)
-              : [];
+            : Object.keys(zarrMap).length > 0
+              ? Object.keys(zarrMap).map(Number)
+              : typeof metaJson.C === "number" && metaJson.C > 0
+                ? Array.from({ length: metaJson.C }, (_, i) => i)
+                : [];
 
         for (const chunkId of chunkIds) {
           try {
@@ -566,15 +550,19 @@ export default function useDataLoader() {
         }
 
         for (const chunkId of chunkIds) {
-          for (const ch of channelIds) {
+          for (const logicalCh of logicalChannelIds) {
+            const zarrC =
+              zarrMap[logicalCh] ??
+              (Object.keys(zarrMap).length === 0 ? logicalCh : null);
+            if (zarrC == null) continue;
             try {
-              const staticURL = staticAtlasURL(ch, tile, chunkId);
+              const staticURL = staticAtlasURL(zarrC, tile, chunkId);
               const ok = await headStaticAtlas(staticURL, abort.signal);
               if (!ok) {
-                let gen = await generateAtlasGrayGet(chunkId, ch, tile, abort.signal);
+                let gen = await generateAtlasGrayGet(chunkId, zarrC, tile, abort.signal);
                 if (!gen.ok && gen.status !== 304) {
                   if (gen.status === 405 || gen.status === 404) {
-                    gen = await generateAtlasGrayPost(chunkId, ch, tile, abort.signal);
+                    gen = await generateAtlasGrayPost(chunkId, zarrC, tile, abort.signal);
                     if (!gen.ok) continue;
                   } else {
                     continue;
@@ -583,7 +571,7 @@ export default function useDataLoader() {
               }
               setAtlasByChannel((prev) => ({
                 ...prev,
-                [chunkId]: { ...(prev[chunkId] || {}), [ch]: staticURL },
+                [chunkId]: { ...(prev[chunkId] || {}), [logicalCh]: staticURL },
               }));
             } catch (e) {
               console.error("blockingAtlasPrefetch atlas", e);
@@ -680,32 +668,34 @@ export default function useDataLoader() {
   };
 
   // Grayscale atlas per channel (HEAD static → GET/POST generate)
-  const fetchAtlasGray = async (chunkId, channel) => {
-    const existing = atlasByChannel[chunkId]?.[channel];
+  const fetchAtlasGray = async (chunkId, logicalChannel) => {
+    const zarrC = logicalToZarrC(logicalChannel, channelZarrIndexById);
+    if (zarrC == null) return;
+    const existing = atlasByChannel[chunkId]?.[logicalChannel];
     if (existing) return;
-    if (fetchingChunks.has(`g_${chunkId}_${channel}`)) return;
-    setFetchingChunks((s) => new Set([...s, `g_${chunkId}_${channel}`]));
+    if (fetchingChunks.has(`g_${chunkId}_${logicalChannel}`)) return;
+    setFetchingChunks((s) => new Set([...s, `g_${chunkId}_${logicalChannel}`]));
 
     try {
       await runWithLimit(async () => {
         const t = meta?.atlas?.tile ?? 16;
-        const staticURL = staticAtlasURL(channel, t, chunkId);
+        const staticURL = staticAtlasURL(zarrC, t, chunkId);
 
         // 1) HEAD static cache
         const ok = await headStaticAtlas(staticURL, undefined);
         if (ok) {
           setAtlasByChannel((prev) => ({
             ...prev,
-            [chunkId]: { ...(prev[chunkId] || {}), [channel]: staticURL },
+            [chunkId]: { ...(prev[chunkId] || {}), [logicalChannel]: staticURL },
           }));
           return;
         }
 
         // 2) Generate: GET then POST if needed
-        let gen = await generateAtlasGrayGet(chunkId, channel, t, undefined);
+        let gen = await generateAtlasGrayGet(chunkId, zarrC, t, undefined);
         if (!gen.ok && gen.status !== 304) {
           if (gen.status === 405 || gen.status === 404) {
-            gen = await generateAtlasGrayPost(chunkId, channel, t, undefined);
+            gen = await generateAtlasGrayPost(chunkId, zarrC, t, undefined);
             if (!gen.ok) {
               try { console.error("atlas generate POST failed", gen.status, await gen.text()); } catch {}
               return;
@@ -719,31 +709,32 @@ export default function useDataLoader() {
         // 3) Point layer at static URL (browser cache)
         setAtlasByChannel((prev) => ({
           ...prev,
-          [chunkId]: { ...(prev[chunkId] || {}), [channel]: staticURL },
+          [chunkId]: { ...(prev[chunkId] || {}), [logicalChannel]: staticURL },
         }));
       });
     } catch (e) {
       console.error("atlas(single) GET error", e);
     } finally {
-      setFetchingChunks((s) => { const t = new Set(s); t.delete(`g_${chunkId}_${channel}`); return t; });
+      setFetchingChunks((s) => { const t = new Set(s); t.delete(`g_${chunkId}_${logicalChannel}`); return t; });
     }
   };
 
   // Prefetch UV + gray atlas (UMAP sprites + spatial hover); keep even with OME
   useEffect(() => {
     if (!meta || loading) return;
+    if (!hasZarrChannelMap(channelZarrIndexById)) return;
     const chunks = new Set((allCoords || []).map((p) => p.chunk_id));
     (async () => {
       for (const c of chunks) {
         await ensureUV(c);
         for (const ch of (channels || [])) {
+          if (logicalToZarrC(ch, channelZarrIndexById) == null) continue;
           await fetchAtlasGray(c, ch);
         }
         // fetchAtlas(c); // legacy merged atlas
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meta, loading, channels, renderMode, is3D, allCoords]);
+  }, [meta, loading, channels, renderMode, is3D, allCoords, channelZarrIndexById]);
 
   // Prewarm atlas on channel change
   useEffect(() => {
@@ -751,8 +742,10 @@ export default function useDataLoader() {
     const t = meta?.atlas?.tile ?? 16;
     (async () => {
       for (const ch of channels) {
+        const zarrC = logicalToZarrC(ch, channelZarrIndexById);
+        if (zarrC == null) continue;
         try {
-          prewarmAPI(ch, t);
+          prewarmAPI(zarrC, t);
         } catch {}
       }
     })();
@@ -813,6 +806,7 @@ export default function useDataLoader() {
     restoreOmeTiffFromDisk,
     omeTiffSpatialActive,
     channelOmeIndexById,
+    channelZarrIndexById,
     omePixelRangeByChannelId,
     /** Server-hosted OME-TIFF URL (only if no local file). */
     omeTiffUrl:

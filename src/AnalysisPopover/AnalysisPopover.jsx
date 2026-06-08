@@ -10,7 +10,7 @@ import CellAnalysisPanel from "../FeaturePanel/LocalFeaturePanel/LocalFeaturePan
 import GroupAnalysisPanel from "../FeaturePanel/GroupFeaturePanel/GroupFeaturePanel";
 import CompareAnalysisPanel from "../FeaturePanel/CompareFeaturePanel/CompareFeaturePanel";
 import { ANALYSIS_SINGLE, ANALYSIS_GROUP, ANALYSIS_COMPARE } from "../constants/analysis";
-import { buildIconMappingsByChunk, clampPositionToViewport } from "../utils/utils";
+import { buildIconMappingsByChunk, clampPositionToViewport, mapLogicalChannelsToZarr } from "../utils/utils";
 
 export default function AnalysisPopover({
   open,
@@ -24,6 +24,7 @@ export default function AnalysisPopover({
   atlasURL,
   atlasByChannel,
   channels,
+  channelZarrIndexById = {},
   colors,
   alphas,
   windows,
@@ -219,7 +220,10 @@ export default function AnalysisPopover({
           if (regions.length < 2) return;
           const idsA = regions[regions.length - 2];
           const idsB = regions[regions.length - 1];
-          const activeChs = Array.isArray(channels) && channels.length > 0 ? channels.map((c) => Number(c)) : [];
+          const activeChs = mapLogicalChannelsToZarr(
+            Array.isArray(channels) ? channels : [],
+            channelZarrIndexById,
+          );
           if (activeChs.length === 0) return;
           const [selA, selB, reps] = await Promise.all([
             fetchViolinSelectionCellKDE(idsA, 400, activeChs, 192, undefined),
@@ -333,6 +337,7 @@ export default function AnalysisPopover({
             atlasByChannel={atlasByChannel}
             atlasURL={atlasURL}
             channels={channels}
+            channelZarrIndexById={channelZarrIndexById}
             colors={colors}
             alphas={alphas}
             points={points}

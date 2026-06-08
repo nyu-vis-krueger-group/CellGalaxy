@@ -33,6 +33,8 @@ import {
   getSelectionOwner,
   isSelectionOwnerSpatial,
   isSelectionOwnerUmap,
+  resolveTileOutlineSize,
+  resolveZarrLogicalChannels,
 } from "../utils/utils";
 import { buildOutlineData2D, clusterColor } from "../utils/clustering";
 import "./Viewer.css";
@@ -118,17 +120,30 @@ const Viewer = ({
   omeTiffUrl = null,
   /** Local OME-TIFF file (browser) — takes precedence over omeTiffUrl */
   omeTiffFile = null,
-  /** channel_id → OME 0-based c (from channel_info.json / channel_list raw_index). */
+  /** channel_id → OME 0-based c (from channel_info.json). */
   channelOmeIndexById = {},
+  /** channel_id → Zarr 0-based c; missing = OME-only. */
+  channelZarrIndexById = {},
 }) => {
   const isUMAPView =
     viewerId === "umap" || (viewerId === "single" && !!useUMAP);
   const rawUsesOmeTiff = Boolean(omeTiffUrl || omeTiffFile) && !isUMAPView;
+
+  const zarrChannels = useMemo(
+    () => resolveZarrLogicalChannels(channels, channelZarrIndexById),
+    [channels, channelZarrIndexById],
+  );
+
   const hasActiveChannels = useMemo(
-    () =>
-      Array.isArray(channels) &&
-      channels.some((c) => Number.isFinite(Number(c))),
-    [channels],
+    () => {
+      if (!Array.isArray(channels) || channels.length === 0) return false;
+      if (isUMAPView) {
+        return zarrChannels.length > 0;
+      }
+      if (rawUsesOmeTiff) return true;
+      return zarrChannels.length > 0;
+    },
+    [channels, isUMAPView, rawUsesOmeTiff, zarrChannels],
   );
   // Raw space is always 2D; only UMAP respects the global 3D toggle.
   const viewIs3D = isUMAPView && is3D;
@@ -355,6 +370,28 @@ const Viewer = ({
     [meta, chunkUV]
   );
 
+  const tilePx = meta?.atlas?.tile ?? 16;
+
+  const tileOutlineSize = useMemo(
+    () =>
+      resolveTileOutlineSize({
+        computedImageSize,
+        zoom: viewState?.zoom,
+        tilePx,
+        rawUsesOmeTiff,
+        clusterColorOn,
+        renderMode: effectiveRenderMode,
+      }),
+    [
+      computedImageSize,
+      viewState?.zoom,
+      tilePx,
+      rawUsesOmeTiff,
+      clusterColorOn,
+      effectiveRenderMode,
+    ],
+  );
+
   const omeDeckLayer = useMemo(() => {
     if (!rawUsesOmeTiff || !omeTiffSource) return null;
     const chList = (Array.isArray(channels) ? channels : [])
@@ -363,8 +400,6 @@ const Viewer = ({
       .slice(0, MAX_CHANNELS);
     if (chList.length === 0) return null;
     const map = channelOmeIndexById && typeof channelOmeIndexById === "object" ? channelOmeIndexById : {};
-    const mapHasKey = (id) => Object.prototype.hasOwnProperty.call(map, id);
-    if (!chList.every(mapHasKey)) return null;
     const props = buildMultiscaleImageLayerProps(omeTiffSource, {
       channels: chList,
       colors,
@@ -1144,7 +1179,7 @@ const Viewer = ({
     atlasURL,
     atlasByChannel,
     iconMappingsByChunk,
-    channels,
+    channels: zarrChannels,
     colors,
     alphas,
     windows,
@@ -1358,7 +1393,7 @@ const Viewer = ({
               iconMappingsByChunk={iconMappingsByChunk}
               chunkUV={chunkUV}
               atlasByChannel={atlasByChannel}
-              channels={channels}
+              channels={zarrChannels}
               colors={colors}
               alphas={alphas}
               windows={windows}
@@ -1482,6 +1517,7 @@ const Viewer = ({
         atlasURL={atlasURL}
         atlasByChannel={atlasByChannel}
         channels={channels}
+        channelZarrIndexById={channelZarrIndexById}
         colors={colors}
         alphas={alphas}
         windows={windows}
@@ -1510,7 +1546,8 @@ const Viewer = ({
         chunkUV={chunkUV}
         atlasByChannel={atlasByChannel}
         atlasURL={atlasURL}
-        channels={channels}
+        channels={isUMAPView ? zarrChannels : channels}
+        channelZarrIndexById={channelZarrIndexById}
         colors={colors}
         alphas={alphas}
         windows={windows}
@@ -1520,6 +1557,9 @@ const Viewer = ({
         clusterOutlineOn={clusterOutlineOn}
         labelKey={clusterLabelKey}
         computedImageSize={computedImageSize}
+        outlineSize={tileOutlineSize}
+        rawUsesOmeTiff={rawUsesOmeTiff}
+        tilePx={tilePx}
         hoverEnabled={selectionMode === SELECTION_NONE && hasActiveChannels}
         selectedIds={selectedIds}
         cellTypeAnnotationOn={cellTypeAnnotationOn}
@@ -1536,8 +1576,7 @@ const Viewer = ({
       {selectedTileScreens &&
         selectedTileScreens.length > 0 &&
         selectedTileScreens.map(({ id, x, y, color }) => {
-          // Outline ~ tile size; same effectiveImageSize / zoom base as UMAP
-          const size = Math.max(6, computedImageSize);
+          const size = tileOutlineSize;
           let borderColor = "rgba(255, 255, 255, 0.9)";
           if (Array.isArray(color) && color.length >= 3) {
             const [r, g, b, a] = color;
@@ -1563,7 +1602,7 @@ const Viewer = ({
       {clusterHighlightScreens &&
         clusterHighlightScreens.length > 0 &&
         clusterHighlightScreens.map(({ id, x, y, color }) => {
-          const size = Math.max(6, computedImageSize);
+          const size = tileOutlineSize;
           let borderColor = "rgba(255, 255, 255, 0.9)";
           if (Array.isArray(color) && color.length >= 3) {
             const [r, g, b, a] = color;

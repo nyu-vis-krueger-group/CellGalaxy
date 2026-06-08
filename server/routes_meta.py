@@ -120,6 +120,11 @@ async def upload_generation_status():
 async def get_channels():
     try:
         ch_json = os.path.join(DATA_DIR, "channel_info.json")
+        ch_list_path = channel_list_csv_path()
+        if os.path.exists(ch_list_path):
+            channels = generate_channel_info_only()
+            if channels is not None:
+                return {"channels": channels, "total_channels": len(channels)}
         if os.path.exists(ch_json):
             try:
                 import json
