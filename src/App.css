@@ -4,10 +4,22 @@
   width: 100vw;
 }
 
-/* Split viewers side by side (columns applied on mouseup via splitRatio) */
+/* Single viewer — full viewport */
+.viewer-single {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Split viewers side by side (ratio via --split-left / --split-right on dual mount) */
 .viewer-split {
   position: relative;
   display: grid;
+  --split-left: 0.5fr;
+  --split-right: 0.5fr;
+  grid-template-columns: minmax(0, var(--split-left)) 8px minmax(0, var(--split-right));
   height: 100vh;
   width: 100vw;
 }
@@ -72,5 +84,3 @@
   font-size: 12px;
   pointer-events: none;
 }
-
-/* Keep basic container styles, remove unused styles */ 

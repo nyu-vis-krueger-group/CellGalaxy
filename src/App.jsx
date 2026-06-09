@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { VIEW_SINGLE } from "./constants/view";
+import { VIEW_SINGLE, VIEW_DUAL } from "./constants/view";
 import {
   SPATIAL_SCROLL_ZOOM_SPEED,
   UMAP_SCROLL_ZOOM_SPEED,
@@ -35,7 +35,9 @@ export default function App() {
   const applySplitColumns = useCallback((ratio, el = splitRef.current) => {
     if (!el) return;
     const r = Math.min(SPLIT_RATIO_MAX, Math.max(SPLIT_RATIO_MIN, ratio));
-    el.style.gridTemplateColumns = `minmax(0, ${r}fr) 8px minmax(0, ${1 - r}fr)`;
+    // CSS variables only — never set gridTemplateColumns inline (survives React DOM reuse)
+    el.style.setProperty("--split-left", `${r}fr`);
+    el.style.setProperty("--split-right", `${1 - r}fr`);
     return r;
   }, []);
 
@@ -109,15 +111,15 @@ export default function App() {
   }, [viewMode]);
 
   useLayoutEffect(() => {
-    if (viewMode !== "dual") return;
+    if (viewMode !== VIEW_DUAL) return;
     applySplitColumns(splitRatio);
   }, [viewMode, splitRatio, applySplitColumns]);
 
   return (
     <UploadBusyProvider>
     <div className="app-container">
-      {viewMode === "dual" ? (
-        <div className="viewer-split" ref={splitRef}>
+      {viewMode === VIEW_DUAL ? (
+        <div key="viewer-dual" className="viewer-split" ref={splitRef}>
           <div className="viewer-pane">
             <div className="viewer-label">Spatial</div>
             <Viewer
@@ -174,10 +176,11 @@ export default function App() {
           />
         </div>
       ) : (
-        <div className="viewer-split">
+        <div key="viewer-single" className="viewer-single">
           <div className="viewer-pane">
             <div className="viewer-label">{rest.useUMAP ? "UMAP" : "Spatial"}</div>
             <Viewer
+              key={`viewer-single-${rest.useUMAP ? "umap" : "spatial"}`}
               {...rest}
               viewerId="single"
               omeTiffUrl={rest.useUMAP ? null : rest.omeTiffUrl}
