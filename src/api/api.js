@@ -56,6 +56,19 @@ export async function fetchCoords(signal) {
   }
 }
 
+/** One label column from data.csv (row index = cell id). */
+export async function fetchCellLabels(labelKey = "label", signal) {
+  try {
+    const key = encodeURIComponent(labelKey || "label");
+    return await fetchJSON(`${API_BASE}/cell_labels?label_key=${key}&ts=${Date.now()}`, {
+      signal,
+    });
+  } catch (e) {
+    console.warn("fetchCellLabels failed", e);
+    return { labels: [] };
+  }
+}
+
 /** Full spatial centroids (all CSV rows) for spatial hover pick. */
 export async function fetchSpatialCoords(signal) {
   try {

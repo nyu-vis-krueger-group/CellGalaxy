@@ -15,12 +15,53 @@ from .data_paths import (
     spatial_coords_path,
     zooming_csv_path,
 )
-from .data_utils import get_channel_info, process_coord_row, generate_channel_info_only
+from .data_utils import _safe_int, get_channel_info, process_coord_row, generate_channel_info_only
 from .display_subset import display_atlas_n_and_chunks, load_display_indices, subset_artifacts_exist
-from .zarr_utils import open_zarr, meta_from_img, grid_for_count, get_default_tile
-
+from .zarr_utils import open_zarr, meta_from_img, grid_for_count, get_default_tile, stable_label
 
 router = APIRouter()
+
+_VALID_LABEL_KEYS = frozenset(
+    {"label", "clustering", "cluster_L0", "cluster_L1", "cluster_L2", "cluster_L3", "cluster_L4", "cluster_L5"}
+)
+_label_column_cache: dict[str, tuple[float | None, list[int]]] = {}
+
+
+def _labels_column_from_csv(label_key: str = "label") -> list[int]:
+    key = label_key if label_key in _VALID_LABEL_KEYS else "label"
+    csv_path = data_csv_path()
+    if not os.path.exists(csv_path):
+        return []
+    try:
+        mtime = os.path.getmtime(csv_path)
+    except OSError:
+        mtime = None
+    cached = _label_column_cache.get(key)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception:
+        return []
+    n = len(df)
+    if n == 0:
+        _label_column_cache[key] = (mtime, [])
+        return []
+    col = key
+    if col not in df.columns:
+        if col == "label" and "clustering" in df.columns:
+            col = "clustering"
+        else:
+            labels = [stable_label(i) for i in range(n)]
+            _label_column_cache[key] = (mtime, labels)
+            return labels
+    series = df[col]
+    labels: list[int] = []
+    for i in range(n):
+        iv = _safe_int(series.iloc[i])
+        labels.append(iv if iv is not None else stable_label(i))
+    _label_column_cache[key] = (mtime, labels)
+    return labels
 
 
 def _has_zarr() -> bool:
@@ -145,6 +186,13 @@ async def get_channels():
         return {"channels": channels, "total_channels": len(channels)}
     except Exception:
         return {"channels": [], "total_channels": 0}
+
+
+@router.get("/cell_labels")
+def get_cell_labels(label_key: str = Query("label")):
+    """One label column from data.csv (row index = cell id); cached, no sidecar regen."""
+    labels = _labels_column_from_csv(label_key)
+    return {"label_key": label_key, "labels": labels, "count": len(labels)}
 
 
 @router.get("/meta")

@@ -95,6 +95,9 @@ const Viewer = ({
   clearSelection = () => {},
   filteredIds = new Set(),
   highlightedClusters = new Set(),
+  resolveClusterIds = null,
+  ensureLabelColumn = () => Promise.resolve([]),
+  getLabelForId = null,
   // Clustering overlay
   clusterColorOn = false,
   clusterOpacity = 0.25,
@@ -418,8 +421,11 @@ const Viewer = ({
     setSelectedRegions,
     setSelectedIds,
     viewerId,
-    // Same label key as outlines for Alt+click cluster select
     labelKey: clusterLabelKey,
+    resolveClusterIds: (label) =>
+      typeof resolveClusterIds === "function"
+        ? resolveClusterIds(label, clusterLabelKey)
+        : null,
   });
 
   // Screen-space selection
@@ -637,12 +643,19 @@ const Viewer = ({
       return;
     }
     if (altPressed) {
-      // Cluster by current level key
       const val = info?.object?.[clusterLabelKey];
       const lbl = Number.isFinite(val) ? val : info?.object?.label;
-      if (selectClusterByLabel(lbl)) {
-        return;
-      }
+      ensureLabelColumn(clusterLabelKey).then((labels) => {
+        let override = null;
+        if (Array.isArray(labels) && labels.length && lbl != null) {
+          override = new Set();
+          for (let id = 0; id < labels.length; id++) {
+            if (labels[id] === lbl) override.add(id);
+          }
+        }
+        selectClusterByLabel(lbl, override);
+      });
+      return;
     }
 
     selectSingleById(info?.object?.id);
@@ -979,6 +992,25 @@ const Viewer = ({
 
   const MAX_CLUSTER_HIGHLIGHT_OUTLINES = 4000;
 
+  const buildCrossViewOutlinePoints = useCallback(
+    (predicate) => {
+      if (!visiblePoints?.length) return [];
+      let matched = visiblePoints.filter(predicate);
+      if (!isUMAPView && pointsRawPick?.length) {
+        const seen = new Set(matched.map((p) => p.id));
+        for (const p of pointsRawPick) {
+          if (seen.has(p.id)) continue;
+          if (predicate(p)) {
+            matched.push(p);
+            seen.add(p.id);
+          }
+        }
+      }
+      return matched;
+    },
+    [visiblePoints, isUMAPView, pointsRawPick],
+  );
+
   useEffect(() => {
     if (!selectedIds || selectedIds.size === 0 || !visiblePoints || visiblePoints.length === 0) {
       setSelectedTileScreens([]);
@@ -1044,32 +1076,18 @@ const Viewer = ({
       setClusterHighlightScreens([]);
       return;
     }
-    if (!visiblePoints || visiblePoints.length === 0) {
-      setClusterHighlightScreens([]);
-      return;
-    }
 
-    let matched = visiblePoints.filter((p) => {
-      const lbl = p?.label;
+    const clusterPredicate = (p) => {
+      const lbl = isUMAPView
+        ? p?.label
+        : (typeof getLabelForId === "function" ? getLabelForId(p.id, "label") : null) ??
+          p?.label;
       return Number.isFinite(lbl) && highlightedClusters.has(lbl);
-    });
+    };
 
-    if (!isUMAPView && pointsRawPick?.length) {
-      const seen = new Set(matched.map((p) => p.id));
-      for (const p of pointsRawPick) {
-        const lbl = p?.label;
-        if (
-          Number.isFinite(lbl) &&
-          highlightedClusters.has(lbl) &&
-          !seen.has(p.id)
-        ) {
-          matched.push(p);
-          seen.add(p.id);
-        }
-      }
-    }
+    let matched = buildCrossViewOutlinePoints(clusterPredicate);
 
-    if (matched.length > MAX_CLUSTER_HIGHLIGHT_OUTLINES) {
+    if (isUMAPView && matched.length > MAX_CLUSTER_HIGHLIGHT_OUTLINES) {
       const ratio = MAX_CLUSTER_HIGHLIGHT_OUTLINES / matched.length;
       matched = matched.filter((p) => (p.id * 0.6180339887) % 1 < ratio);
     }
@@ -1085,7 +1103,11 @@ const Viewer = ({
       items: matched,
       getWorldPosition: (p) => rawToWorld(p),
       mapResult: (p, sx, sy, offsetX, offsetY) => {
-        const lbl = Number.isFinite(p?.label) ? p.label : 0;
+        const lbl = isUMAPView
+          ? (Number.isFinite(p?.label) ? p.label : 0)
+          : ((typeof getLabelForId === "function" ? getLabelForId(p.id, "label") : null) ??
+            p?.label ??
+            0);
         return {
           id: p.id,
           x: sx + offsetX,
@@ -1106,6 +1128,8 @@ const Viewer = ({
     rawToWorld,
     isUMAPView,
     pointsRawPick,
+    getLabelForId,
+    buildCrossViewOutlinePoints,
   ]);
 
   useEffect(() => {
@@ -1185,6 +1209,7 @@ const Viewer = ({
     windows,
     is3D: viewIs3D,
     filteredIds,
+    highlightedClusters,
     clusterColorOn,
     clusterOpacity,
     clusterLineWidth,

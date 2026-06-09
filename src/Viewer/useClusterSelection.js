@@ -7,8 +7,8 @@ export default function useClusterSelection({
   setSelectedRegions = () => {},
   setSelectedIds = () => {},
   viewerId = "viewer",
-  // Which label field to use for cluster selection (e.g. 'label' or 'cluster_L0'...'cluster_L5')
   labelKey = "label",
+  resolveClusterIds = null,
 }) {
   const idsByLabel = useMemo(() => {
     const map = new Map();
@@ -38,9 +38,16 @@ export default function useClusterSelection({
     try { window.__selectionOwner = viewerId; } catch {}
   }
 
-  function selectClusterByLabel(label) {
+  function selectClusterByLabel(label, idOverride = null) {
     if (label == null) return false;
-    const src = idsByLabel.get(label) || new Set();
+    const full =
+      idOverride?.size > 0
+        ? idOverride
+        : typeof resolveClusterIds === "function"
+          ? resolveClusterIds(label)
+          : null;
+    const src =
+      full && full.size > 0 ? full : (idsByLabel.get(label) || new Set());
     const dst = new Set();
     const activeFilter = filteredIds && filteredIds.size > 0;
     if (activeFilter) {

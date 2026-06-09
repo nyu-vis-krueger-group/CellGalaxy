@@ -9,6 +9,17 @@ import {
 } from "../utils/intensityWindow";
 import { ease } from "../utils/utils";
 
+function pointFilterLabel(d) {
+  const lbl = d?.label;
+  return Number.isFinite(lbl) ? lbl : null;
+}
+
+function hiddenByClusterHighlight(d, highlightedClusters) {
+  if (!highlightedClusters || highlightedClusters.size === 0) return false;
+  const lbl = pointFilterLabel(d);
+  return !(Number.isFinite(lbl) && highlightedClusters.has(lbl));
+}
+
 export default function ImageLayers({
   meta,
   renderMode = "sprites",
@@ -22,6 +33,7 @@ export default function ImageLayers({
   windows = {},
   is3D = false,
   filteredIds = new Set(),
+  highlightedClusters = null,
   clusterColorOn = false,
   clusterOpacity = 0.25,
   clusterLineWidth = 1,
@@ -240,6 +252,7 @@ export default function ImageLayers({
                   }
                   const activeFilter = filteredIds && filteredIds.size > 0;
                   if (activeFilter && !filteredIds.has(d.id)) return [0, 0, 0, 0];
+                  if (hiddenByClusterHighlight(d, highlightedClusters)) return [0, 0, 0, 0];
 
                   // Color by labelKey (semantic level)
                   const val = d[labelKey];
@@ -250,7 +263,7 @@ export default function ImageLayers({
                 },
                 updateTriggers: {
                   ...baseConfig.updateTriggers,
-                  getColor: [filteredIds, clusterOpacity, selectedPoints.length, labelKey],
+                  getColor: [filteredIds, highlightedClusters, clusterOpacity, selectedPoints.length, labelKey],
                   getFilterValue: [selectedPoints.length],
                 },
               })
@@ -274,6 +287,7 @@ export default function ImageLayers({
                   if (hasSelection && !(typeof rIdx === "number" && rIdx >= 0)) return [0, 0, 0, 0];
                   const activeFilter = filteredIds && filteredIds.size > 0;
                   if (activeFilter && !filteredIds.has(d.id)) return [0, 0, 0, 0];
+                  if (hiddenByClusterHighlight(d, highlightedClusters)) return [0, 0, 0, 0];
                   
                   const val = d[labelKey];
                   const l = Number.isFinite(val) ? val : (d.label ?? 0);
@@ -289,7 +303,7 @@ export default function ImageLayers({
                 pickable: false,
                 parameters: { depthTest: false, blend: false },
                 updateTriggers: {
-                  getFillColor: [filteredIds, clusterOpacity, selectedPoints.length, labelKey],
+                  getFillColor: [filteredIds, highlightedClusters, clusterOpacity, selectedPoints.length, labelKey],
                   getRadius: [computedImageSize, selectedPoints.length],
                   getFilterValue: [selectedPoints.length],
                 },
@@ -352,6 +366,7 @@ export default function ImageLayers({
             if (hasSelection && !(typeof rIdx === "number" && rIdx >= 0)) return [0, 0, 0, 0];
             const activeFilter = filteredIds && filteredIds.size > 0;
             if (activeFilter && !filteredIds.has(d.id)) return [0, 0, 0, 0];
+            if (hiddenByClusterHighlight(d, highlightedClusters)) return [0, 0, 0, 0];
 
             const val = d[labelKey];
             const l = Number.isFinite(val) ? val : (d.label ?? 0);
@@ -370,7 +385,7 @@ export default function ImageLayers({
               }
             : undefined,
           updateTriggers: {
-            getFillColor: [filteredIds, clusterOpacity, selectedPoints.length, labelKey],
+            getFillColor: [filteredIds, highlightedClusters, clusterOpacity, selectedPoints.length, labelKey],
             getRadius: [computedImageSize, selectedPoints.length],
             getFilterValue: [selectedPoints.length],
             getPosition: [pixelYFlipHeight],
@@ -486,6 +501,7 @@ export default function ImageLayers({
     windows,
     is3D,
     filteredIds,
+    highlightedClusters,
     clusterColorOn,
     clusterOpacity,
     clusterLineWidth,

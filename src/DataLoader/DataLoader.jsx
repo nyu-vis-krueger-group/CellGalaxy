@@ -4,6 +4,7 @@ import {
   API_BASE,
   fetchMeta,
   fetchCoords,
+  fetchCellLabels,
   fetchSpatialCoords,
   fetchUV,
   staticAtlasURL,
@@ -209,6 +210,46 @@ export default function useDataLoader() {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [selectedRegions, setSelectedRegions] = useState(() => []);
   const [highlightedClusters, setHighlightedClusters] = useState(() => new Set());
+  const [labelColumns, setLabelColumns] = useState({});
+  const labelColumnFetchesRef = useRef({});
+
+  const ensureLabelColumn = useCallback((labelKey = "label") => {
+    const key = labelKey || "label";
+    if (labelColumns[key]?.length) return Promise.resolve(labelColumns[key]);
+    const inflight = labelColumnFetchesRef.current[key];
+    if (inflight) return inflight;
+    const p = fetchCellLabels(key)
+      .then((data) => {
+        const labels = Array.isArray(data?.labels) ? data.labels : [];
+        if (labels.length > 0) {
+          setLabelColumns((prev) => ({ ...prev, [key]: labels }));
+        }
+        return labels;
+      })
+      .catch(() => [])
+      .finally(() => {
+        delete labelColumnFetchesRef.current[key];
+      });
+    labelColumnFetchesRef.current[key] = p;
+    return p;
+  }, [labelColumns]);
+
+  const resolveClusterIds = useCallback((label, labelKey = "label") => {
+    const arr = labelColumns[labelKey];
+    if (!arr?.length || label == null) return null;
+    const out = new Set();
+    for (let id = 0; id < arr.length; id++) {
+      if (arr[id] === label) out.add(id);
+    }
+    return out.size > 0 ? out : null;
+  }, [labelColumns]);
+
+  const getLabelForId = useCallback((id, labelKey = "label") => {
+    const arr = labelColumns[labelKey];
+    if (!arr || id == null || id < 0 || id >= arr.length) return null;
+    const lbl = arr[id];
+    return Number.isFinite(lbl) ? lbl : null;
+  }, [labelColumns]);
 
   const availableClusterLabels = useMemo(() => {
     const labels = new Set();
@@ -605,6 +646,11 @@ export default function useDataLoader() {
     refreshData();
   }, [refreshData]);
 
+  useEffect(() => {
+    if (highlightedClusters.size === 0) return;
+    ensureLabelColumn("label");
+  }, [highlightedClusters, ensureLabelColumn]);
+
   // Rebuild projections when coords load
   useEffect(() => {
     if (allCoords.length > 0) applyAllProjections();
@@ -756,6 +802,9 @@ export default function useDataLoader() {
     points,
     pointsRaw,
     pointsRawPick,
+    resolveClusterIds,
+    ensureLabelColumn,
+    getLabelForId,
     displayCoordById,
     pointsUMAP,
     pointsUMAPPick,
