@@ -4,7 +4,6 @@ import DeckGL from "@deck.gl/react";
 import AnalysisPopover from "../AnalysisPopover/AnalysisPopover";
 import SelectionOverlay from "../SelectionOverlay/SelectionOverlay";
 import {
-  clusterHighlightColor,
   defaultRegionColors,
   makeRegionIndexGetter,
 } from "../SelectionOverlay/selectionUtils";
@@ -988,28 +987,6 @@ const Viewer = ({
 
   // Selected tile outline DOM positions
   const [selectedTileScreens, setSelectedTileScreens] = useState([]);
-  const [clusterHighlightScreens, setClusterHighlightScreens] = useState([]);
-
-  const MAX_CLUSTER_HIGHLIGHT_OUTLINES = 4000;
-
-  const buildCrossViewOutlinePoints = useCallback(
-    (predicate) => {
-      if (!visiblePoints?.length) return [];
-      let matched = visiblePoints.filter(predicate);
-      if (!isUMAPView && pointsRawPick?.length) {
-        const seen = new Set(matched.map((p) => p.id));
-        for (const p of pointsRawPick) {
-          if (seen.has(p.id)) continue;
-          if (predicate(p)) {
-            matched.push(p);
-            seen.add(p.id);
-          }
-        }
-      }
-      return matched;
-    },
-    [visiblePoints, isUMAPView, pointsRawPick],
-  );
 
   useEffect(() => {
     if (!selectedIds || selectedIds.size === 0 || !visiblePoints || visiblePoints.length === 0) {
@@ -1069,67 +1046,6 @@ const Viewer = ({
     rawToWorld,
     isUMAPView,
     pointsRawPick,
-  ]);
-
-  useEffect(() => {
-    if (!highlightedClusters || highlightedClusters.size === 0) {
-      setClusterHighlightScreens([]);
-      return;
-    }
-
-    const clusterPredicate = (p) => {
-      const lbl = isUMAPView
-        ? p?.label
-        : (typeof getLabelForId === "function" ? getLabelForId(p.id, "label") : null) ??
-          p?.label;
-      return Number.isFinite(lbl) && highlightedClusters.has(lbl);
-    };
-
-    let matched = buildCrossViewOutlinePoints(clusterPredicate);
-
-    if (isUMAPView && matched.length > MAX_CLUSTER_HIGHLIGHT_OUTLINES) {
-      const ratio = MAX_CLUSTER_HIGHLIGHT_OUTLINES / matched.length;
-      matched = matched.filter((p) => (p.id * 0.6180339887) % 1 < ratio);
-    }
-
-    if (matched.length === 0) {
-      setClusterHighlightScreens([]);
-      return;
-    }
-
-    const result = projectItemsToScreen({
-      deckRef,
-      containerRef,
-      items: matched,
-      getWorldPosition: (p) => rawToWorld(p),
-      mapResult: (p, sx, sy, offsetX, offsetY) => {
-        const lbl = isUMAPView
-          ? (Number.isFinite(p?.label) ? p.label : 0)
-          : ((typeof getLabelForId === "function" ? getLabelForId(p.id, "label") : null) ??
-            p?.label ??
-            0);
-        return {
-          id: p.id,
-          x: sx + offsetX,
-          y: sy + offsetY,
-          color: clusterHighlightColor(lbl),
-        };
-      },
-    });
-
-    setClusterHighlightScreens(result || []);
-  }, [
-    highlightedClusters,
-    visiblePoints,
-    viewState,
-    deckRef,
-    containerRef,
-    layoutEpoch,
-    rawToWorld,
-    isUMAPView,
-    pointsRawPick,
-    getLabelForId,
-    buildCrossViewOutlinePoints,
   ]);
 
   useEffect(() => {
@@ -1194,6 +1110,30 @@ const Viewer = ({
 
   const imageLayerPoints = isUMAPView ? umapVisualPoints : spatialVisualPoints;
 
+  const clusterHighlightPoints = useMemo(() => {
+    if (!highlightedClusters?.size) return imageLayerPoints;
+    if (isUMAPView || !pointsRawPick?.length) return imageLayerPoints;
+    const seen = new Set(imageLayerPoints.map((p) => p.id));
+    const merged = [...imageLayerPoints];
+    for (const p of pointsRawPick) {
+      if (seen.has(p.id)) continue;
+      const lbl =
+        (typeof getLabelForId === "function" ? getLabelForId(p.id, "label") : null) ??
+        p?.label;
+      if (Number.isFinite(lbl) && highlightedClusters.has(lbl)) {
+        merged.push(p);
+        seen.add(p.id);
+      }
+    }
+    return merged;
+  }, [
+    imageLayerPoints,
+    isUMAPView,
+    highlightedClusters,
+    pointsRawPick,
+    getLabelForId,
+  ]);
+
   const imageLayers = ImageLayers({
     meta,
     renderMode: effectiveRenderMode,
@@ -1219,6 +1159,13 @@ const Viewer = ({
     getRegionIndexForId,
     regionColors,
     labelKey: clusterLabelKey,
+    clusterHighlightLabelKey: "label",
+    getLabelForId,
+    clusterHighlightPoints,
+    markerZoom: viewState?.zoom ?? 0,
+    tilePx,
+    rawUsesOmeTiff,
+    semanticLevel,
     samplingThreshold,
     selectedIds,
     selectedBypassSampling,
@@ -1619,33 +1566,6 @@ const Viewer = ({
                 width: size,
                 height: size,
                 borderColor,
-              }}
-            />
-          );
-        })}
-
-      {clusterHighlightScreens &&
-        clusterHighlightScreens.length > 0 &&
-        clusterHighlightScreens.map(({ id, x, y, color }) => {
-          const size = tileOutlineSize;
-          let borderColor = "rgba(255, 255, 255, 0.9)";
-          if (Array.isArray(color) && color.length >= 3) {
-            const [r, g, b, a] = color;
-            const alpha =
-              typeof a === "number" && a >= 0 && a <= 255 ? a / 255 : 0.95;
-            borderColor = `rgba(${r},${g},${b},${alpha})`;
-          }
-          return (
-            <div
-              key={`cluster-highlight-${id}`}
-              className="selected-tile-outline cluster-highlight-outline"
-              style={{
-                left: x - size / 2,
-                top: y - size / 2,
-                width: size,
-                height: size,
-                borderColor,
-                borderWidth: 1.5,
               }}
             />
           );

@@ -379,17 +379,34 @@ export function tileWorldSpanToScreenPx(viewport, worldCenter, tilePx) {
   return Number.isFinite(span) && span > 0 ? span : null;
 }
 
+/** Sprite diameter factor vs semantic level (matches ImageLayers getSize). */
+export function semanticMarkerSizeFactor(semanticLevel = 6) {
+  const lvl = Math.max(0, Math.min(6, semanticLevel));
+  if (lvl < 1.0) return 4.8;
+  if (lvl < 1.7) {
+    const t = (lvl - 1.0) / 0.7;
+    return 4.8 + (2.4 - 4.8) * t;
+  }
+  if (lvl < 3.0) {
+    const t = (lvl - 1.7) / (3.0 - 1.7);
+    return 2.4 + (0.9 - 2.4) * t;
+  }
+  return 0.9;
+}
+
 /**
- * Hover / selection outline side length (CSS px), aligned with rendered marker extent.
- * OME spatial uses world tile span; UMAP/sprites use computedImageSize (cluster disks use diameter).
+ * Marker side length in screen px — same extent as rendered tile / cluster disk.
+ * Used by hover DOM outlines and GPU cluster-highlight icons.
  */
-export function resolveTileOutlineSize({
+export function resolveMarkerPixelSize({
   computedImageSize,
   zoom = 0,
   tilePx = 16,
   rawUsesOmeTiff = false,
   clusterColorOn = false,
   renderMode = "sprites",
+  semanticLevel = 6,
+  semanticSizeOn = false,
 }) {
   if (rawUsesOmeTiff && Number.isFinite(tilePx) && tilePx > 0) {
     return Math.max(6, tilePx * Math.pow(2, zoom ?? 0));
@@ -401,7 +418,15 @@ export function resolveTileOutlineSize({
         : CLUSTER_MARKER_RADIUS_SCALE_POINTS;
     return Math.max(6, 2 * radiusScale * computedImageSize);
   }
+  if (semanticSizeOn) {
+    return Math.max(6, computedImageSize * semanticMarkerSizeFactor(semanticLevel));
+  }
   return Math.max(6, computedImageSize);
+}
+
+/** @deprecated Use resolveMarkerPixelSize */
+export function resolveTileOutlineSize(opts) {
+  return resolveMarkerPixelSize(opts);
 }
 
 /**

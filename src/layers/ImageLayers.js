@@ -1,23 +1,217 @@
 import { useMemo } from "react";
-import { ScatterplotLayer, PathLayer } from "@deck.gl/layers";
+import { ScatterplotLayer, PathLayer, IconLayer } from "@deck.gl/layers";
 import { DataFilterExtension } from "@deck.gl/extensions";
 import WindowedIconLayer from "./WindowedIconLayer";
+import { getClusterOutlineIconDescriptor } from "./clusterOutlineIcon";
 import { clusterColor } from "../utils/clustering";
 import {
   TONE_GAIN,
   windowFromChannel,
 } from "../utils/intensityWindow";
-import { ease } from "../utils/utils";
+import {
+  ease,
+  resolveMarkerPixelSize,
+  semanticMarkerSizeFactor,
+} from "../utils/utils";
 
-function pointFilterLabel(d) {
+function clusterLabelForPoint(d, labelKey = "label", getLabelForId = null) {
+  if (typeof getLabelForId === "function" && Number.isFinite(d?.id)) {
+    const fromColumn = getLabelForId(d.id, labelKey);
+    if (Number.isFinite(fromColumn)) return fromColumn;
+  }
+  const val = d?.[labelKey];
+  if (Number.isFinite(val)) return val;
   const lbl = d?.label;
   return Number.isFinite(lbl) ? lbl : null;
 }
 
-function hiddenByClusterHighlight(d, highlightedClusters) {
+function isClusterHighlighted(d, highlightedClusters, labelKey, getLabelForId) {
   if (!highlightedClusters || highlightedClusters.size === 0) return false;
-  const lbl = pointFilterLabel(d);
-  return !(Number.isFinite(lbl) && highlightedClusters.has(lbl));
+  const lbl = clusterLabelForPoint(d, labelKey, getLabelForId);
+  return Number.isFinite(lbl) && highlightedClusters.has(lbl);
+}
+
+const CLUSTER_OUTLINE_ICON = getClusterOutlineIconDescriptor();
+const CLUSTER_HIGHLIGHT_FILTER = new DataFilterExtension({ filterSize: 1 });
+/** Below this marker px size (2D), cluster highlight renders as a dot; at/above → square frame. */
+const CLUSTER_SQUARE_OUTLINE_MIN_PX = 12;
+/** 3D orbit: deck zoom reflects navigation better than computedImageSize alone. */
+const CLUSTER_SQUARE_OUTLINE_MIN_ZOOM_3D = 9.5;
+
+function markerSizeForOutline({
+  computedImageSize,
+  markerZoom,
+  tilePx,
+  rawUsesOmeTiff,
+  clusterColorOn,
+  renderMode,
+  semanticLevel,
+  semanticSizeOn,
+}) {
+  return resolveMarkerPixelSize({
+    computedImageSize,
+    zoom: markerZoom,
+    tilePx,
+    rawUsesOmeTiff,
+    clusterColorOn,
+    renderMode,
+    semanticLevel,
+    semanticSizeOn,
+  });
+}
+
+function appendClusterHighlightOutlineLayers(
+  target,
+  {
+    points,
+    highlightedClusters,
+    clusterHighlightLabelKey,
+    getLabelForId,
+    computedImageSize,
+    markerZoom,
+    tilePx,
+    rawUsesOmeTiff,
+    clusterColorOn,
+    renderMode,
+    semanticLevel,
+    semanticSizeOn,
+    is3D,
+    worldPos,
+    samplingThreshold,
+    selectedIds,
+    selectedBypassSampling,
+    filteredIds,
+    pixelYFlipHeight,
+  },
+) {
+  if (!highlightedClusters?.size || !points?.length) return;
+
+  const highlightData = points.filter((d) =>
+    isClusterHighlighted(d, highlightedClusters, clusterHighlightLabelKey, getLabelForId),
+  );
+  if (highlightData.length === 0) return;
+
+  const sizeOpts = {
+    computedImageSize,
+    markerZoom,
+    tilePx,
+    rawUsesOmeTiff,
+    clusterColorOn,
+    renderMode,
+    semanticLevel,
+    semanticSizeOn,
+  };
+  const markerSize = markerSizeForOutline(sizeOpts);
+  const useSquareOutline = is3D
+    ? markerZoom >= CLUSTER_SQUARE_OUTLINE_MIN_ZOOM_3D ||
+      markerSize >= CLUSTER_SQUARE_OUTLINE_MIN_PX
+    : markerSize >= CLUSTER_SQUARE_OUTLINE_MIN_PX;
+
+  const filterExt = {
+    extensions: [CLUSTER_HIGHLIGHT_FILTER],
+    getFilterValue: (d) => {
+      if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
+      return (d.id * 0.6180339887) % 1;
+    },
+    filterRange: [0, samplingThreshold],
+  };
+
+  const clusterHighlightColor = (d) => {
+    const activeFilter = filteredIds && filteredIds.size > 0;
+    if (activeFilter && !filteredIds.has(d.id)) return [0, 0, 0, 0];
+    const lbl = clusterLabelForPoint(d, clusterHighlightLabelKey, getLabelForId) ?? 0;
+    const rgb = clusterColor(lbl);
+    return [rgb[0], rgb[1], rgb[2], 255];
+  };
+
+  const sizeDeps = [
+    computedImageSize,
+    markerZoom,
+    tilePx,
+    rawUsesOmeTiff,
+    clusterColorOn,
+    renderMode,
+    semanticLevel,
+    semanticSizeOn,
+    is3D,
+  ];
+
+  if (!useSquareOutline) {
+    const dotRadius = Math.max(1.5, Math.min(3.5, markerSize * 0.3));
+    target.push(
+      new ScatterplotLayer({
+        id: "cluster-highlight-dot",
+        data: highlightData,
+        getPosition: (d) => worldPos(d),
+        getRadius: () => dotRadius,
+        radiusUnits: "pixels",
+        billboard: true,
+        filled: true,
+        stroked: false,
+        getFillColor: clusterHighlightColor,
+        pickable: false,
+        autoHighlight: false,
+        ...filterExt,
+        parameters: { depthTest: is3D, blend: true },
+        updateTriggers: {
+          getRadius: sizeDeps,
+          getFillColor: [
+            highlightedClusters,
+            filteredIds,
+            clusterHighlightLabelKey,
+            getLabelForId,
+          ],
+          getFilterValue: [selectedIds],
+          getPosition: [pixelYFlipHeight],
+        },
+      }),
+    );
+    return;
+  }
+
+  const base = {
+    data: highlightData,
+    iconAtlas: CLUSTER_OUTLINE_ICON.atlas,
+    iconMapping: CLUSTER_OUTLINE_ICON.mapping,
+    getIcon: () => "outline",
+    getPosition: (d) => worldPos(d),
+    getSize: () => markerSize,
+    sizeUnits: "pixels",
+    billboard: true,
+    pickable: false,
+    autoHighlight: false,
+    ...filterExt,
+    updateTriggers: {
+      getSize: sizeDeps,
+      getColor: [
+        highlightedClusters,
+        filteredIds,
+        clusterHighlightLabelKey,
+        getLabelForId,
+      ],
+      getFilterValue: [selectedIds],
+      getPosition: [pixelYFlipHeight],
+    },
+  };
+
+  target.push(
+    new IconLayer({
+      ...base,
+      id: "cluster-highlight-shadow",
+      getSize: () => markerSize + 1,
+      getColor: () => [0, 0, 0, 190],
+      parameters: { depthTest: is3D, blend: true },
+    }),
+  );
+
+  target.push(
+    new IconLayer({
+      ...base,
+      id: "cluster-highlight-square",
+      getColor: clusterHighlightColor,
+      parameters: { depthTest: is3D, blend: true },
+    }),
+  );
 }
 
 export default function ImageLayers({
@@ -44,6 +238,8 @@ export default function ImageLayers({
   regionColors,
   semanticLevel = 6.0,
   labelKey = "label",
+  /** Cluster Filter checkbox labels (always base `label` column). */
+  clusterHighlightLabelKey = "label",
   rankKey = null,
   semanticSizeOn = false,
   samplingThreshold = 1.0,
@@ -65,6 +261,14 @@ export default function ImageLayers({
   omeSpatialScatterPickOnly = false,
   /** Global guard: render nothing when no active channels */
   hasRenderableChannels = true,
+  /** Optional: resolve label from server column (spatial cross-view). */
+  getLabelForId = null,
+  /** Points for cluster-filter rings; defaults to `points`. */
+  clusterHighlightPoints = null,
+  /** Deck zoom — OME tile outline sizing */
+  markerZoom = 0,
+  tilePx = 16,
+  rawUsesOmeTiff = false,
 }) {
   const worldPos = (d) => {
     const z = d.z ?? 0;
@@ -84,6 +288,7 @@ export default function ImageLayers({
   };
 
   const effectivePickPoints = pickPoints ?? points;
+  const effectiveClusterHighlightPoints = clusterHighlightPoints ?? points;
 
   const selectedPoints = useMemo(() => {
     if (!points || !getRegionIndexForId) return [];
@@ -149,22 +354,9 @@ export default function ImageLayers({
           filterRange: [0, samplingThreshold],
           getSize: (d) => {
             if (!semanticSizeOn) return computedImageSize;
-            // Piecewise size vs semantic level (coarse → large sprites)
-            const lvl = Math.max(0, Math.min(6, semanticLevel));
-            let sizeFactor;
-            if (lvl < 1.0) {
-              sizeFactor = 4.8;
-            } else if (lvl < 1.7) {
-              const t = (lvl - 1.0) / 0.7;
-              sizeFactor = 4.8 + (2.4 - 4.8) * t;
-            } else if (lvl < 3.0) {
-              const t = (lvl - 1.7) / (3.0 - 1.7);
-              sizeFactor = 2.4 + (0.9 - 2.4) * t;
-            } else {
-              sizeFactor = 0.9;
-            }
-
-            return computedImageSize * sizeFactor;
+            return (
+              computedImageSize * semanticMarkerSizeFactor(semanticLevel)
+            );
           },
           sizeScale: 1,
           fovy: 45,
@@ -209,7 +401,6 @@ export default function ImageLayers({
                 premultiply: false,
                 getColor: (d) => {
                   const activeFilter = filteredIds && filteredIds.size > 0;
-                  // Filter: hide non-matching
                   if (activeFilter && !filteredIds.has(d.id)) {
                     return [col[0] ?? 255, col[1] ?? 255, col[2] ?? 255, 0];
                   }
@@ -252,7 +443,6 @@ export default function ImageLayers({
                   }
                   const activeFilter = filteredIds && filteredIds.size > 0;
                   if (activeFilter && !filteredIds.has(d.id)) return [0, 0, 0, 0];
-                  if (hiddenByClusterHighlight(d, highlightedClusters)) return [0, 0, 0, 0];
 
                   // Color by labelKey (semantic level)
                   const val = d[labelKey];
@@ -263,7 +453,7 @@ export default function ImageLayers({
                 },
                 updateTriggers: {
                   ...baseConfig.updateTriggers,
-                  getColor: [filteredIds, highlightedClusters, clusterOpacity, selectedPoints.length, labelKey],
+                  getColor: [filteredIds, clusterOpacity, selectedPoints.length, labelKey],
                   getFilterValue: [selectedPoints.length],
                 },
               })
@@ -287,8 +477,7 @@ export default function ImageLayers({
                   if (hasSelection && !(typeof rIdx === "number" && rIdx >= 0)) return [0, 0, 0, 0];
                   const activeFilter = filteredIds && filteredIds.size > 0;
                   if (activeFilter && !filteredIds.has(d.id)) return [0, 0, 0, 0];
-                  if (hiddenByClusterHighlight(d, highlightedClusters)) return [0, 0, 0, 0];
-                  
+
                   const val = d[labelKey];
                   const l = Number.isFinite(val) ? val : (d.label ?? 0);
                   const rgb = clusterColor(l);
@@ -303,7 +492,12 @@ export default function ImageLayers({
                 pickable: false,
                 parameters: { depthTest: false, blend: false },
                 updateTriggers: {
-                  getFillColor: [filteredIds, highlightedClusters, clusterOpacity, selectedPoints.length, labelKey],
+                  getFillColor: [
+                    filteredIds,
+                    clusterOpacity,
+                    selectedPoints.length,
+                    labelKey,
+                  ],
                   getRadius: [computedImageSize, selectedPoints.length],
                   getFilterValue: [selectedPoints.length],
                 },
@@ -337,6 +531,28 @@ export default function ImageLayers({
         );
       }
 
+      appendClusterHighlightOutlineLayers(all, {
+        points: effectiveClusterHighlightPoints,
+        highlightedClusters,
+        clusterHighlightLabelKey,
+        getLabelForId,
+        computedImageSize,
+        markerZoom,
+        tilePx,
+        rawUsesOmeTiff,
+        clusterColorOn,
+        renderMode,
+        semanticLevel,
+        semanticSizeOn,
+        is3D,
+        worldPos: (d) => [d.x, d.y, d.z ?? 0],
+        samplingThreshold,
+        selectedIds,
+        selectedBypassSampling,
+        filteredIds,
+        pixelYFlipHeight: null,
+      });
+
       const pickLayer = pickScatterLayer();
       if (pickLayer) all.push(pickLayer);
 
@@ -366,12 +582,11 @@ export default function ImageLayers({
             if (hasSelection && !(typeof rIdx === "number" && rIdx >= 0)) return [0, 0, 0, 0];
             const activeFilter = filteredIds && filteredIds.size > 0;
             if (activeFilter && !filteredIds.has(d.id)) return [0, 0, 0, 0];
-            if (hiddenByClusterHighlight(d, highlightedClusters)) return [0, 0, 0, 0];
 
             const val = d[labelKey];
             const l = Number.isFinite(val) ? val : (d.label ?? 0);
             const rgb = clusterColor(l);
-            
+
             return [rgb[0], rgb[1], rgb[2], a];
           },
           getRadius: () => computedImageSize * 0.72,
@@ -385,7 +600,12 @@ export default function ImageLayers({
               }
             : undefined,
           updateTriggers: {
-            getFillColor: [filteredIds, highlightedClusters, clusterOpacity, selectedPoints.length, labelKey],
+            getFillColor: [
+              filteredIds,
+              clusterOpacity,
+              selectedPoints.length,
+              labelKey,
+            ],
             getRadius: [computedImageSize, selectedPoints.length],
             getFilterValue: [selectedPoints.length],
             getPosition: [pixelYFlipHeight],
@@ -480,6 +700,28 @@ export default function ImageLayers({
         })
       );
     }
+    appendClusterHighlightOutlineLayers(base, {
+      points: effectiveClusterHighlightPoints,
+      highlightedClusters,
+      clusterHighlightLabelKey,
+      getLabelForId,
+      computedImageSize,
+      markerZoom,
+      tilePx,
+      rawUsesOmeTiff,
+      clusterColorOn,
+      renderMode,
+      semanticLevel,
+      semanticSizeOn,
+      is3D,
+      worldPos,
+      samplingThreshold,
+      selectedIds,
+      selectedBypassSampling,
+      filteredIds,
+      pixelYFlipHeight,
+    });
+
     const pickLayer = pickScatterLayer("-scatter");
     if (pickLayer) base.push(pickLayer);
 
@@ -518,6 +760,15 @@ export default function ImageLayers({
     selectedIds,
     selectedBypassSampling,
     samplingThreshold,
+    getLabelForId,
+    clusterHighlightLabelKey,
+    clusterHighlightPoints,
+    effectiveClusterHighlightPoints,
+    markerZoom,
+    tilePx,
+    rawUsesOmeTiff,
+    semanticLevel,
+    semanticSizeOn,
   ]);
 
   return layers;
