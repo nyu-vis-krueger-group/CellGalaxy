@@ -1,0 +1,25 @@
+.core-metadata-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 200;
+}
+
+.core-metadata-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  max-width: 240px;
+}
+
+.core-metadata-line {
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 500;
+  text-shadow:
+    0 0 4px rgba(0, 0, 0, 0.95),
+    0 1px 3px rgba(0, 0, 0, 0.9),
+    1px 0 2px rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+}

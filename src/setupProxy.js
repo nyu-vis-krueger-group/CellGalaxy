@@ -17,6 +17,7 @@ module.exports = function setupProxy(app) {
       "/violin",
       "/features",
       "/llm",
+      "/core_metadata",
       "/output.zarr",
       "/raw.json",
     ],

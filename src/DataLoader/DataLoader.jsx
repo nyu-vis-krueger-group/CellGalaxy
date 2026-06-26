@@ -25,6 +25,7 @@ import {
 } from "../ome/omeVivLoader";
 import { logicalToZarrC, resolveZarrLogicalChannels, hasZarrChannelMap } from "../utils/utils";
 import { fetchChannelInfoMaps } from "../utils/channelInfo";
+import { fetchCoreMetadataRows } from "../utils/coreMetadata";
 
 const OME_TIFF_PUBLIC_PATH = "/public/image.ome.tif";
 
@@ -75,7 +76,11 @@ export default function useDataLoader() {
   const [rawAnnotationColumns, setRawAnnotationColumns] = useState({ celltype: false, neigh_names: false });
   const [cellTypeAnnotationOn, setCellTypeAnnotationOn] = useState(false);
   const [neighNamesAnnotationOn, setNeighNamesAnnotationOn] = useState(false);
-  
+  const [coreMetadataActive, setCoreMetadataActive] = useState(false);
+  const [coreMetadataTextColumns, setCoreMetadataTextColumns] = useState([]);
+  const [coreMetadataSelectedFields, setCoreMetadataSelectedFields] = useState([]);
+  const [coreMetadataRows, setCoreMetadataRows] = useState([]);
+
   // Single-view UMAP toggle
   const [useUMAP, setUseUMAP] = useState(false);
   const [omeTiffPresent, setOmeTiffPresent] = useState(false);
@@ -439,9 +444,34 @@ export default function useDataLoader() {
       if (!statusRes.ok) return;
       const statusData = await statusRes.json();
       setRawAnnotationColumns(statusData?.raw_annotation_columns || { celltype: false, neigh_names: false });
+      const coreMeta = statusData?.core_metadata;
+      const coreActive = Boolean(coreMeta?.active);
+      const textCols = Array.isArray(coreMeta?.text_columns) ? coreMeta.text_columns : [];
+      setCoreMetadataActive(coreActive);
+      setCoreMetadataTextColumns(textCols);
+      setCoreMetadataSelectedFields((prev) => {
+        if (!coreActive) return [];
+        const allowed = new Set(textCols);
+        return prev.filter((f) => allowed.has(f));
+      });
+      if (!coreActive) {
+        setCoreMetadataRows([]);
+      } else {
+        const statusRows = Array.isArray(coreMeta?.rows) ? coreMeta.rows : [];
+        if (statusRows.length > 0) {
+          setCoreMetadataRows(statusRows);
+        } else {
+          const rows = await fetchCoreMetadataRows(API);
+          if (rows.length > 0) setCoreMetadataRows(rows);
+        }
+      }
       setOmeTiffPresent(Boolean(statusData?.ome_tiff));
     } catch (_) {
       setRawAnnotationColumns({ celltype: false, neigh_names: false });
+      setCoreMetadataActive(false);
+      setCoreMetadataTextColumns([]);
+      setCoreMetadataSelectedFields([]);
+      setCoreMetadataRows([]);
       setOmeTiffPresent(false);
     }
   }, []);
@@ -647,6 +677,18 @@ export default function useDataLoader() {
   }, [refreshData]);
 
   useEffect(() => {
+    if (!coreMetadataActive) return undefined;
+    let cancelled = false;
+    (async () => {
+      const rows = await fetchCoreMetadataRows(API);
+      if (!cancelled && rows.length > 0) setCoreMetadataRows(rows);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [coreMetadataActive, dataVersion]);
+
+  useEffect(() => {
     if (highlightedClusters.size === 0) return;
     ensureLabelColumn("label");
   }, [highlightedClusters, ensureLabelColumn]);
@@ -845,7 +887,13 @@ export default function useDataLoader() {
     setCellTypeAnnotationOn,
     neighNamesAnnotationOn,
     setNeighNamesAnnotationOn,
-    
+
+    coreMetadataActive,
+    coreMetadataTextColumns,
+    coreMetadataSelectedFields,
+    setCoreMetadataSelectedFields,
+    coreMetadataRows,
+
     useUMAP,
     omeTiffPresent,
     omeTiffFile,

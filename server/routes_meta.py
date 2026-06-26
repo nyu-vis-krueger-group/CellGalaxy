@@ -15,7 +15,15 @@ from .data_paths import (
     spatial_coords_path,
     zooming_csv_path,
 )
-from .data_utils import _safe_int, get_channel_info, process_coord_row, generate_channel_info_only
+from .data_utils import (
+    _safe_int,
+    core_metadata_text_columns,
+    get_channel_info,
+    is_core_metadata_csv,
+    load_core_metadata_rows,
+    process_coord_row,
+    generate_channel_info_only,
+)
 from .display_subset import display_atlas_n_and_chunks, load_display_indices, subset_artifacts_exist
 from .zarr_utils import open_zarr, meta_from_img, grid_for_count, get_default_tile, stable_label
 
@@ -123,12 +131,18 @@ async def upload_status():
     csv_path = data_csv_path()
     raw_csv, raw_json = raw_csv_json_paths()
     raw_cols = _raw_annotation_columns()
+    core_active = is_core_metadata_csv(raw_csv)
     generating = _generating_marker_active()
     return {
         "zarr": _has_zarr(),
         "csv": os.path.exists(csv_path),
         "raw": os.path.exists(raw_csv) and os.path.exists(raw_json),
         "raw_annotation_columns": raw_cols,
+        "core_metadata": {
+            "active": core_active,
+            "text_columns": core_metadata_text_columns(raw_csv) if core_active else [],
+            "rows": load_core_metadata_rows(raw_csv) if core_active else [],
+        },
         "feat": os.path.exists(features_npy_path()),
         "channels": os.path.exists(channel_list_csv_path()),
         "zooming": os.path.exists(zooming_csv_path()),
@@ -193,6 +207,20 @@ def get_cell_labels(label_key: str = Query("label")):
     """One label column from data.csv (row index = cell id); cached, no sidecar regen."""
     labels = _labels_column_from_csv(label_key)
     return {"label_key": label_key, "labels": labels, "count": len(labels)}
+
+
+@router.get("/core_metadata")
+def core_metadata():
+    """CORE_ID / global_X / global_Y metadata rows for OME spatial labels."""
+    raw_csv, _ = raw_csv_json_paths()
+    active = is_core_metadata_csv(raw_csv)
+    if not active:
+        return {"active": False, "text_columns": [], "rows": []}
+    return {
+        "active": True,
+        "text_columns": core_metadata_text_columns(raw_csv),
+        "rows": load_core_metadata_rows(raw_csv),
+    }
 
 
 @router.get("/meta")

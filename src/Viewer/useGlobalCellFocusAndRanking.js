@@ -1,9 +1,6 @@
 import { useEffect } from "react";
 import { LinearInterpolator } from "@deck.gl/core";
-import {
-  CELL_FOCUS_ZOOM_SPATIAL,
-  CELL_FOCUS_ZOOM_UMAP,
-} from "../constants/render";
+import { cellFocusZoomForView } from "../constants/render";
 import { ease } from "../utils/utils";
 
 // window.__focusCell*, __showSimilarityRanking* for cross-viewer focus + rank overlay
@@ -16,6 +13,7 @@ export default function useGlobalCellFocusAndRanking({
   setSimilarityRankings,
   /** (p) => [x,y,z] in Deck world space (incl. raw+OME y-flip) */
   mapWorldPosition = null,
+  rawUsesOmeTiff = false,
 }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -27,9 +25,10 @@ export default function useGlobalCellFocusAndRanking({
 
     const isUmapViewer =
       viewerId === "umap" || (viewerId === "single" && useUMAP);
-    const cellFocusZoom = isUmapViewer
-      ? CELL_FOCUS_ZOOM_UMAP
-      : CELL_FOCUS_ZOOM_SPATIAL;
+    const cellFocusZoom = cellFocusZoomForView({
+      isUMAPView: isUmapViewer,
+      rawUsesOmeTiff,
+    });
 
     const focusKey = `__focusCell_${viewerId}`;
     window[focusKey] = (cellPos) => {
@@ -132,6 +131,7 @@ export default function useGlobalCellFocusAndRanking({
     points,
     setSimilarityRankings,
     mapWorldPosition,
+    rawUsesOmeTiff,
   ]);
 }
 

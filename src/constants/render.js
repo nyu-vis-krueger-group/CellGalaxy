@@ -1,9 +1,18 @@
 export const RENDER_SPRITES = "sprites";
 export const RENDER_POINTS = "points";
 
-/** Cell focus (__focusCell*, click-zoom): deck zoom. Spatial = world pixels; UMAP = normalized coords. */
-export const CELL_FOCUS_ZOOM_SPATIAL = 2.25;
+/** Cell focus (__focusCell*, click-zoom): deck zoom. OME spatial = pixel coords; UMAP / sprite spatial = normalized [-1,1]. */
+export const CELL_FOCUS_ZOOM_SPATIAL_OME = 2.25;
+/** @deprecated Use CELL_FOCUS_ZOOM_SPATIAL_OME */
+export const CELL_FOCUS_ZOOM_SPATIAL = CELL_FOCUS_ZOOM_SPATIAL_OME;
 export const CELL_FOCUS_ZOOM_UMAP = 14;
+
+/** Deck zoom when focusing a cell (cross-view eye icon, click-zoom). */
+export function cellFocusZoomForView({ isUMAPView = false, rawUsesOmeTiff = false } = {}) {
+  if (isUMAPView) return CELL_FOCUS_ZOOM_UMAP;
+  if (rawUsesOmeTiff) return CELL_FOCUS_ZOOM_SPATIAL_OME;
+  return CELL_FOCUS_ZOOM_UMAP;
+}
 
 /** Spatial scroll zoom (softer than ~0.8 default) */
 export const SPATIAL_SCROLL_ZOOM_SPEED = 0.5;

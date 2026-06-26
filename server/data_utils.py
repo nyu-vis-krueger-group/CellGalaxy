@@ -89,6 +89,61 @@ def _is_categorical(desc: str, series: pd.Series) -> bool:
     return True
 
 
+def is_core_metadata_csv(raw_csv_path: str) -> bool:
+    """True when raw.csv is CORE_ID / global_X / global_Y + annotation columns."""
+    if not os.path.exists(raw_csv_path):
+        return False
+    try:
+        df = pd.read_csv(raw_csv_path, nrows=0)
+        cols = list(df.columns)
+        return (
+            len(cols) >= 4
+            and cols[0] == "CORE_ID"
+            and cols[1] == "global_X"
+            and cols[2] == "global_Y"
+        )
+    except Exception:
+        return False
+
+
+def core_metadata_text_columns(raw_csv_path: str) -> list[str]:
+    """Column names from the 4th column onward in a CORE_ID metadata CSV."""
+    if not is_core_metadata_csv(raw_csv_path):
+        return []
+    try:
+        df = pd.read_csv(raw_csv_path, nrows=0)
+        return list(df.columns[3:])
+    except Exception:
+        return []
+
+
+def load_core_metadata_rows(raw_csv_path: str) -> list[dict[str, Any]]:
+    """Parse CORE_ID metadata CSV into rows for spatial label overlay."""
+    if not is_core_metadata_csv(raw_csv_path):
+        return []
+    try:
+        df = pd.read_csv(raw_csv_path)
+    except Exception:
+        return []
+    text_cols = list(df.columns[3:])
+    rows: list[dict[str, Any]] = []
+    for _, row in df.iterrows():
+        try:
+            rid = int(_to_native(row["CORE_ID"]))
+        except Exception:
+            continue
+        try:
+            gx = float(row["global_X"])
+            gy = float(row["global_Y"])
+        except Exception:
+            continue
+        if not np.isfinite(gx) or not np.isfinite(gy):
+            continue
+        values = {col: _to_native(row[col]) for col in text_cols}
+        rows.append({"id": rid, "x": gx, "y": gy, "values": values})
+    return rows
+
+
 def generate_raw_json(raw_csv_path: str, out_path: str) -> None:
     """read raw CSV and write array JSON to `out_path`.
 
@@ -99,7 +154,14 @@ def generate_raw_json(raw_csv_path: str, out_path: str) -> None:
         return
     df = pd.read_csv(raw_csv_path)
     cols = list(df.columns)
-    id_col = "id" if "id" in cols else ("ID" if "ID" in cols else None)
+    if "id" in cols:
+        id_col = "id"
+    elif "ID" in cols:
+        id_col = "ID"
+    elif "CORE_ID" in cols:
+        id_col = "CORE_ID"
+    else:
+        id_col = None
 
     # build schema
     schema = []
@@ -131,7 +193,13 @@ def generate_raw_json(raw_csv_path: str, out_path: str) -> None:
             raw_map[c] = _to_native(row[c])
         items.append({"id": rid, "raw": raw_map})
 
-    data = [{"schema": schema}] + items
+    header: Dict[str, Any] = {"schema": schema}
+    if is_core_metadata_csv(raw_csv_path):
+        header["coreMetadata"] = True
+        header["positionColumns"] = ["global_X", "global_Y"]
+        header["displayColumns"] = core_metadata_text_columns(raw_csv_path)
+
+    data = [header] + items
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 

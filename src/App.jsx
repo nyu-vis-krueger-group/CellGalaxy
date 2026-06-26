@@ -136,6 +136,9 @@ export default function App() {
               clusterAnnotationOn={false}
               clusterAnnotationModel={clusterAnnotationModel}
               clusterPreviewOn={false}
+              coreMetadataActive={rest.coreMetadataActive}
+              coreMetadataSelectedFields={rest.coreMetadataSelectedFields}
+              coreMetadataRows={rest.coreMetadataRows}
               transitionsEnabled={!disableTransitions}
               zoomSpeed={SPATIAL_SCROLL_ZOOM_SPEED}
             />
@@ -193,6 +196,9 @@ export default function App() {
               clusterAnnotationOn={rest.useUMAP ? clusterAnnotationOn : false}
               clusterAnnotationModel={clusterAnnotationModel}
               clusterPreviewOn={rest.useUMAP ? clusterPreviewOn : false}
+              coreMetadataActive={rest.useUMAP ? false : rest.coreMetadataActive}
+              coreMetadataSelectedFields={rest.coreMetadataSelectedFields}
+              coreMetadataRows={rest.coreMetadataRows}
               transitionsEnabled={!disableTransitions}
               zoomSpeed={
                 rest.useUMAP

@@ -9,6 +9,7 @@ import SelectionPanel from "../SelectionPanel/SelectionPanel";
 import Filter from "../Filter/Filter";
 import ClusteringControl from "../ClusteringControl/ClusteringControl";
 import ClusterFilter from "../ClusterFilter/ClusterFilter";
+import CoreMetadataControl from "../CoreMetadataControl/CoreMetadataControl";
 
 export default function Control({
   meta,
@@ -56,6 +57,12 @@ export default function Control({
   setCellTypeAnnotationOn = () => {},
   neighNamesAnnotationOn = false,
   setNeighNamesAnnotationOn = () => {},
+
+  coreMetadataActive = false,
+  coreMetadataTextColumns = [],
+  coreMetadataSelectedFields = [],
+  setCoreMetadataSelectedFields = () => {},
+  omeTiffSpatialActive = false,
 
   omeTiffFile = null,
   setOmeTiffFile = () => {},
@@ -116,6 +123,13 @@ export default function Control({
         dataVersion={dataVersion}
         omePixelRangeByChannelId={omePixelRangeByChannelId}
         channelZarrIndexById={channelZarrIndexById}
+      />
+      <CoreMetadataControl
+        active={coreMetadataActive}
+        textColumns={coreMetadataTextColumns}
+        selectedFields={coreMetadataSelectedFields}
+        setSelectedFields={setCoreMetadataSelectedFields}
+        omeTiffSpatialActive={omeTiffSpatialActive}
       />
       {/* Selection panel */}
       <SelectionPanel
