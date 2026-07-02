@@ -4,6 +4,8 @@ import shutil
 # Resolve against package dir so uploads / exists() work regardless of process cwd (uvicorn, etc.)
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA_DIR = os.path.join(_PROJECT_ROOT, "public")
+# User edits / reviews — outside public/ so CRA dev server won't full-reload on save
+USER_DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
 
 CACHE_DIR = os.path.join(os.getcwd(), ".cache")
 ZARR_DIR = os.path.join(DATA_DIR, "output.zarr")
@@ -12,6 +14,7 @@ DEFAULT_TILE = 16
 
 
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(USER_DATA_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 LLM_TOKEN_FILE = os.environ.get(
@@ -22,6 +25,7 @@ LLM_API_BASE = os.environ.get("LLM_API_BASE", "https://api.openai.com/v1")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
 CLUSTER_LABELS_JSON = os.path.join(DATA_DIR, "cluster_labels.json")
+CLUSTER_LABEL_REVIEWS_JSON = os.path.join(USER_DATA_DIR, "cluster_label_reviews.json")
 
 HF_TOKEN_FILE = os.environ.get(
     "HF_TOKEN_FILE",

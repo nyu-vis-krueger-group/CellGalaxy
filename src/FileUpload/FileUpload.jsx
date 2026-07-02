@@ -33,6 +33,7 @@ export default function FileUpload({
     channels: false,
     zooming: false,
     ome_tiff: false,
+    llm: false,
     generating: false,
   });
   const [busy, setBusy] = useState(false);
@@ -43,6 +44,7 @@ export default function FileUpload({
     feat: false,
     channels: false,
     zooming: false,
+    llm: false,
   });
   const [open, setOpen] = useState(false);
 
@@ -65,6 +67,7 @@ export default function FileUpload({
         channels: Boolean(data?.channels),
         zooming: Boolean(data?.zooming),
         ome_tiff: Boolean(data?.ome_tiff),
+        llm: Boolean(data?.llm),
         generating: Boolean(data?.generating),
       });
       return data;
@@ -164,7 +167,9 @@ export default function FileUpload({
         ? ".zarr,.zip,.zarr.zip"
         : fileType === "feat"
           ? ".npy"
-          : ".csv";
+          : fileType === "llm"
+            ? ".json"
+            : ".csv";
     input.onchange = (e) => {
       const file = e.target.files[0];
       if (file) handleFileUpload(fileType, file);
@@ -227,7 +232,8 @@ export default function FileUpload({
     processing.raw ||
     processing.feat ||
     processing.channels ||
-    processing.zooming;
+    processing.zooming ||
+    processing.llm;
 
   const handleClear = async (fileType) => {
     setBusy(true);
@@ -409,6 +415,25 @@ export default function FileUpload({
                   disabled={uploadBusy}
                   title="Clear Raw"
                   aria-label="Clear Raw"
+                />
+              </div>
+              <div className="upload-menu-item" role="menuitem">
+                <button
+                  className="upload-menu-action"
+                  onClick={() => {
+                    setOpen(false);
+                    handleFileSelect("llm");
+                  }}
+                  disabled={uploadBusy || status.llm}
+                >
+                  LLM Data (json)
+                </button>
+                <button
+                  className={`upload-menu-clear${status.llm ? " has-file" : ""}`}
+                  onClick={() => handleClear("llm")}
+                  disabled={uploadBusy}
+                  title="Clear LLM Data"
+                  aria-label="Clear LLM Data"
                 />
               </div>
             </div>

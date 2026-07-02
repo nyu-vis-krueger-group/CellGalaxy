@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from typing import Any, Dict
 
 import numpy as np
@@ -7,15 +8,22 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
+from datetime import datetime, timezone
+
 from .config import (
     CLUSTER_LABELS_JSON,
+    CLUSTER_LABEL_REVIEWS_JSON,
     DATA_DIR,
     LLM_MODEL,
     LLM_MODELS_REGISTRY,
     LLM_TEMPERATURE,
     ZARR_DIR,
 )
-from .data_paths import channel_list_csv_path, cluster_channel_avg_csv_path, data_csv_path
+from .data_paths import (
+    channel_list_csv_path,
+    cluster_channel_avg_csv_path,
+    data_csv_path,
+)
 from .llm_client import create_default_client
 from .prompt_templates import render_cluster_prompt
 from .zarr_utils import open_zarr, meta_from_img
@@ -498,3 +506,93 @@ def get_cluster_labels():
         return JSONResponse(data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load cluster labels: {e}")
+
+
+def _empty_cluster_label_reviews() -> dict[str, object]:
+    return {"version": 1, "updated_at": None, "levels": {}}
+
+
+def _load_cluster_label_reviews() -> dict[str, object]:
+    legacy = os.path.join(DATA_DIR, "cluster_label_reviews.json")
+    if not os.path.exists(CLUSTER_LABEL_REVIEWS_JSON) and os.path.exists(legacy):
+        try:
+            os.makedirs(os.path.dirname(CLUSTER_LABEL_REVIEWS_JSON), exist_ok=True)
+            shutil.copy2(legacy, CLUSTER_LABEL_REVIEWS_JSON)
+        except Exception:
+            pass
+    if not os.path.exists(CLUSTER_LABEL_REVIEWS_JSON):
+        return _empty_cluster_label_reviews()
+    with open(CLUSTER_LABEL_REVIEWS_JSON, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        return _empty_cluster_label_reviews()
+    if "levels" not in data or not isinstance(data["levels"], dict):
+        data["levels"] = {}
+    if "version" not in data:
+        data["version"] = 1
+    return data
+
+
+def _save_cluster_label_reviews(data: dict[str, object]) -> None:
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    if "version" not in data:
+        data["version"] = 1
+    with open(CLUSTER_LABEL_REVIEWS_JSON, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+@router.get("/llm/cluster_label_reviews")
+def get_cluster_label_reviews():
+    try:
+        return JSONResponse(_load_cluster_label_reviews())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load cluster label reviews: {e}")
+
+
+@router.patch("/llm/cluster_label_reviews")
+def patch_cluster_label_review(body: Dict[str, Any] | None = None):
+    """
+    Upsert one cluster review entry.
+    Body: { "level": "4", "cluster_id": "7", "entry": { status, llm_title, ... } }
+    """
+    try:
+        body = body or {}
+        level = body.get("level")
+        cluster_id = body.get("cluster_id")
+        entry = body.get("entry")
+        if level is None or cluster_id is None or not isinstance(entry, dict):
+            raise HTTPException(
+                status_code=400,
+                detail="Body must include level, cluster_id, and entry object.",
+            )
+        status = entry.get("status")
+        if status not in ("accepted", "rejected", "unsure", "corrected"):
+            raise HTTPException(
+                status_code=400,
+                detail="entry.status must be accepted, rejected, unsure, or corrected.",
+            )
+        level_key = str(level)
+        cluster_key = str(cluster_id)
+        data = _load_cluster_label_reviews()
+        levels = data.setdefault("levels", {})
+        if not isinstance(levels, dict):
+            levels = {}
+            data["levels"] = levels
+        level_map = levels.setdefault(level_key, {})
+        if not isinstance(level_map, dict):
+            level_map = {}
+            levels[level_key] = level_map
+        level_map[cluster_key] = {
+            "status": status,
+            "llm_title": entry.get("llm_title"),
+            "llm_model": entry.get("llm_model"),
+            "user_title": entry.get("user_title"),
+            "reviewed_at": entry.get("reviewed_at")
+            or datetime.now(timezone.utc).isoformat(),
+        }
+        _save_cluster_label_reviews(data)
+        return JSONResponse({"message": "ok", "data": data})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save cluster label review: {e}")

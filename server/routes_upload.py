@@ -20,6 +20,7 @@ async def _stream_upload_to_path(upload: UploadFile, dest: str) -> None:
 from .config import DATA_DIR, ZARR_DIR, remove_path
 from .data_paths import (
     channel_list_csv_path,
+    cluster_labels_json_path,
     csv_sidecar_paths,
     features_npy_path,
     generating_marker_path,
@@ -68,7 +69,7 @@ async def upload_or_delete(
     request: Request,
     file: UploadFile | None = File(None),
 ):
-    if file_type not in ["zarr", "csv", "raw", "feat", "channels", "zooming"]:
+    if file_type not in ["zarr", "csv", "raw", "feat", "channels", "zooming", "llm"]:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 
     if request.method == "DELETE":
@@ -106,6 +107,10 @@ async def upload_or_delete(
             remove_path(zooming_csv_path())
             return {"message": "Zooming data cleared"}
 
+        if file_type == "llm":
+            remove_path(cluster_labels_json_path())
+            return {"message": "LLM data cleared"}
+
     if file is None:
         raise HTTPException(status_code=400, detail="No file provided")
 
@@ -115,7 +120,19 @@ async def upload_or_delete(
         else (
             "raw.csv"
             if file_type == "raw"
-            else ("features.npy" if file_type == "feat" else ("channel_list.csv" if file_type == "channels" else ("cluster_multilevel_hierarchy.csv" if file_type == "zooming" else "data.csv")))
+            else (
+                "features.npy"
+                if file_type == "feat"
+                else (
+                    "channel_list.csv"
+                    if file_type == "channels"
+                    else (
+                        "cluster_multilevel_hierarchy.csv"
+                        if file_type == "zooming"
+                        else ("cluster_labels.json" if file_type == "llm" else "data.csv")
+                    )
+                )
+            )
         )
     )
     file_path = os.path.join(DATA_DIR, target_name)
@@ -188,6 +205,19 @@ async def upload_or_delete(
         pass
     elif file_type == "zooming":
         pass
+    elif file_type == "llm":
+        import json
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict) or not isinstance(data.get("levels"), dict):
+                raise ValueError("Expected JSON object with a 'levels' object")
+        except Exception as e:
+            remove_path(file_path)
+            raise HTTPException(
+                status_code=400, detail=f"Invalid JSON for cluster_labels: {e}"
+            ) from e
     return {"message": f"{file.filename} uploaded successfully"}
 
 

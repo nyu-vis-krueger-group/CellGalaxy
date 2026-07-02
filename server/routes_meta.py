@@ -7,6 +7,8 @@ from fastapi.responses import JSONResponse
 from .config import DATA_DIR, ZARR_DIR, OME_TIFF_PATH
 from .data_paths import (
     channel_list_csv_path,
+    cluster_label_reviews_json_path,
+    cluster_labels_json_path,
     csv_sidecar_paths,
     data_csv_path,
     features_npy_path,
@@ -146,6 +148,8 @@ async def upload_status():
         "feat": os.path.exists(features_npy_path()),
         "channels": os.path.exists(channel_list_csv_path()),
         "zooming": os.path.exists(zooming_csv_path()),
+        "llm": os.path.exists(cluster_labels_json_path()),
+        "cluster_label_reviews": os.path.exists(cluster_label_reviews_json_path()),
         "ome_tiff": os.path.exists(OME_TIFF_PATH),
         "generating": generating,
     }

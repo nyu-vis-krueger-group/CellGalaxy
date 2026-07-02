@@ -1452,6 +1452,9 @@ const Viewer = ({
             descriptionRefs={descriptionRefs}
             cellTypeAnnotationOn={cellTypeAnnotationOn}
             neighNamesAnnotationOn={neighNamesAnnotationOn}
+            levelKey={String(semanticLevel - 1)}
+            clusterAnnotationModel={clusterAnnotationModel}
+            reviewsEnabled={clusterAnnotationOn}
           />
         )}
 

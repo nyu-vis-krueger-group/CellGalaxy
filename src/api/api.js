@@ -301,6 +301,51 @@ export async function fetchClusterLabels(signal) {
     return { levels: {} };
   }
 }
+
+export async function fetchClusterLabelReviews(signal) {
+  try {
+    const res = await fetch(`${API_BASE}/llm/cluster_label_reviews`, {
+      method: "GET",
+      signal,
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(await safeReadText(res));
+    return await res.json();
+  } catch (e) {
+    console.error("fetchClusterLabelReviews failed", e);
+    return { version: 1, levels: {} };
+  }
+}
+
+export async function saveClusterLabelReview({ level, clusterId, entry }, signal) {
+  try {
+    const res = await fetch(`${API_BASE}/llm/cluster_label_reviews`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        level: String(level),
+        cluster_id: String(clusterId),
+        entry,
+      }),
+      signal,
+    });
+    if (!res.ok) {
+      const text = await safeReadText(res);
+      let msg = text;
+      try {
+        const j = JSON.parse(text);
+        msg = typeof j.detail === "string" ? j.detail : text;
+      } catch {
+        /* keep text */
+      }
+      throw new Error(msg || `Save failed (${res.status})`);
+    }
+    return await res.json();
+  } catch (e) {
+    console.error("saveClusterLabelReview failed", e);
+    throw e;
+  }
+}
 async function safeReadText(res) {
   try {
     return await res.text();

@@ -1,14 +1,135 @@
 .cluster-annotation-title {
   position: absolute;
   transform: translate(-50%, -50%);
-  cursor: "default";
   user-select: none;
+}
+
+.cluster-annotation-title-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.cluster-annotation-review-eye {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.75);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.cluster-annotation-review-eye:hover {
+  background: rgba(30, 30, 30, 0.95);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.cluster-annotation-review-eye-icon {
+  display: block;
+}
+
+.cluster-annotation-check {
+  margin-left: 5px;
+  font-size: 0.85em;
+  color: #9be7b5;
+  font-weight: 700;
+}
+
+.cluster-annotation-unsure-mark {
+  margin-left: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1em;
+  height: 1.1em;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  font-weight: 700;
+  color: #3d2e00;
+  background: #f4c430;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.cluster-annotation-title-unsure {
+  outline: 2px dashed #f4c430;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgba(244, 196, 48, 0.35);
+}
+
+.cluster-annotation-review-eye-unsure {
+  border-color: #f4c430;
+  background: rgba(60, 45, 0, 0.92);
+  color: #f4c430;
+}
+
+.cluster-annotation-review-eye-unsure:hover {
+  background: rgba(80, 60, 0, 0.95);
+  border-color: #ffd666;
+  color: #ffd666;
+}
+
+.cluster-annotation-title-accepted {
+  box-shadow: inset 0 0 0 1px rgba(155, 231, 181, 0.45);
+}
+
+.cluster-annotation-corrected-mark {
+  margin-left: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1em;
+  height: 1.1em;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  font-weight: 700;
+  color: #e8f4ff;
+  background: #2b6cb0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.cluster-annotation-title-corrected {
+  outline: 2px solid #63b3ed;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgba(99, 179, 237, 0.35);
+}
+
+.cluster-annotation-review-eye-accepted {
+  border-color: #9be7b5;
+  color: #9be7b5;
+}
+
+.cluster-annotation-review-eye-corrected {
+  border-color: #63b3ed;
+  background: rgba(20, 40, 70, 0.92);
+  color: #63b3ed;
+}
+
+.cluster-annotation-review-eye-corrected:hover {
+  border-color: #90cdf4;
+  color: #90cdf4;
+}
+
+.cluster-annotation-title-rejected {
+  opacity: 0.55;
+  text-decoration: line-through;
 }
 
 .cluster-annotation-description {
   position: absolute;
   left: 50%;
-  /* Move the description higher so it doesn't overlap the cluster preview thumbnail */
   top: -24px;
   transform: translate(-50%, -130%);
   pointer-events: none;
@@ -41,5 +162,3 @@
   max-width: 360px;
   line-height: 1.3;
 }
-
-

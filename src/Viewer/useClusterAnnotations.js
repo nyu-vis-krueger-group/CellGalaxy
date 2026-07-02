@@ -33,7 +33,10 @@ export default function useClusterAnnotations({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/cluster_labels.json");
+        const res = await fetch(
+          `${API_BASE}/public/cluster_labels.json?ts=${Date.now()}`,
+          { cache: "no-store" }
+        );
         if (!res.ok) return;
         const json = await res.json();
         if (!cancelled) setClusterLabelsJson(json);

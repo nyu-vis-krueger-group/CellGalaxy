@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from .config import DATA_DIR
+from .config import DATA_DIR, USER_DATA_DIR
 
 
 def data_csv_path() -> str:
@@ -50,3 +50,11 @@ def spatial_coords_path() -> str:
 
 def cluster_channel_avg_csv_path() -> str:
     return os.path.join(DATA_DIR, "cluster_channel_avg.csv")
+
+
+def cluster_labels_json_path() -> str:
+    return os.path.join(DATA_DIR, "cluster_labels.json")
+
+
+def cluster_label_reviews_json_path() -> str:
+    return os.path.join(USER_DATA_DIR, "cluster_label_reviews.json")
