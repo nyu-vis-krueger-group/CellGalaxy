@@ -175,6 +175,8 @@ export default function DeckViewState({
     setViewState,
     handleViewStateChange,
     computedImageSize,
+    /** Zoom baseline for marker world footprint (imageSize / 2^baseZoom). */
+    markerBaseZoom: baseZoomRef.current ?? viewState.zoom ?? 0,
     altPressed,
     autoRotate,
   };

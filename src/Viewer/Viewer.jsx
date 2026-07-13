@@ -3,6 +3,9 @@ import React, { useMemo, useState, useRef, useEffect, useLayoutEffect, useCallba
 import DeckGL from "@deck.gl/react";
 import AnalysisPopover from "../AnalysisPopover/AnalysisPopover";
 import SelectionOverlay from "../SelectionOverlay/SelectionOverlay";
+import HoverPreview, {
+  pickRadiusFromTileScreenPx,
+} from "./HoverPreview/HoverPreview";
 import {
   defaultRegionColors,
   makeRegionIndexGetter,
@@ -29,22 +32,30 @@ import {
   computeCenter,
   passesDisplaySampling,
   getSelectionOwner,
-  isSelectionOwnerSpatial,
   isSelectionOwnerUmap,
   resolveTileOutlineSize,
   resolveZarrLogicalChannels,
+  pointToWorld,
 } from "../utils/utils";
+import {
+  TILE_SIGNAL_MIN_RAW,
+  TILE_SIGNAL_MIN_WINDOWED,
+  buildScoredEligibleItems,
+  tileSignalsReadyForPoints,
+} from "../utils/tileSignalCache";
+import {
+  dedupPrescoredByOverlap,
+  worldOverlapRadius,
+} from "../utils/umapOverlapDedup";
 import { buildOutlineData2D, clusterColor } from "../utils/clustering";
 import "./Viewer.css";
 import ClickToolbar from "../ToolBar/ClickToolbar/ClickToolbar";
 import GroupToolbarContainer from "../ToolBar/GroupToolbar/GroupToolbarContainer";
 import ClusterHoverMask from "../ClusterHoverMask/ClusterHoverMask";
 import DeckViewState from "./DeckViewState";
-import ImageLayers from "../layers/ImageLayers";
+import useImageLayers from "../layers/ImageLayers";
 import { MultiscaleImageLayer } from "@hms-dbmi/viv";
 import {
-  openOmeTiffAsPixelSources,
-  openOmeTiffFromFile,
   buildMultiscaleImageLayerProps,
   MAX_CHANNELS,
 } from "../ome/omeVivLoader";
@@ -52,7 +63,6 @@ import ClusterOutlines from "../ClusterHoverMask/ClusterOutlines";
 import useClusterSelection from "./useClusterSelection";
 import useClusterAnnotations from "./useClusterAnnotations";
 import SemanticZoomControl from "./SemanticZoomControl/SemanticZoomControl";
-import HoverPreview from "./HoverPreview/HoverPreview";
 import ClusterPreviewThumb from "./ClusterPreviewThumb/ClusterPreviewThumb";
 import ClusterAnnotationOverlay from "./ClusterAnnotationOverlay/ClusterAnnotationOverlay";
 import SimilarityRankingOverlay from "./SimilarityRankingOverlay/SimilarityRankingOverlay";
@@ -72,6 +82,7 @@ const Viewer = ({
   hoverMaskEnabled = false,
   atlasURL,
   atlasByChannel,
+  tileSignalByChannel = {},
   channels = [],
   colors = {},
   alphas = {},
@@ -106,6 +117,7 @@ const Viewer = ({
   // LLM cluster titles/descriptions
   clusterAnnotationOn = false,
   clusterAnnotationModel = "MedGemma",
+  clusterLabelReviewMode = false,
   // UMAP: per-cluster preview thumb
   clusterPreviewOn = true,
   // Raw columns celltype / neigh_names when present
@@ -131,10 +143,16 @@ const Viewer = ({
   channelOmeIndexById = {},
   /** channel_id → Zarr 0-based c; missing = OME-only. */
   channelZarrIndexById = {},
+  /** Shared OME-derived intensity ranges for Viv + Zarr/UMAP. */
+  omePixelRangeByChannelId = {},
+  /** Opened once in DataLoader — do not re-open in Viewer. */
+  omeTiffSource: omeTiffSourceProp = null,
+  omeTiffLoadError = null,
 }) => {
   const isUMAPView =
     viewerId === "umap" || (viewerId === "single" && !!useUMAP);
   const rawUsesOmeTiff = Boolean(omeTiffUrl || omeTiffFile) && !isUMAPView;
+  const omeTiffSource = rawUsesOmeTiff ? omeTiffSourceProp : null;
 
   const zarrChannels = useMemo(
     () => resolveZarrLogicalChannels(channels, channelZarrIndexById),
@@ -191,8 +209,6 @@ const Viewer = ({
           : "single-spatial"
       : viewerId;
 
-  const [omeTiffSource, setOmeTiffSource] = useState(null);
-  const [omeTiffLoadError, setOmeTiffLoadError] = useState(null);
   const omeFittedRef = useRef(false);
   /** Bump after OME fit so marker size zoom baseline matches post-fit camera. */
   const [omeMarkerZoomBaselineSeq, setOmeMarkerZoomBaselineSeq] = useState(0);
@@ -200,35 +216,7 @@ const Viewer = ({
   useEffect(() => {
     omeFittedRef.current = false;
     setOmeMarkerZoomBaselineSeq(0);
-  }, [omeTiffUrl, omeTiffFile, rawUsesOmeTiff]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!rawUsesOmeTiff || (!omeTiffFile && !omeTiffUrl)) {
-      setOmeTiffSource(null);
-      setOmeTiffLoadError(null);
-      return undefined;
-    }
-    (async () => {
-      try {
-        const src = omeTiffFile
-          ? await openOmeTiffFromFile(omeTiffFile)
-          : await openOmeTiffAsPixelSources(omeTiffUrl);
-        if (!cancelled) {
-          setOmeTiffSource(src);
-          setOmeTiffLoadError(null);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setOmeTiffSource(null);
-          setOmeTiffLoadError(e?.message || String(e));
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [rawUsesOmeTiff, omeTiffFile, omeTiffUrl]);
+  }, [omeTiffUrl, omeTiffFile, rawUsesOmeTiff, omeTiffSource]);
 
   const omePixelYFlip =
     rawUsesOmeTiff &&
@@ -238,11 +226,7 @@ const Viewer = ({
       : null;
 
   const rawToWorld = useCallback(
-    (p) => {
-      const z = p.z ?? 0;
-      if (omePixelYFlip == null) return [p.x, p.y, z];
-      return [p.x, omePixelYFlip - p.y, z];
-    },
+    (p) => pointToWorld(p, omePixelYFlip),
     [omePixelYFlip],
   );
 
@@ -251,6 +235,7 @@ const Viewer = ({
     setViewState,
     handleViewStateChange,
     computedImageSize,
+    markerBaseZoom,
     altPressed,
     autoRotate,
   } = DeckViewState({
@@ -344,23 +329,106 @@ const Viewer = ({
     []
   );
 
-  const samplingThreshold = useMemo(() => {
-    if (!points || points.length === 0) return 1.0;
-    if (!isUMAPView) return 1.0;
+  // Drop empty tiles → overlap dedup (slider/zoom aware) → budget sampling.
+  const signalFilterOpts = useMemo(
+    () => ({
+      channels: zarrChannels,
+      tileSignalByChannel,
+      windows,
+      alphas,
+      omePixelRangeByChannelId,
+    }),
+    [zarrChannels, tileSignalByChannel, windows, alphas, omePixelRangeByChannelId],
+  );
 
-    const idx = Math.max(0, Math.min(SAMPLING_BUDGETS.length - 1, semanticLevel - 1));
-    const budget = SAMPLING_BUDGETS[idx];
-    const total = points.length;
-    return Math.min(1.0, budget / total);
-  }, [isUMAPView, semanticLevel, SAMPLING_BUDGETS, points]);
+  // Wait until every active (channel, chunk) is scanned before empty-tile filter,
+  // so the pool does not shrink after each atlas finishes (avoids UMAP flicker).
+  const tileSignalsReady = useMemo(() => {
+    if (!isUMAPView || !zarrChannels?.length) return true;
+    return tileSignalsReadyForPoints(points, zarrChannels, tileSignalByChannel);
+  }, [isUMAPView, points, zarrChannels, tileSignalByChannel]);
 
-  // UMAP display always respects sampling; full selectedIds still used for spatial cross-view.
-  const visiblePoints = useMemo(() => {
+  // Filter + score in one pass (no second compositeTileSignalScore walk).
+  const scoredEligible = useMemo(() => {
+    if (!isUMAPView || !points?.length) return null;
+    return buildScoredEligibleItems(points, signalFilterOpts, {
+      applyFilter: Boolean(zarrChannels?.length) && tileSignalsReady,
+      minRaw: TILE_SIGNAL_MIN_RAW,
+      minWindowed: TILE_SIGNAL_MIN_WINDOWED,
+    });
+  }, [isUMAPView, points, signalFilterOpts, zarrChannels, tileSignalsReady]);
+
+  const eligiblePoints = useMemo(() => {
     if (!points || points.length === 0) return [];
-    if (samplingThreshold >= 1.0) return points;
+    if (!isUMAPView) return points;
+    if (!scoredEligible) return points;
+    return scoredEligible.map((it) => it.p);
+  }, [points, isUMAPView, scoredEligible]);
 
-    return points.filter((p) => passesDisplaySampling(p.id, samplingThreshold));
-  }, [points, samplingThreshold]);
+  // World footprint is imageSize/2^baseZoom (zoom cancels with computedImageSize).
+  // Depend only on slider size + baseline so pan/zoom does not re-dedup.
+  const overlapRadius = useMemo(() => {
+    if (!isUMAPView) return 0;
+    return worldOverlapRadius(effectiveImageSize, markerBaseZoom);
+  }, [isUMAPView, effectiveImageSize, markerBaseZoom]);
+
+  const dedupedPoints = useMemo(() => {
+    if (!isUMAPView) return eligiblePoints;
+    if (!scoredEligible?.length || !(overlapRadius > 0)) return eligiblePoints;
+    return dedupPrescoredByOverlap(scoredEligible, overlapRadius);
+  }, [isUMAPView, eligiblePoints, scoredEligible, overlapRadius]);
+
+  // Overview LOD: below marker baseline, keep thinning as you zoom out.
+  // Quantize zoom so scroll doesn't rebuild the visible set every frame.
+  const zoomLodFactor = useMemo(() => {
+    if (!isUMAPView) return 1;
+    const zRaw =
+      typeof sharedZoom === "number"
+        ? sharedZoom
+        : typeof viewState?.zoom === "number"
+          ? viewState.zoom
+          : markerBaseZoom;
+    const z = Math.round(zRaw * 4) / 4;
+    const base = Number.isFinite(markerBaseZoom) ? markerBaseZoom : z;
+    if (!(z < base)) return 1;
+    // One zoom step out → ~half the budget; floor so overview still has a few hundred.
+    return Math.max(0.02, Math.pow(2, z - base));
+  }, [isUMAPView, sharedZoom, viewState?.zoom, markerBaseZoom]);
+
+  const samplingThreshold = useMemo(() => {
+    if (!isUMAPView) return 1.0;
+    const pool = dedupedPoints;
+    if (!pool || pool.length === 0) return 1.0;
+    const idx = Math.max(0, Math.min(SAMPLING_BUDGETS.length - 1, semanticLevel - 1));
+    const budget = SAMPLING_BUDGETS[idx] * zoomLodFactor;
+    return Math.min(1.0, budget / pool.length);
+  }, [isUMAPView, semanticLevel, SAMPLING_BUDGETS, dedupedPoints, zoomLodFactor]);
+
+  // UMAP: selected cells must stay visible even if empty-tile / overlap / budget dropped them
+  // (e.g. select in spatial → focus in UMAP).
+  const visiblePoints = useMemo(() => {
+    let base = [];
+    if (dedupedPoints?.length) {
+      base =
+        !isUMAPView || samplingThreshold >= 1.0
+          ? dedupedPoints
+          : dedupedPoints.filter((p) => passesDisplaySampling(p.id, samplingThreshold));
+    }
+
+    if (isUMAPView && selectedIds?.size && points?.length) {
+      const seen = new Set(base.map((p) => p.id));
+      let merged = null;
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        if (!selectedIds.has(p.id) || seen.has(p.id)) continue;
+        if (!merged) merged = base.slice();
+        merged.push(p);
+        seen.add(p.id);
+      }
+      if (merged) base = merged;
+    }
+    return base;
+  }, [dedupedPoints, isUMAPView, samplingThreshold, selectedIds, points]);
   const selectablePoints = useMemo(
     () => (hasActiveChannels ? visiblePoints : []),
     [hasActiveChannels, visiblePoints],
@@ -399,6 +467,13 @@ const Viewer = ({
     ],
   );
 
+  // Hover preview and Deck click must share the same pick radius; otherwise
+  // overlapping UMAP tiles can show one cell on hover and select another on click.
+  const deckPickingRadius = useMemo(
+    () => pickRadiusFromTileScreenPx(tileOutlineSize),
+    [tileOutlineSize],
+  );
+
   const omeDeckLayer = useMemo(() => {
     if (!rawUsesOmeTiff || !omeTiffSource) return null;
     const chList = (Array.isArray(channels) ? channels : [])
@@ -413,10 +488,11 @@ const Viewer = ({
       windows,
       alphas,
       channelOmeIndexById: map,
+      omePixelRangeByChannelId,
     });
     if (!props) return null;
     return new MultiscaleImageLayer({ ...props, pickable: false });
-  }, [rawUsesOmeTiff, omeTiffSource, channels, colors, windows, alphas, channelOmeIndexById]);
+  }, [rawUsesOmeTiff, omeTiffSource, channels, colors, windows, alphas, channelOmeIndexById, omePixelRangeByChannelId]);
 
   const { selectClusterByLabel, selectSingleById } = useClusterSelection({
     points: visiblePoints,
@@ -675,6 +751,9 @@ const Viewer = ({
       const cellFocusZoom = cellFocusZoomForView({
         isUMAPView,
         rawUsesOmeTiff,
+        tilePx,
+        markerSizeAtBase: effectiveImageSize,
+        markerBaseZoom,
       });
 
       setViewState((prev) => ({
@@ -990,6 +1069,9 @@ const Viewer = ({
     setSimilarityRankings,
     mapWorldPosition: rawToWorld,
     rawUsesOmeTiff,
+    tilePx,
+    markerSizeAtBase: effectiveImageSize,
+    markerBaseZoom,
   });
 
   // Selected tile outline DOM positions
@@ -1004,6 +1086,15 @@ const Viewer = ({
     if (!isUMAPView && pointsRawPick?.length) {
       const seen = new Set(selectedPointsForOutline.map((p) => p.id));
       for (const p of pointsRawPick) {
+        if (selectedIds.has(p.id) && !seen.has(p.id)) {
+          selectedPointsForOutline.push(p);
+          seen.add(p.id);
+        }
+      }
+    }
+    if (isUMAPView && points?.length && selectedPointsForOutline.length < selectedIds.size) {
+      const seen = new Set(selectedPointsForOutline.map((p) => p.id));
+      for (const p of points) {
         if (selectedIds.has(p.id) && !seen.has(p.id)) {
           selectedPointsForOutline.push(p);
           seen.add(p.id);
@@ -1053,6 +1144,7 @@ const Viewer = ({
     rawToWorld,
     isUMAPView,
     pointsRawPick,
+    points,
   ]);
 
   useEffect(() => {
@@ -1113,8 +1205,8 @@ const Viewer = ({
     return visiblePoints;
   }, [isUMAPView, points, visiblePoints]);
 
-  // UMAP never bypasses GPU sampling (selected cells included only if they pass hash budget).
-  const selectedBypassSampling = !isUMAPView;
+  // Selected cells bypass GPU hash sampling so forced-in UMAP sprites (and spatial) stay on.
+  const selectedBypassSampling = true;
 
   const imageLayerPoints = isUMAPView ? umapVisualPoints : spatialVisualPoints;
 
@@ -1142,19 +1234,19 @@ const Viewer = ({
     getLabelForId,
   ]);
 
-  const imageLayers = ImageLayers({
+  const imageLayers = useImageLayers({
     meta,
     renderMode: effectiveRenderMode,
     points: imageLayerPoints,
     pickPoints: effectivePickPoints,
     hoverPickAll,
-    atlasURL,
     atlasByChannel,
     iconMappingsByChunk,
     channels: zarrChannels,
     colors,
     alphas,
     windows,
+    omePixelRangeByChannelId,
     is3D: viewIs3D,
     filteredIds,
     highlightedClusters,
@@ -1345,7 +1437,7 @@ const Viewer = ({
                   onDragEnd={onDragEnd}
                   getTooltip={null}
                   getCursor={() => "default"}
-                  pickingRadius={6}
+                  pickingRadius={deckPickingRadius}
                 />
               )}
             </ClusterHoverMask>
@@ -1431,6 +1523,7 @@ const Viewer = ({
               colors={colors}
               alphas={alphas}
               windows={windows}
+              omePixelRangeByChannelId={omePixelRangeByChannelId}
             />
           );
         })}
@@ -1455,6 +1548,7 @@ const Viewer = ({
             levelKey={String(semanticLevel - 1)}
             clusterAnnotationModel={clusterAnnotationModel}
             reviewsEnabled={clusterAnnotationOn}
+            reviewMode={clusterLabelReviewMode}
           />
         )}
 
@@ -1580,9 +1674,6 @@ const Viewer = ({
       <HoverPreview
         deckRef={deckRef}
         containerRef={containerRef}
-        meta={meta}
-        renderMode={effectiveRenderMode}
-        suppressSpriteAtlases={rawUsesOmeTiff}
         iconMappingsByChunk={iconMappingsByChunk}
         chunkUV={chunkUV}
         atlasByChannel={atlasByChannel}
@@ -1592,11 +1683,7 @@ const Viewer = ({
         colors={colors}
         alphas={alphas}
         windows={windows}
-        clusterColorOn={clusterColorOn}
-        clusterOpacity={clusterOpacity}
-        clusterLineWidth={clusterLineWidth}
-        clusterOutlineOn={clusterOutlineOn}
-        labelKey={clusterLabelKey}
+        omePixelRangeByChannelId={omePixelRangeByChannelId}
         computedImageSize={computedImageSize}
         outlineSize={tileOutlineSize}
         rawUsesOmeTiff={rawUsesOmeTiff}
@@ -1609,8 +1696,7 @@ const Viewer = ({
         filteredIds={filteredIds}
         displayCoordById={displayCoordById}
         getWorldPosition={rawToWorld}
-        pickRadius={rawUsesOmeTiff ? 14 : hoverPickAll ? 10 : 6}
-        isUMAPView={isUMAPView}
+        pickRadius={deckPickingRadius}
       />
 
       {/* Selection outlines */}

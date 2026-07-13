@@ -2,6 +2,38 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import "./ClusterLabelReviewModal.css";
 
+const SCORE_OPTIONS = [0, 1, 2, 3, 4, 5];
+
+function ScoreScale({ label, hint, value, onChange, lowLabel, highLabel, disabled }) {
+  return (
+    <div className="cluster-review-score">
+      <div className="cluster-review-score-label">{label}</div>
+      {hint && <div className="cluster-review-score-hint">{hint}</div>}
+      <div className="cluster-review-score-buttons" role="radiogroup" aria-label={label}>
+        {SCORE_OPTIONS.map((n) => (
+          <button
+            key={n}
+            type="button"
+            role="radio"
+            aria-checked={value === n}
+            className={`cluster-review-score-btn ${value === n ? "active" : ""}`}
+            disabled={disabled}
+            onClick={() => onChange(n)}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+      {(lowLabel || highLabel) && (
+        <div className="cluster-review-score-endpoints">
+          <span>{lowLabel}</span>
+          <span>{highLabel}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ClusterLabelReviewModal({
   open,
   onClose,
@@ -11,12 +43,16 @@ export default function ClusterLabelReviewModal({
   currentTitle = null,
   reviewStatus = null,
   initialUserTitle = "",
+  initialAccuracy = null,
+  initialConfidence = null,
   onAccept,
   onUnsure,
   onRejectConfirm,
 }) {
   const [step, setStep] = useState("actions");
   const [userTitle, setUserTitle] = useState("");
+  const [accuracy, setAccuracy] = useState(null);
+  const [confidence, setConfidence] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -26,11 +62,13 @@ export default function ClusterLabelReviewModal({
     if (open) {
       setStep("actions");
       setUserTitle(initialUserTitle || "");
+      setAccuracy(Number.isFinite(initialAccuracy) ? initialAccuracy : null);
+      setConfidence(Number.isFinite(initialConfidence) ? initialConfidence : null);
       setSaving(false);
       setSaveError(null);
       setOffset({ x: 0, y: 0 });
     }
-  }, [open, llmTitle, initialUserTitle]);
+  }, [open, llmTitle, initialUserTitle, initialAccuracy, initialConfidence]);
 
   const openRejectStep = () => {
     const seed =
@@ -181,7 +219,7 @@ export default function ClusterLabelReviewModal({
                 type="button"
                 className="cluster-review-btn cluster-review-btn-unsure"
                 disabled={saving}
-                onClick={() => run(onUnsure)}
+                onClick={() => setStep("unsure")}
               >
                 Unsure
               </button>
@@ -208,6 +246,15 @@ export default function ClusterLabelReviewModal({
                 rows={3}
                 autoFocus
               />
+              <ScoreScale
+                label="LLM accuracy (0–5)"
+                hint="How accurate was the LLM's suggested label?"
+                value={accuracy}
+                onChange={setAccuracy}
+                lowLabel="0 · wrong"
+                highLabel="5 · nearly right"
+                disabled={saving}
+              />
             </div>
             <div className="cluster-review-modal-actions">
               {saveError && (
@@ -226,8 +273,53 @@ export default function ClusterLabelReviewModal({
               <button
                 type="button"
                 className="cluster-review-btn cluster-review-btn-confirm"
-                disabled={saving || !userTitle.trim()}
-                onClick={() => run(() => onRejectConfirm(userTitle.trim()))}
+                disabled={saving || !userTitle.trim() || accuracy === null}
+                onClick={() =>
+                  run(() => onRejectConfirm(userTitle.trim(), accuracy))
+                }
+              >
+                Confirm
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "unsure" && (
+          <>
+            <div className="cluster-review-modal-body">
+              <div className="cluster-review-modal-meta">LLM suggestion ({llmModel})</div>
+              <div className="cluster-review-modal-llm-title cluster-review-modal-llm-title-full">
+                &ldquo;{llmTitle}&rdquo;
+              </div>
+              <ScoreScale
+                label="Your confidence (0–5)"
+                hint="How confident are you that this label is correct?"
+                value={confidence}
+                onChange={setConfidence}
+                lowLabel="0 · none"
+                highLabel="5 · high"
+                disabled={saving}
+              />
+            </div>
+            <div className="cluster-review-modal-actions">
+              {saveError && (
+                <div className="cluster-review-save-error" role="alert">
+                  {saveError}
+                </div>
+              )}
+              <button
+                type="button"
+                className="cluster-review-btn cluster-review-btn-back"
+                disabled={saving}
+                onClick={() => setStep("actions")}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="cluster-review-btn cluster-review-btn-confirm"
+                disabled={saving || confidence === null}
+                onClick={() => run(() => onUnsure(confidence))}
               >
                 Confirm
               </button>

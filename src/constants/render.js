@@ -2,15 +2,40 @@ export const RENDER_SPRITES = "sprites";
 export const RENDER_POINTS = "points";
 
 /** Cell focus (__focusCell*, click-zoom): deck zoom. OME spatial = pixel coords; UMAP / sprite spatial = normalized [-1,1]. */
-export const CELL_FOCUS_ZOOM_SPATIAL_OME = 2.25;
+/** Fallback when tilePx unknown (≈16px tile → ~140 CSS px). */
+export const CELL_FOCUS_ZOOM_SPATIAL_OME = 3.13;
 /** @deprecated Use CELL_FOCUS_ZOOM_SPATIAL_OME */
 export const CELL_FOCUS_ZOOM_SPATIAL = CELL_FOCUS_ZOOM_SPATIAL_OME;
 export const CELL_FOCUS_ZOOM_UMAP = 14;
 
+/** Target on-screen cell size (CSS px) after focus — keeps small/large tiles readable. */
+export const CELL_FOCUS_TARGET_SCREEN_PX = 140;
+
 /** Deck zoom when focusing a cell (cross-view eye icon, click-zoom). */
-export function cellFocusZoomForView({ isUMAPView = false, rawUsesOmeTiff = false } = {}) {
+export function cellFocusZoomForView({
+  isUMAPView = false,
+  rawUsesOmeTiff = false,
+  tilePx = 16,
+  /** Zarr sprite spatial: marker px at markerBaseZoom (effectiveImageSize). */
+  markerSizeAtBase = null,
+  markerBaseZoom = 8,
+} = {}) {
   if (isUMAPView) return CELL_FOCUS_ZOOM_UMAP;
-  if (rawUsesOmeTiff) return CELL_FOCUS_ZOOM_SPATIAL_OME;
+
+  if (rawUsesOmeTiff) {
+    // OME: screen ≈ tilePx * 2^zoom (world pixels → screen).
+    const t = Number(tilePx) > 0 ? Number(tilePx) : 16;
+    const z = Math.log2(CELL_FOCUS_TARGET_SCREEN_PX / t);
+    return Math.max(0.25, Math.min(10, Number.isFinite(z) ? z : CELL_FOCUS_ZOOM_SPATIAL_OME));
+  }
+
+  // Zarr sprite spatial: screen ≈ markerSizeAtBase * 2^(zoom - baseZoom).
+  const base = Number.isFinite(markerBaseZoom) ? markerBaseZoom : 8;
+  const m = Number(markerSizeAtBase);
+  if (Number.isFinite(m) && m > 0) {
+    const z = base + Math.log2(CELL_FOCUS_TARGET_SCREEN_PX / m);
+    if (Number.isFinite(z)) return Math.max(base, Math.min(base + 12, z));
+  }
   return CELL_FOCUS_ZOOM_UMAP;
 }
 

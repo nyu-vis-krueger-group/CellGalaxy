@@ -1,7 +1,3 @@
-.hover-preview-tooltip {
-  /* Reuse global .deck-tooltip base styles; only adjust details here. */
-}
-
 .hover-preview-canvas-wrapper {
   margin-top: 6px;
   border-radius: 8px;
@@ -17,13 +13,6 @@
   height: 128px;
   display: block;
   image-rendering: auto;
-}
-
-.hover-preview-deck-wrapper,
-.hover-preview-deck-empty {
-  width: 128px;
-  height: 128px;
-  display: block;
 }
 
 .hover-preview-annotation {
@@ -74,5 +63,3 @@
   z-index: 13;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
-
-

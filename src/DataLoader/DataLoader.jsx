@@ -23,9 +23,21 @@ import {
   openOmeTiffFromFile,
   computeOmeChannelRangeFromPixels,
 } from "../ome/omeVivLoader";
-import { logicalToZarrC, resolveZarrLogicalChannels, hasZarrChannelMap } from "../utils/utils";
+import { logicalToZarrC, hasZarrChannelMap } from "../utils/utils";
 import { fetchChannelInfoMaps } from "../utils/channelInfo";
 import { fetchCoreMetadataRows } from "../utils/coreMetadata";
+import {
+  atlasLayoutFromUv,
+  scanAtlasTileStats,
+} from "../utils/tileSignalCache";
+import {
+  createIntensityRangeAccumulator,
+  mergeIntensitySamples,
+  finalizeIntensityRangeAccumulator,
+  intensityRangeToChannelMapEntry,
+  ZARR_TILE_AUTO_MIN_PCT,
+  ZARR_TILE_AUTO_MAX_PCT,
+} from "../utils/intensityWindow";
 
 const OME_TIFF_PUBLIC_PATH = "/public/image.ome.tif";
 
@@ -69,6 +81,7 @@ export default function useDataLoader() {
   // LLM cluster text
   const [clusterAnnotationOn, setClusterAnnotationOn] = useState(false);
   const [clusterAnnotationModel, setClusterAnnotationModel] = useState("MedGemma");
+  const [clusterLabelReviewMode, setClusterLabelReviewMode] = useState(false);
   // UMAP cluster preview thumbs
   const [clusterPreviewOn, setClusterPreviewOn] = useState(false);
 
@@ -95,14 +108,130 @@ export default function useDataLoader() {
   const [channelZarrIndexById, setChannelZarrIndexById] = useState({});
   /** channel_id (UI) -> channel display name, from channel_info.json */
   const [channelNameById, setChannelNameById] = useState({});
-  /** channel_id (UI) -> pixel range derived from OME-TIFF metadata */
+  /** channel_id (UI) -> pixel range (OME pixels, or Zarr atlas tiles when no OME) */
   const [omePixelRangeByChannelId, setOmePixelRangeByChannelId] = useState({});
+  /** Shared Viv source — Viewer must not open OME again. */
+  const [omeTiffSource, setOmeTiffSource] = useState(null);
+  const [omeTiffLoadError, setOmeTiffLoadError] = useState(null);
 
   const [chunkUV, setChunkUV] = useState({});
   const [atlasURL, setAtlasURL] = useState({}); // legacy merged atlas
   const [atlasByChannel, setAtlasByChannel] = useState({}); // per-ch grayscale
+  /** channel → chunkId → Float32Array(local_index → mean01) for UMAP empty-tile filter */
+  const [tileSignalByChannel, setTileSignalByChannel] = useState({});
+  const tileSignalScanKeyRef = useRef(new Set()); // `${ch}:${chunkId}:${url}`
+  /** Coalesce scans from successive atlas arrivals into fewer UMAP pipeline rebuilds. */
+  const tileSignalPendingRef = useRef({});
+  const tileSignalFlushTimerRef = useRef(null);
+  /** Zarr-only: per-channel running pixel stats across atlas tiles. */
+  const zarrRangeAccRef = useRef({});
+  const zarrRangeFlushTimerRef = useRef(null);
+  const zarrRangeDirtyRef = useRef(new Set());
   const [fetchingChunks, setFetchingChunks] = useState(new Set());
   const [dataVersion, setDataVersion] = useState(0);
+
+  const flushTileSignalPending = useCallback(() => {
+    if (tileSignalFlushTimerRef.current != null) {
+      clearTimeout(tileSignalFlushTimerRef.current);
+      tileSignalFlushTimerRef.current = null;
+    }
+    const pending = tileSignalPendingRef.current;
+    tileSignalPendingRef.current = {};
+    if (Object.keys(pending).length === 0) return;
+    setTileSignalByChannel((prev) => {
+      const next = { ...prev };
+      for (const [ch, byChunk] of Object.entries(pending)) {
+        const chKey = Number(ch);
+        next[chKey] = { ...(next[chKey] || {}), ...byChunk };
+      }
+      return next;
+    });
+  }, []);
+
+  const scheduleTileSignalFlush = useCallback(() => {
+    if (tileSignalFlushTimerRef.current != null) return;
+    tileSignalFlushTimerRef.current = setTimeout(() => {
+      tileSignalFlushTimerRef.current = null;
+      flushTileSignalPending();
+    }, 100);
+  }, [flushTileSignalPending]);
+
+  const flushZarrIntensityRanges = useCallback(() => {
+    if (zarrRangeFlushTimerRef.current != null) {
+      clearTimeout(zarrRangeFlushTimerRef.current);
+      zarrRangeFlushTimerRef.current = null;
+    }
+    const dirty = zarrRangeDirtyRef.current;
+    if (dirty.size === 0) return;
+    const chIds = Array.from(dirty);
+    dirty.clear();
+    setOmePixelRangeByChannelId((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const ch of chIds) {
+        const entry = intensityRangeToChannelMapEntry(
+          finalizeIntensityRangeAccumulator(zarrRangeAccRef.current[ch], {
+            autoMinPct: ZARR_TILE_AUTO_MIN_PCT,
+            autoMaxPct: ZARR_TILE_AUTO_MAX_PCT,
+          }),
+        );
+        if (!entry) continue;
+        const cur = prev[ch];
+        if (
+          !cur ||
+          cur.data_min !== entry.data_min ||
+          cur.data_max !== entry.data_max ||
+          cur.auto_min !== entry.auto_min ||
+          cur.auto_max !== entry.auto_max
+        ) {
+          next[ch] = entry;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const scheduleZarrIntensityRangeFlush = useCallback(() => {
+    if (zarrRangeFlushTimerRef.current != null) return;
+    zarrRangeFlushTimerRef.current = setTimeout(() => {
+      zarrRangeFlushTimerRef.current = null;
+      flushZarrIntensityRanges();
+    }, 100);
+  }, [flushZarrIntensityRanges]);
+
+  const resetTileSignalState = useCallback(() => {
+    if (tileSignalFlushTimerRef.current != null) {
+      clearTimeout(tileSignalFlushTimerRef.current);
+      tileSignalFlushTimerRef.current = null;
+    }
+    if (zarrRangeFlushTimerRef.current != null) {
+      clearTimeout(zarrRangeFlushTimerRef.current);
+      zarrRangeFlushTimerRef.current = null;
+    }
+    tileSignalPendingRef.current = {};
+    tileSignalScanKeyRef.current.clear();
+    zarrRangeAccRef.current = {};
+    zarrRangeDirtyRef.current.clear();
+    setTileSignalByChannel({});
+    // Zarr-derived ranges clear with atlas stats; OME effect will refill if OME is present.
+    if (!omeTiffFile && !omeTiffPresent) {
+      setOmePixelRangeByChannelId({});
+    }
+  }, [omeTiffFile, omeTiffPresent]);
+
+  useEffect(() => {
+    return () => {
+      if (tileSignalFlushTimerRef.current != null) {
+        clearTimeout(tileSignalFlushTimerRef.current);
+        tileSignalFlushTimerRef.current = null;
+      }
+      if (zarrRangeFlushTimerRef.current != null) {
+        clearTimeout(zarrRangeFlushTimerRef.current);
+        zarrRangeFlushTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,14 +247,28 @@ export default function useDataLoader() {
     };
   }, [dataVersion]);
 
+  const hadOmeSourceRef = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
     const hasRemoteOme = Boolean(!omeTiffFile && omeTiffPresent);
     const hasLocalOme = Boolean(omeTiffFile);
     if (!hasLocalOme && !hasRemoteOme) {
-      setOmePixelRangeByChannelId({});
+      setOmeTiffSource(null);
+      setOmeTiffLoadError(null);
+      // Leaving OME: drop OME ranges so Zarr tile stats can refill the same map.
+      if (hadOmeSourceRef.current) {
+        hadOmeSourceRef.current = false;
+        setOmePixelRangeByChannelId({});
+        for (const key of Object.keys(zarrRangeAccRef.current)) {
+          const ch = Number(key);
+          if (Number.isFinite(ch)) zarrRangeDirtyRef.current.add(ch);
+        }
+        scheduleZarrIntensityRangeFlush();
+      }
       return undefined;
     }
+    hadOmeSourceRef.current = true;
 
     const remoteUrl = hasRemoteOme
       ? (API_BASE
@@ -139,28 +282,41 @@ export default function useDataLoader() {
           ? await openOmeTiffFromFile(omeTiffFile)
           : await openOmeTiffAsPixelSources(remoteUrl);
         if (cancelled) return;
+        setOmeTiffSource(source);
+        setOmeTiffLoadError(null);
 
         const mapped = {};
-        const selectedList = Array.isArray(channels)
-          ? channels.map((x) => Number(x)).filter((x) => Number.isFinite(x))
-          : [];
-        for (const id of selectedList) {
-          const omeIdx = Number(channelOmeIndexById?.[id] ?? id);
-          if (!Number.isFinite(id) || !Number.isFinite(omeIdx) || omeIdx < 0) continue;
+        const idSet = new Set();
+        for (const key of Object.keys(channelOmeIndexById || {})) {
+          const id = Number(key);
+          if (Number.isFinite(id)) idSet.add(id);
+        }
+        for (const raw of Array.isArray(channels) ? channels : []) {
+          const id = Number(raw);
+          if (Number.isFinite(id)) idSet.add(id);
+        }
+        for (const id of idSet) {
+          if (cancelled) return;
+          const omeIdx = Number(
+            Object.prototype.hasOwnProperty.call(channelOmeIndexById || {}, id)
+              ? channelOmeIndexById[id]
+              : id,
+          );
+          if (!Number.isFinite(omeIdx) || omeIdx < 0) continue;
           const fromMetadata = source?.channelRanges?.[omeIdx];
           const computed = await computeOmeChannelRangeFromPixels(source, omeIdx);
           const r = computed || fromMetadata;
           if (!r) continue;
-          mapped[id] = {
-            data_min: Number.isFinite(r.dataMin) ? r.dataMin : 0,
-            data_max: Number.isFinite(r.dataMax) ? r.dataMax : 65535,
-            auto_min: Number.isFinite(r.autoMin) ? r.autoMin : 0,
-            auto_max: Number.isFinite(r.autoMax) ? r.autoMax : 65535,
-          };
+          const entry = intensityRangeToChannelMapEntry(r);
+          if (entry) mapped[id] = entry;
         }
-        setOmePixelRangeByChannelId(mapped);
-      } catch {
-        if (!cancelled) setOmePixelRangeByChannelId({});
+        if (!cancelled) setOmePixelRangeByChannelId(mapped);
+      } catch (e) {
+        if (!cancelled) {
+          setOmeTiffSource(null);
+          setOmeTiffLoadError(e?.message || String(e));
+          setOmePixelRangeByChannelId({});
+        }
       }
     })();
 
@@ -173,6 +329,7 @@ export default function useDataLoader() {
     channelOmeIndexById,
     channelNameById,
     channels,
+    scheduleZarrIntensityRangeFlush,
   ]);
 
   // Request queue, max 6 parallel
@@ -496,6 +653,7 @@ export default function useDataLoader() {
         setChunkUV({});
         setAtlasURL({});
         setAtlasByChannel({});
+        resetTileSignalState();
         setFetchingChunks(new Set());
         try {
           const metaJson = await fetchMeta(abort.signal);
@@ -554,6 +712,7 @@ export default function useDataLoader() {
         setChunkUV({});
         setAtlasURL({});
         setAtlasByChannel({});
+        resetTileSignalState();
         setFetchingChunks(new Set());
       }
 
@@ -660,6 +819,7 @@ export default function useDataLoader() {
       setChunkUV({});
       setAtlasURL({});
       setAtlasByChannel({});
+      resetTileSignalState();
       setFetchingChunks(new Set());
       setChannels([]);
       setWeights({});
@@ -670,7 +830,7 @@ export default function useDataLoader() {
     } finally {
       if (!skipLoading) setLoading(false);
     }
-  }, [refreshUploadStatus]);
+  }, [refreshUploadStatus, resetTileSignalState]);
 
   useEffect(() => {
     refreshData();
@@ -824,6 +984,81 @@ export default function useDataLoader() {
     })();
   }, [meta, loading, channels, renderMode, is3D, allCoords, channelZarrIndexById]);
 
+  // Scan atlas PNGs → per-tile mean01 (+ Zarr-only intensity samples) once per url.
+  useEffect(() => {
+    let cancelled = false;
+    const tileFallback = meta?.atlas?.tile ?? 16;
+    const zarrOnly = !omeTiffFile && !omeTiffPresent;
+    const jobs = [];
+    for (const [chunkIdStr, byCh] of Object.entries(atlasByChannel || {})) {
+      const chunkId = Number(chunkIdStr);
+      const layout = atlasLayoutFromUv(chunkUV?.[chunkId] ?? chunkUV?.[chunkIdStr], tileFallback);
+      if (!layout) continue;
+      for (const [chStr, url] of Object.entries(byCh || {})) {
+        if (!url) continue;
+        const ch = Number(chStr);
+        const key = `${ch}:${chunkId}:${url}:mean_v3`;
+        if (tileSignalScanKeyRef.current.has(key)) continue;
+        tileSignalScanKeyRef.current.add(key);
+        jobs.push({ ch, chunkId, url, layout, key });
+      }
+    }
+    if (jobs.length === 0) return undefined;
+
+    (async () => {
+      const doneKeys = new Set();
+      for (const job of jobs) {
+        if (cancelled) break;
+        try {
+          const stats = await scanAtlasTileStats(job.url, job.layout, {
+            // Always sample so leaving OME can flush without re-scanning.
+            collectSamples: true,
+          });
+          if (cancelled) break;
+          if (!stats?.means) {
+            tileSignalScanKeyRef.current.delete(job.key);
+            continue;
+          }
+          const pending = tileSignalPendingRef.current;
+          if (!pending[job.ch]) pending[job.ch] = {};
+          pending[job.ch][job.chunkId] = stats.means;
+          doneKeys.add(job.key);
+          scheduleTileSignalFlush();
+
+          if (stats.rawSamples?.length) {
+            const acc =
+              zarrRangeAccRef.current[job.ch] ||
+              (zarrRangeAccRef.current[job.ch] = createIntensityRangeAccumulator());
+            mergeIntensitySamples(acc, stats.rawSamples);
+            zarrRangeDirtyRef.current.add(job.ch);
+            if (zarrOnly) scheduleZarrIntensityRangeFlush();
+          }
+
+          // Yield so channel/window UI stays responsive while scanning.
+          await new Promise((r) => setTimeout(r, 0));
+        } catch (e) {
+          tileSignalScanKeyRef.current.delete(job.key);
+          console.error("tile signal scan failed", e);
+        }
+      }
+      for (const job of jobs) {
+        if (!doneKeys.has(job.key)) tileSignalScanKeyRef.current.delete(job.key);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    atlasByChannel,
+    chunkUV,
+    meta,
+    omeTiffFile,
+    omeTiffPresent,
+    scheduleTileSignalFlush,
+    scheduleZarrIntensityRangeFlush,
+  ]);
+
   // Prewarm atlas on channel change
   useEffect(() => {
     if (!meta || !channels || channels.length === 0) return;
@@ -854,6 +1089,7 @@ export default function useDataLoader() {
     chunkUV,
     atlasURL,
     atlasByChannel,
+    tileSignalByChannel,
     fetchingChunks,
     
     channels,
@@ -879,6 +1115,8 @@ export default function useDataLoader() {
     setClusterAnnotationOn,
     clusterAnnotationModel,
     setClusterAnnotationModel,
+    clusterLabelReviewMode,
+    setClusterLabelReviewMode,
     clusterPreviewOn,
     setClusterPreviewOn,
 
@@ -905,6 +1143,8 @@ export default function useDataLoader() {
     channelOmeIndexById,
     channelZarrIndexById,
     omePixelRangeByChannelId,
+    omeTiffSource,
+    omeTiffLoadError,
     /** Server-hosted OME-TIFF URL (only if no local file). */
     omeTiffUrl:
       !omeTiffFile && omeTiffPresent

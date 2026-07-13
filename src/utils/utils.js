@@ -1,9 +1,33 @@
 // Shared helpers for viewer / selection / projection.
 
+/** Golden-ratio hash in [0,1) — shared by Viewer sampling + DataFilterExtension. */
+export function displaySampleHash(id) {
+  return (Number(id) * 0.6180339887) % 1;
+}
+
 /** Hash sampling gate (matches ImageLayers / Viewer). */
 export function passesDisplaySampling(id, threshold) {
   if (threshold >= 1.0) return true;
-  return (id * 0.6180339887) % 1 < threshold;
+  return displaySampleHash(id) < threshold;
+}
+
+/** Pixel → deck world; optional OME Y flip (image height − y). */
+export function pointToWorld(d, pixelYFlipHeight = null) {
+  const z = d?.z ?? 0;
+  const x = d?.x ?? 0;
+  const y = d?.y ?? 0;
+  if (pixelYFlipHeight == null || !Number.isFinite(pixelYFlipHeight)) {
+    return [x, y, z];
+  }
+  return [x, pixelYFlipHeight - y, z];
+}
+
+/** Flip each [x,y,z?] vertex when OME Y flip is active. */
+export function pathToWorld(path, pixelYFlipHeight = null) {
+  if (!Array.isArray(path)) return path;
+  if (pixelYFlipHeight == null || !Number.isFinite(pixelYFlipHeight)) return path;
+  const h = pixelYFlipHeight;
+  return path.map(([x, y, z = 0]) => [x, h - y, z]);
 }
 
 export function getSelectionOwner() {

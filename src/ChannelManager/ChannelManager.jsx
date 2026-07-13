@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   fetchChannelInfoMaps,
   defaultChannelColor,
   pickChannelColor,
 } from "../utils/channelInfo";
+import { readOmePixelRange, INTENSITY_FULL_RANGE, isFullRangePlaceholderWindow } from "../utils/intensityWindow";
+import { rgbToHex, hexToRgb } from "../utils/color";
 import "./ChannelManager.css";
 
 export default function ChannelManager({
@@ -20,23 +22,32 @@ export default function ChannelManager({
   const [showDropdown, setShowDropdown] = useState(false);
   const [serverChannelInfo, setServerChannelInfo] = useState({});
   const [tooltip, setTooltip] = useState({ show: false, value: '', x: 0, y: 0 });
+  /** Last applied auto window per channel — re-sync when tile/OME stats refine, unless user dragged. */
+  const lastAutoWindowRef = useRef({});
 
-  // OME-TIFF metadata / pixel sampling → slider bounds + auto window
+  // OME-TIFF or Zarr atlas tile stats → slider bounds + auto window (shared with Viv + Zarr)
   const getChannelRanges = (channel) => {
     const channelId = Number(channel?.id);
-    const pv =
+    const ome =
       Number.isFinite(channelId) && omePixelRangeByChannelId?.[channelId]
         ? omePixelRangeByChannelId[channelId]
-        : {};
-    const dataMin = Number.isFinite(pv.data_min)
-      ? pv.data_min
-      : (Number.isFinite(pv.min) ? pv.min : 0);
-    const dataMax = Number.isFinite(pv.data_max)
-      ? pv.data_max
-      : (Number.isFinite(pv.max) ? pv.max : 65535);
-    const autoMin = Number.isFinite(pv.auto_min) ? pv.auto_min : dataMin;
-    const autoMax = Number.isFinite(pv.auto_max) ? pv.auto_max : dataMax;
-    return { dataMin, dataMax, autoMin, autoMax };
+        : null;
+    const range = readOmePixelRange(ome);
+    if (range) {
+      return {
+        dataMin: range.dataMin,
+        dataMax: range.dataMax,
+        autoMin: range.autoMin,
+        autoMax: range.autoMax,
+      };
+    }
+    // No OME / Zarr range yet: full-range placeholder until tile or OME stats arrive.
+    return {
+      dataMin: 0,
+      dataMax: INTENSITY_FULL_RANGE,
+      autoMin: 0,
+      autoMax: INTENSITY_FULL_RANGE,
+    };
   };
 
   useEffect(() => {
@@ -100,17 +111,24 @@ export default function ChannelManager({
       for (const channelId of selected) {
         const channel = channels.find((ch) => ch.id === channelId);
         if (!channel) continue;
-        const ome = omePixelRangeByChannelId?.[channelId];
+        const ome = readOmePixelRange(omePixelRangeByChannelId?.[channelId]);
         if (!ome) continue;
         const cur = prev?.[channelId];
-        const isDefaultWindow =
+        const lastAuto = lastAutoWindowRef.current[channelId];
+        const isDefaultWindow = isFullRangePlaceholderWindow(cur);
+        const matchesLastAuto =
+          lastAuto &&
           cur &&
-          Math.abs((cur.min ?? NaN) - 0) < eps &&
-          Math.abs((cur.max ?? NaN) - 65535) < eps;
-        if (!cur || isDefaultWindow) {
-          next[channelId] = { min: ome.auto_min, max: ome.auto_max };
+          Math.abs((cur.min ?? NaN) - lastAuto.min) < eps &&
+          Math.abs((cur.max ?? NaN) - lastAuto.max) < eps;
+        if (!cur || isDefaultWindow || matchesLastAuto || !lastAuto) {
+          next[channelId] = { min: ome.autoMin, max: ome.autoMax };
           changed = true;
         }
+        lastAutoWindowRef.current[channelId] = {
+          min: ome.autoMin,
+          max: ome.autoMax,
+        };
       }
       return changed ? next : prev;
     });
@@ -120,16 +138,6 @@ export default function ChannelManager({
     (ch) => !selected.includes(ch.id)
   ) || [];
 
-  const toHex = (rgb) => {
-    const [r, g, b] = rgb || [255, 255, 255];
-    return `#${[r, g, b].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('')}`;
-  };
-  
-  const fromHex = (hex) => {
-    const match = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '#ffffff');
-    return match ? [parseInt(match[1], 16), parseInt(match[2], 16), parseInt(match[3], 16)] : [255, 255, 255];
-  };
-  
   const defaultColorFor = (id) => defaultChannelColor(id);
 
   const addChannel = (channel) => {
@@ -154,7 +162,7 @@ export default function ChannelManager({
   const handleSliderChange = (channelId, type, value) => {
     const v = Number(value);
     setWindows((prev) => {
-      const cur = prev[channelId] || { min: 0, max: 65535 };
+      const cur = prev[channelId] || { min: 0, max: INTENSITY_FULL_RANGE };
       const next = { ...cur, [type]: v };
       if (next.min > next.max) {
         if (type === 'min') next.max = next.min;
@@ -248,8 +256,8 @@ export default function ChannelManager({
               <input
                 type="color"
                 className="color-picker"
-                value={toHex(colors[channelId] || defaultColorFor(channelId))}
-                onChange={(e) => setColors((prev) => ({ ...prev, [channelId]: fromHex(e.target.value) }))}
+                value={rgbToHex(colors[channelId] || defaultColorFor(channelId))}
+                onChange={(e) => setColors((prev) => ({ ...prev, [channelId]: hexToRgb(e.target.value) }))}
               />
 
               <span className="channel-name" title={channel.name}>{channel.name}</span>

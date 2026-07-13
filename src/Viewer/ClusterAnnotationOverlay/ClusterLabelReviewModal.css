@@ -173,6 +173,65 @@
   border-color: rgba(100, 160, 255, 0.8);
 }
 
+.cluster-review-score {
+  margin-top: 14px;
+}
+
+.cluster-review-score-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.cluster-review-score-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 8px;
+}
+
+.cluster-review-score-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.cluster-review-score-btn {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #121212;
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.cluster-review-score-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.cluster-review-score-btn.active {
+  background: #1d4e89;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.cluster-review-score-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cluster-review-score-endpoints {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
 .cluster-review-modal-actions {
   display: flex;
   gap: 8px;

@@ -45,6 +45,21 @@
 .clu-panel {
   margin-top: 6px;
 }
+.clu-review-row {
+  margin-top: 4px;
+}
+.clu-review-btn {
+  width: 100%;
+  justify-content: center;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.clu-review-hint {
+  margin-top: 2px;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.4;
+}
 .clu-tip {
   margin-top: 6px;
   color: #93c5fd;

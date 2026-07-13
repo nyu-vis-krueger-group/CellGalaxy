@@ -1,15 +1,28 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ClusterLabelReviewModal from "./ClusterLabelReviewModal";
 import useClusterLabelReviews, {
+  isReviewConfirmed,
   normalizeReview,
   resolveAnnotationDisplay,
 } from "./useClusterLabelReviews";
 import "./ClusterAnnotationOverlay.css";
 
-function ReviewEyeIcon() {
+function ReviewBadgeContent({ status }) {
+  if (status === "accepted") {
+    return <span className="cluster-annotation-review-badge-mark">✓</span>;
+  }
+  if (status === "unsure") {
+    return <span className="cluster-annotation-review-badge-mark">?</span>;
+  }
+  if (status === "corrected") {
+    return <span className="cluster-annotation-review-badge-mark">✎</span>;
+  }
+  if (status === "rejected") {
+    return <span className="cluster-annotation-review-badge-mark">✕</span>;
+  }
   return (
     <svg
-      className="cluster-annotation-review-eye-icon"
+      className="cluster-annotation-review-badge-icon"
       viewBox="0 0 24 24"
       width="12"
       height="12"
@@ -21,6 +34,14 @@ function ReviewEyeIcon() {
       />
     </svg>
   );
+}
+
+function reviewBadgeTitle(status) {
+  if (status === "unsure") return "Review again (unsure)";
+  if (status === "accepted") return "Change review (accepted)";
+  if (status === "corrected") return "Change review (user corrected)";
+  if (status === "rejected") return "Change review (rejected)";
+  return "Review cluster label";
 }
 
 export default function ClusterAnnotationOverlay({
@@ -36,11 +57,18 @@ export default function ClusterAnnotationOverlay({
   levelKey = "0",
   clusterAnnotationModel = "MedGemma",
   reviewsEnabled = true,
+  reviewMode = false,
 }) {
   const { getReview, upsertReview } = useClusterLabelReviews(reviewsEnabled);
   const [modalAnn, setModalAnn] = useState(null);
   const modalAnnRef = useRef(null);
   modalAnnRef.current = modalAnn;
+
+  // Reviews are per-model; closing avoids showing the wrong model's status in the modal.
+  useEffect(() => {
+    modalAnnRef.current = null;
+    setModalAnn(null);
+  }, [clusterAnnotationModel]);
 
   if (!annotations || annotations.length === 0) {
     return null;
@@ -50,16 +78,23 @@ export default function ClusterAnnotationOverlay({
   const baseSize = 14;
   const scale = 1 + (z - 8) * 0.1;
   const size = Math.max(10, Math.min(32, baseSize * scale));
+  const reviewGrayBg = "rgba(72, 72, 78, 0.88)";
 
-  const buildEntry = (ann, status, userTitle = null) => ({
+  const buildEntry = (ann, status, userTitle = null, extra = {}) => ({
     status,
     llm_title: ann.title,
     llm_model: ann.model || clusterAnnotationModel,
     user_title: userTitle,
+    llm_accuracy: extra.llmAccuracy ?? null,
+    confidence: extra.confidence ?? null,
     reviewed_at: new Date().toISOString(),
   });
 
-  const modalReview = modalAnn ? normalizeReview(getReview(levelKey, modalAnn.label)) : null;
+  const reviewModelFor = (ann) => ann?.model || clusterAnnotationModel;
+
+  const modalReview = modalAnn
+    ? normalizeReview(getReview(levelKey, modalAnn.label, reviewModelFor(modalAnn)))
+    : null;
   const modalCurrentTitle = modalReview
     ? resolveAnnotationDisplay(modalAnn, modalReview).displayTitle
     : null;
@@ -74,13 +109,13 @@ export default function ClusterAnnotationOverlay({
     setModalAnn(null);
   };
 
-  const saveReview = (status, userTitle = null) => {
+  const saveReview = (status, userTitle = null, extra = {}) => {
     const ann = modalAnnRef.current;
     if (!ann) return Promise.reject(new Error("No cluster selected"));
     return upsertReview({
       levelKey,
       clusterId: ann.label,
-      entry: buildEntry(ann, status, userTitle),
+      entry: buildEntry(ann, status, userTitle, extra),
     });
   };
 
@@ -89,7 +124,8 @@ export default function ClusterAnnotationOverlay({
       {annotations.map((ann) => {
         const { label, title, description, x, y, dominantCelltype, dominantNeighNames } = ann;
         if (!title) return null;
-        const review = getReview(levelKey, label);
+        const modelKey = reviewModelFor(ann);
+        const review = getReview(levelKey, label, modelKey);
         const display = resolveAnnotationDisplay(ann, review);
         const rgb = clusterColor(label);
         const darkBg = [
@@ -103,19 +139,21 @@ export default function ClusterAnnotationOverlay({
           neighNamesAnnotationOn && dominantNeighNames && dominantNeighNames.trim();
         const hasDominant = showCelltype || showNeigh;
 
+        const confirmed = isReviewConfirmed(display.status);
+        const useReviewGray = reviewMode && !confirmed;
+        const labelBackground = useReviewGray
+          ? reviewGrayBg
+          : `rgba(${darkBg[0]},${darkBg[1]},${darkBg[2]},0.9)`;
         const titleClass = [
           "cluster-annotation-title-text",
-          display.status === "unsure" ? "cluster-annotation-title-unsure" : "",
-          display.status === "corrected" ? "cluster-annotation-title-corrected" : "",
-          display.strikethrough ? "cluster-annotation-title-rejected" : "",
-          display.showCheck ? "cluster-annotation-title-accepted" : "",
+          reviewMode && display.strikethrough ? "cluster-annotation-title-rejected" : "",
         ]
           .filter(Boolean)
           .join(" ");
 
         return (
           <div
-            key={`cluster-annotation-title-${label}`}
+            key={`cluster-annotation-title-${label}-${modelKey}`}
             className="cluster-annotation-title"
             style={{
               left: x,
@@ -137,56 +175,26 @@ export default function ClusterAnnotationOverlay({
               <div
                 className={titleClass}
                 style={{
-                  backgroundColor: `rgba(${darkBg[0]},${darkBg[1]},${darkBg[2]},0.9)`,
+                  backgroundColor: labelBackground,
                   color: "#ffffff",
                   fontSize: `${size}px`,
                 }}
               >
                 {display.displayTitle}
-                {display.showCheck && (
-                  <span className="cluster-annotation-check" aria-hidden="true" title="Accepted">
-                    ✓
-                  </span>
-                )}
-                {display.showUnsure && (
-                  <span className="cluster-annotation-unsure-mark" aria-hidden="true" title="Unsure">
-                    ?
-                  </span>
-                )}
-                {display.showCorrected && (
-                  <span className="cluster-annotation-corrected-mark" aria-hidden="true" title="User corrected">
-                    ✎
-                  </span>
-                )}
               </div>
-              {display.showEye && (
+              {reviewMode && display.showEye && (
                 <button
                   type="button"
-                  className={[
-                    "cluster-annotation-review-eye",
-                    display.status === "unsure" ? "cluster-annotation-review-eye-unsure" : "",
-                    display.status === "accepted" ? "cluster-annotation-review-eye-accepted" : "",
-                    display.status === "corrected" ? "cluster-annotation-review-eye-corrected" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
+                  className="cluster-annotation-review-badge"
                   style={{ pointerEvents: "auto" }}
-                  title={
-                    display.status === "unsure"
-                      ? "Review again (unsure)"
-                      : display.status === "accepted"
-                        ? "Change review (accepted)"
-                        : display.status === "corrected"
-                          ? "Change review (user corrected)"
-                          : "Review cluster label"
-                  }
+                  title={reviewBadgeTitle(display.status)}
                   aria-label={`Review label for cluster ${label}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     openReview(ann);
                   }}
                 >
-                  <ReviewEyeIcon />
+                  <ReviewBadgeContent status={display.status} />
                 </button>
               )}
             </div>
@@ -241,9 +249,19 @@ export default function ClusterAnnotationOverlay({
         initialUserTitle={
           modalReview?.status === "corrected" ? modalReview.user_title || "" : ""
         }
+        initialAccuracy={
+          modalReview?.status === "corrected" || modalReview?.status === "rejected"
+            ? modalReview?.llm_accuracy ?? null
+            : null
+        }
+        initialConfidence={
+          modalReview?.status === "unsure" ? modalReview?.confidence ?? null : null
+        }
         onAccept={() => saveReview("accepted", null)}
-        onUnsure={() => saveReview("unsure", null)}
-        onRejectConfirm={(userTitle) => saveReview("corrected", userTitle)}
+        onUnsure={(confidence) => saveReview("unsure", null, { confidence })}
+        onRejectConfirm={(userTitle, llmAccuracy) =>
+          saveReview("corrected", userTitle, { llmAccuracy })
+        }
       />
     </>
   );

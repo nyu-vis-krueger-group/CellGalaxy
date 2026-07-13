@@ -2,7 +2,15 @@
 import { loadOmeTiff } from "@vivjs/loaders";
 import { Matrix4 } from "math.gl";
 import { assert, MAX_CHANNELS } from "./omeTiffUtils.js";
-import { INTENSITY_FULL_RANGE, scaleRgbByToneGain, resolveRawWindow } from "../utils/intensityWindow.js";
+import {
+  scaleRgbByToneGain,
+  resolveChannelRawWindow,
+  readOmePixelRange,
+  firstFinite,
+  normalizeIntensityRange,
+  computeRangeFromNumericArray,
+} from "../utils/intensityWindow.js";
+import { rgbaToHex } from "../utils/color.js";
 
 export { MAX_CHANNELS };
 
@@ -15,29 +23,9 @@ function defaultContrastForPixelType(type) {
   return [0, 65535];
 }
 
-function firstFinite(...vals) {
-  for (const v of vals) {
-    const n = Number(v);
-    if (Number.isFinite(n)) return n;
-  }
-  return undefined;
-}
-
-function normalizeRange(dataMin, dataMax, autoMin, autoMax, fallbackLo, fallbackHi) {
-  const lo0 = Number.isFinite(dataMin) ? dataMin : fallbackLo;
-  const hi0 = Number.isFinite(dataMax) ? dataMax : fallbackHi;
-  const lo = Math.min(lo0, hi0);
-  const hi = Math.max(lo0, hi0);
-  const aLo0 = Number.isFinite(autoMin) ? autoMin : lo;
-  const aHi0 = Number.isFinite(autoMax) ? autoMax : hi;
-  const aLo = Math.min(aLo0, aHi0);
-  const aHi = Math.max(aLo0, aHi0);
-  return { dataMin: lo, dataMax: hi, autoMin: aLo, autoMax: aHi };
-}
-
 function readChannelRangeFromOmeMetadata(channel, fallbackLo, fallbackHi) {
   if (!channel || typeof channel !== "object") {
-    return normalizeRange(undefined, undefined, undefined, undefined, fallbackLo, fallbackHi);
+    return normalizeIntensityRange(undefined, undefined, undefined, undefined, fallbackLo, fallbackHi);
   }
   const windowObj = channel.Window && typeof channel.Window === "object" ? channel.Window : null;
   const dataMin = firstFinite(
@@ -76,38 +64,7 @@ function readChannelRangeFromOmeMetadata(channel, fallbackLo, fallbackHi) {
     windowObj?.End,
     windowObj?.end,
   );
-  return normalizeRange(dataMin, dataMax, autoMin, autoMax, fallbackLo, fallbackHi);
-}
-
-function percentileFromSorted(sorted, p01) {
-  if (!Array.isArray(sorted) || sorted.length === 0) return undefined;
-  const p = Math.max(0, Math.min(1, p01));
-  const idx = (sorted.length - 1) * p;
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  if (lo === hi) return sorted[lo];
-  const t = idx - lo;
-  return sorted[lo] * (1 - t) + sorted[hi] * t;
-}
-
-function computeRangeFromNumericArray(values) {
-  if (!values || typeof values.length !== "number" || values.length === 0) return null;
-  let min = Infinity;
-  let max = -Infinity;
-  const sample = [];
-  const stride = Math.max(1, Math.floor(values.length / 50000));
-  for (let i = 0; i < values.length; i++) {
-    const v = Number(values[i]);
-    if (!Number.isFinite(v)) continue;
-    if (v < min) min = v;
-    if (v > max) max = v;
-    if (i % stride === 0) sample.push(v);
-  }
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-  sample.sort((a, b) => a - b);
-  const autoMin = percentileFromSorted(sample, 0.01);
-  const autoMax = percentileFromSorted(sample, 0.99);
-  return normalizeRange(min, max, autoMin, autoMax, min, max);
+  return normalizeIntensityRange(dataMin, dataMax, autoMin, autoMax, fallbackLo, fallbackHi);
 }
 
 async function readChannelRangeFromPixels(loader, labels, channelIndex) {
@@ -136,13 +93,6 @@ async function readChannelRangeFromPixels(loader, labels, channelIndex) {
   } catch {
     return null;
   }
-}
-
-function rgbaToHex(rgba) {
-  if (!rgba || rgba.length < 3) return "#ffffff";
-  const [r, g, b] = rgba;
-  const clamp = (v) => Math.max(0, Math.min(255, Number(v) | 0));
-  return `#${[r, g, b].map((v) => clamp(v).toString(16).padStart(2, "0")).join("")}`;
 }
 
 async function mapVivOmeImageToSource(ome) {
@@ -198,16 +148,41 @@ async function mapVivOmeImageToSource(ome) {
   };
 }
 
+/** Dedupe concurrent / Strict-Mode double mounts (Viewer + DataLoader share one decode). */
+const _omeSourceByUrl = new Map();
+const _omeSourceByFile = new WeakMap();
+
 /** Remote URL (same-origin /public/...) */
 export async function openOmeTiffAsPixelSources(absoluteUrl) {
-  const ome = await loadOmeTiff(absoluteUrl);
-  return await mapVivOmeImageToSource(ome);
+  const key = String(absoluteUrl || "");
+  if (!key) throw new Error("OME-TIFF: empty URL");
+  let pending = _omeSourceByUrl.get(key);
+  if (!pending) {
+    pending = loadOmeTiff(absoluteUrl)
+      .then((ome) => mapVivOmeImageToSource(ome))
+      .catch((err) => {
+        _omeSourceByUrl.delete(key);
+        throw err;
+      });
+    _omeSourceByUrl.set(key, pending);
+  }
+  return pending;
 }
 
 /** Local browser File */
 export async function openOmeTiffFromFile(file) {
-  const ome = await loadOmeTiff(file);
-  return await mapVivOmeImageToSource(ome);
+  if (!file) throw new Error("OME-TIFF: empty file");
+  let pending = _omeSourceByFile.get(file);
+  if (!pending) {
+    pending = loadOmeTiff(file)
+      .then((ome) => mapVivOmeImageToSource(ome))
+      .catch((err) => {
+        _omeSourceByFile.delete(file);
+        throw err;
+      });
+    _omeSourceByFile.set(file, pending);
+  }
+  return pending;
 }
 
 export async function computeOmeChannelRangeFromPixels(source, omeChannelIndex) {
@@ -215,21 +190,6 @@ export async function computeOmeChannelRangeFromPixels(source, omeChannelIndex) 
   if (!Number.isFinite(idx) || idx < 0) return null;
   const computed = await readChannelRangeFromPixels(source?.loader, source?.labels, idx);
   return computed || null;
-}
-
-function hexToRGB(hex) {
-  let h = String(hex || "").replace(/^#/, "");
-  if (h.length === 3) {
-    h = h
-      .split("")
-      .map((c) => c + c)
-      .join("");
-  }
-  const r = Number.parseInt(h.slice(0, 2), 16);
-  const g = Number.parseInt(h.slice(2, 4), 16);
-  const b = Number.parseInt(h.slice(4, 6), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return [255, 255, 255];
-  return [r, g, b];
 }
 
 /** MultiscaleImageLayer props: loader = TiffPixelSource[]; selection { t, c, z } per @vivjs/loaders. */
@@ -243,7 +203,14 @@ export function buildMultiscaleImageLayerProps(source, ui) {
     modelMatrix,
     channelRanges = [],
   } = source;
-  const { channels, colors, windows, alphas, channelOmeIndexById } = ui;
+  const {
+    channels,
+    colors,
+    windows,
+    alphas,
+    channelOmeIndexById,
+    omePixelRangeByChannelId = {},
+  } = ui;
 
   const selections = [];
   const contrastLimits = [];
@@ -273,19 +240,33 @@ export function buildMultiscaleImageLayerProps(source, ui) {
       throw new Error("Unsupported OME loader backend");
     }
 
+    // Shared OME range (same as Zarr/UMAP). If map not ready yet, use loader metadata.
+    const omeRange = readOmePixelRange(omePixelRangeByChannelId?.[chIdx]);
     const cRange =
-      Number.isFinite(selectedOmeC) &&
-      channelRanges[selectedOmeC]
+      Number.isFinite(selectedOmeC) && channelRanges[selectedOmeC]
         ? channelRanges[selectedOmeC]
         : null;
-    const fallback = {
-      min: Number.isFinite(cRange?.autoMin) ? cRange.autoMin : 0,
-      max: Number.isFinite(cRange?.autoMax) ? cRange.autoMax : INTENSITY_FULL_RANGE,
-    };
-    const { min: wMin, max: wMax } = resolveRawWindow(windows?.[chIdx], fallback);
+    const rangeById =
+      omeRange || !cRange
+        ? omePixelRangeByChannelId
+        : {
+            ...omePixelRangeByChannelId,
+            [chIdx]: {
+              data_min: cRange.dataMin,
+              data_max: cRange.dataMax,
+              auto_min: cRange.autoMin,
+              auto_max: cRange.autoMax,
+            },
+          };
+    const { min: wMin, max: wMax } = resolveChannelRawWindow(
+      chIdx,
+      windows,
+      rangeById,
+    );
     contrastLimits.push([wMin, wMax]);
-    const rMin = Number.isFinite(cRange?.dataMin) ? cRange.dataMin : wMin;
-    const rMax = Number.isFinite(cRange?.dataMax) ? cRange.dataMax : wMax;
+    const bounds = readOmePixelRange(rangeById?.[chIdx]);
+    const rMin = bounds?.dataMin ?? wMin;
+    const rMax = bounds?.dataMax ?? wMax;
     contrastLimitsRange.push([Math.min(rMin, rMax), Math.max(rMin, rMax)]);
 
     const rgb = colors?.[chIdx] || [255, 255, 255];
@@ -323,5 +304,3 @@ export function buildMultiscaleImageLayerProps(source, ui) {
     modelMatrix,
   };
 }
-
-export { hexToRGB };

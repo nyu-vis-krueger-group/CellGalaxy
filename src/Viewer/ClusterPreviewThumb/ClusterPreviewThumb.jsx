@@ -17,6 +17,7 @@ export default function ClusterPreviewThumb({
   colors,
   alphas,
   windows,
+  omePixelRangeByChannelId = {},
 }) {
   const canvasRef = useRef(null);
 
@@ -35,6 +36,7 @@ export default function ClusterPreviewThumb({
         colors,
         alphas,
         windows,
+        omePixelRangeByChannelId,
         previewSize,
       });
       if (cancelled) return;
@@ -51,6 +53,7 @@ export default function ClusterPreviewThumb({
     colors,
     alphas,
     windows,
+    omePixelRangeByChannelId,
     previewSize,
   ]);
 

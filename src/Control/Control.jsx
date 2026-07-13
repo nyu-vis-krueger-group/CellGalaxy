@@ -50,6 +50,8 @@ export default function Control({
   setClusterAnnotationOn = () => {},
   clusterAnnotationModel = "MedGemma",
   setClusterAnnotationModel = () => {},
+  clusterLabelReviewMode = false,
+  setClusterLabelReviewMode = () => {},
   clusterPreviewOn = true,
   setClusterPreviewOn = () => {},
   rawAnnotationColumns = { celltype: false, neigh_names: false },
@@ -171,6 +173,8 @@ export default function Control({
         setAnnotationOn={setClusterAnnotationOn}
         annotationModel={clusterAnnotationModel}
         setAnnotationModel={setClusterAnnotationModel}
+        reviewModeOn={clusterLabelReviewMode}
+        setReviewModeOn={setClusterLabelReviewMode}
         previewOn={clusterPreviewOn}
         setPreviewOn={setClusterPreviewOn}
         rawAnnotationColumns={rawAnnotationColumns}

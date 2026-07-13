@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { ScatterplotLayer, PathLayer, IconLayer } from "@deck.gl/layers";
 import { DataFilterExtension } from "@deck.gl/extensions";
 import WindowedIconLayer from "./WindowedIconLayer";
@@ -12,7 +12,13 @@ import {
   ease,
   resolveMarkerPixelSize,
   semanticMarkerSizeFactor,
+  pointToWorld,
+  pathToWorld,
+  displaySampleHash,
 } from "../utils/utils";
+
+/** Shared DataFilterExtension — one instance for sampling filters across layers. */
+const SAMPLING_FILTER = new DataFilterExtension({ filterSize: 1 });
 
 function clusterLabelForPoint(d, labelKey = "label", getLabelForId = null) {
   if (typeof getLabelForId === "function" && Number.isFinite(d?.id)) {
@@ -32,11 +38,15 @@ function isClusterHighlighted(d, highlightedClusters, labelKey, getLabelForId) {
 }
 
 const CLUSTER_OUTLINE_ICON = getClusterOutlineIconDescriptor();
-const CLUSTER_HIGHLIGHT_FILTER = new DataFilterExtension({ filterSize: 1 });
 /** Below this marker px size (2D), cluster highlight renders as a dot; at/above → square frame. */
 const CLUSTER_SQUARE_OUTLINE_MIN_PX = 12;
 /** 3D orbit: deck zoom reflects navigation better than computedImageSize alone. */
 const CLUSTER_SQUARE_OUTLINE_MIN_ZOOM_3D = 9.5;
+
+function samplingFilterValue(d, selectedIds, selectedBypassSampling) {
+  if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
+  return displaySampleHash(d.id);
+}
 
 function markerSizeForOutline({
   computedImageSize,
@@ -67,14 +77,8 @@ function appendClusterHighlightOutlineLayers(
     highlightedClusters,
     clusterHighlightLabelKey,
     getLabelForId,
-    computedImageSize,
-    markerZoom,
-    tilePx,
-    rawUsesOmeTiff,
-    clusterColorOn,
-    renderMode,
-    semanticLevel,
-    semanticSizeOn,
+    sizeStateRef,
+    useSquareOutline,
     is3D,
     worldPos,
     samplingThreshold,
@@ -91,28 +95,12 @@ function appendClusterHighlightOutlineLayers(
   );
   if (highlightData.length === 0) return;
 
-  const sizeOpts = {
-    computedImageSize,
-    markerZoom,
-    tilePx,
-    rawUsesOmeTiff,
-    clusterColorOn,
-    renderMode,
-    semanticLevel,
-    semanticSizeOn,
-  };
-  const markerSize = markerSizeForOutline(sizeOpts);
-  const useSquareOutline = is3D
-    ? markerZoom >= CLUSTER_SQUARE_OUTLINE_MIN_ZOOM_3D ||
-      markerSize >= CLUSTER_SQUARE_OUTLINE_MIN_PX
-    : markerSize >= CLUSTER_SQUARE_OUTLINE_MIN_PX;
+  const readMarkerSize = () => markerSizeForOutline(sizeStateRef.current);
 
   const filterExt = {
-    extensions: [CLUSTER_HIGHLIGHT_FILTER],
-    getFilterValue: (d) => {
-      if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
-      return (d.id * 0.6180339887) % 1;
-    },
+    extensions: [SAMPLING_FILTER],
+    getFilterValue: (d) =>
+      samplingFilterValue(d, selectedIds, selectedBypassSampling),
     filterRange: [0, samplingThreshold],
   };
 
@@ -124,26 +112,32 @@ function appendClusterHighlightOutlineLayers(
     return [rgb[0], rgb[1], rgb[2], 255];
   };
 
-  const sizeDeps = [
-    computedImageSize,
-    markerZoom,
-    tilePx,
-    rawUsesOmeTiff,
-    clusterColorOn,
-    renderMode,
-    semanticLevel,
-    semanticSizeOn,
-    is3D,
-  ];
+  const sizeTrigger = () => {
+    const s = sizeStateRef.current;
+    return [
+      s.computedImageSize,
+      s.markerZoom,
+      s.tilePx,
+      s.rawUsesOmeTiff,
+      s.clusterColorOn,
+      s.renderMode,
+      s.semanticLevel,
+      s.semanticSizeOn,
+      is3D,
+      useSquareOutline,
+    ];
+  };
 
   if (!useSquareOutline) {
-    const dotRadius = Math.max(1.5, Math.min(3.5, markerSize * 0.3));
     target.push(
       new ScatterplotLayer({
         id: "cluster-highlight-dot",
         data: highlightData,
         getPosition: (d) => worldPos(d),
-        getRadius: () => dotRadius,
+        getRadius: () => {
+          const markerSize = readMarkerSize();
+          return Math.max(1.5, Math.min(3.5, markerSize * 0.3));
+        },
         radiusUnits: "pixels",
         billboard: true,
         filled: true,
@@ -154,7 +148,7 @@ function appendClusterHighlightOutlineLayers(
         ...filterExt,
         parameters: { depthTest: is3D, blend: true },
         updateTriggers: {
-          getRadius: sizeDeps,
+          getRadius: sizeTrigger(),
           getFillColor: [
             highlightedClusters,
             filteredIds,
@@ -175,14 +169,14 @@ function appendClusterHighlightOutlineLayers(
     iconMapping: CLUSTER_OUTLINE_ICON.mapping,
     getIcon: () => "outline",
     getPosition: (d) => worldPos(d),
-    getSize: () => markerSize,
+    getSize: () => readMarkerSize(),
     sizeUnits: "pixels",
     billboard: true,
     pickable: false,
     autoHighlight: false,
     ...filterExt,
     updateTriggers: {
-      getSize: sizeDeps,
+      getSize: sizeTrigger(),
       getColor: [
         highlightedClusters,
         filteredIds,
@@ -198,7 +192,7 @@ function appendClusterHighlightOutlineLayers(
     new IconLayer({
       ...base,
       id: "cluster-highlight-shadow",
-      getSize: () => markerSize + 1,
+      getSize: () => readMarkerSize() + 1,
       getColor: () => [0, 0, 0, 190],
       parameters: { depthTest: is3D, blend: true },
     }),
@@ -214,11 +208,10 @@ function appendClusterHighlightOutlineLayers(
   );
 }
 
-export default function ImageLayers({
+export default function useImageLayers({
   meta,
   renderMode = "sprites",
   points = [],
-  atlasURL,
   atlasByChannel,
   iconMappingsByChunk,
   channels = [],
@@ -240,7 +233,6 @@ export default function ImageLayers({
   labelKey = "label",
   /** Cluster Filter checkbox labels (always base `label` column). */
   clusterHighlightLabelKey = "label",
-  rankKey = null,
   semanticSizeOn = false,
   samplingThreshold = 1.0,
   /** Points used for invisible pick layer (spatial: all cells; visual may be sampled). */
@@ -269,23 +261,11 @@ export default function ImageLayers({
   markerZoom = 0,
   tilePx = 16,
   rawUsesOmeTiff = false,
+  /** Shared OME-derived intensity ranges (same source as Viv contrastLimits). */
+  omePixelRangeByChannelId = {},
 }) {
-  const worldPos = (d) => {
-    const z = d.z ?? 0;
-    if (pixelYFlipHeight == null || !Number.isFinite(pixelYFlipHeight)) {
-      return [d.x, d.y, z];
-    }
-    return [d.x, pixelYFlipHeight - (d.y ?? 0), z];
-  };
-
-  const worldPath = (path) => {
-    if (!Array.isArray(path)) return path;
-    if (pixelYFlipHeight == null || !Number.isFinite(pixelYFlipHeight)) {
-      return path;
-    }
-    const h = pixelYFlipHeight;
-    return path.map(([x, y, z = 0]) => [x, h - y, z]);
-  };
+  const worldPos = (d) => pointToWorld(d, pixelYFlipHeight);
+  const worldPath = (path) => pathToWorld(path, pixelYFlipHeight);
 
   const effectivePickPoints = pickPoints ?? points;
   const effectiveClusterHighlightPoints = clusterHighlightPoints ?? points;
@@ -301,6 +281,35 @@ export default function ImageLayers({
   }, [points, getRegionIndexForId]);
   const hasSelection = selectedPoints.length > 0;
 
+  // Zoom/size change often during pan-zoom — keep accessors on a ref so layers
+  // are not torn down/recreated every scroll tick (GPU thrash / context loss).
+  const sizeStateRef = useRef({
+    computedImageSize,
+    markerZoom,
+    tilePx,
+    rawUsesOmeTiff,
+    clusterColorOn,
+    renderMode,
+    semanticLevel,
+    semanticSizeOn,
+  });
+  sizeStateRef.current = {
+    computedImageSize,
+    markerZoom,
+    tilePx,
+    rawUsesOmeTiff,
+    clusterColorOn,
+    renderMode,
+    semanticLevel,
+    semanticSizeOn,
+  };
+
+  const markerSizeNow = markerSizeForOutline(sizeStateRef.current);
+  const useSquareOutline = is3D
+    ? markerZoom >= CLUSTER_SQUARE_OUTLINE_MIN_ZOOM_3D ||
+      markerSizeNow >= CLUSTER_SQUARE_OUTLINE_MIN_PX
+    : markerSizeNow >= CLUSTER_SQUARE_OUTLINE_MIN_PX;
+
   const pickScatterLayer = (idSuffix = "") => {
     if (!hoverPickAll || !effectivePickPoints?.length) return null;
     return new ScatterplotLayer({
@@ -308,7 +317,7 @@ export default function ImageLayers({
       data: effectivePickPoints,
       getPosition: (d) => worldPos(d),
       getFillColor: () => [255, 255, 255, 0],
-      getRadius: () => computedImageSize * 0.85,
+      getRadius: () => sizeStateRef.current.computedImageSize * 0.85,
       radiusUnits: "pixels",
       stroked: false,
       pickable: true,
@@ -341,22 +350,19 @@ export default function ImageLayers({
         if (!mapping) continue;
 
         const baseConfig = {
-          data: arr.map((d) => ({ ...d, icon: `t_${d.local_index}` })),
+          data: arr,
           iconMapping: mapping,
-          getIcon: (d) => d.icon,
+          getIcon: (d) => `t_${d.local_index}`,
           getPosition: (d) => [d.x, d.y, d.z ?? 0],
           
-          extensions: [new DataFilterExtension({ filterSize: 1 })],
-          getFilterValue: (d) => {
-            if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
-            return (d.id * 0.6180339887) % 1;
-          },
+          extensions: [SAMPLING_FILTER],
+          getFilterValue: (d) =>
+            samplingFilterValue(d, selectedIds, selectedBypassSampling),
           filterRange: [0, samplingThreshold],
-          getSize: (d) => {
-            if (!semanticSizeOn) return computedImageSize;
-            return (
-              computedImageSize * semanticMarkerSizeFactor(semanticLevel)
-            );
+          getSize: () => {
+            const s = sizeStateRef.current;
+            if (!s.semanticSizeOn) return s.computedImageSize;
+            return s.computedImageSize * semanticMarkerSizeFactor(s.semanticLevel);
           },
           sizeScale: 1,
           fovy: 45,
@@ -385,13 +391,21 @@ export default function ImageLayers({
 
             const col = colors?.[ch] || [255, 255, 255];
             const alpha01 = Math.min(1, Math.max(0, alphas?.[ch] ?? 1));
-            const { winMin01, winMax01 } = windowFromChannel(ch, windows);
+            const { winMin01, winMax01 } = windowFromChannel(
+              ch,
+              windows,
+              omePixelRangeByChannelId,
+            );
 
             all.push(
               new WindowedIconLayer({
                 ...baseConfig,
                 id: `icon-ch${ch}-${chunkId}`,
                 iconAtlas: String(atlasGray),
+                // Atlas stores raw/65535; dim markers are often << 0.05.
+                // Default IconLayer alphaCutoff discards them *before* windowing
+                // (hover windows first — that is why hover matched OME and UMAP did not).
+                alphaCutoff: 0,
                 // Additive blend (multi-channel fluorescence)
                 parameters: { depthTest: false, blend: true, blendFunc: [1, 1], blendEquation: 32774 },
                 windowMin: winMin01,
@@ -413,8 +427,19 @@ export default function ImageLayers({
                 },
                 updateTriggers: {
                   ...baseConfig.updateTriggers,
-                  getColor: [filteredIds, colors, alphas, windows],
+                  getColor: [
+                    filteredIds,
+                    colors,
+                    alphas,
+                    windows,
+                    omePixelRangeByChannelId,
+                    winMin01,
+                    winMax01,
+                  ],
                   getFilterValue: [selectedPoints.length],
+                  // Ensure intensity window uniforms refresh with tile/OME auto range.
+                  windowMin: [winMin01, windows, omePixelRangeByChannelId],
+                  windowMax: [winMax01, windows, omePixelRangeByChannelId],
                 },
               })
             );
@@ -429,6 +454,7 @@ export default function ImageLayers({
                 ...baseConfig,
                 id: `cluster-color-atlas-${chunkId}`,
                 iconAtlas: String(atlasAny),
+                alphaCutoff: 0,
                 parameters: { depthTest: false, blend: false },
                 windowMin: 0.0,
                 windowMax: 1.0,
@@ -466,11 +492,9 @@ export default function ImageLayers({
                 data: arr,
                 getPosition: (d) => [d.x, d.y, d.z ?? 0],
                 stroked: false,
-                extensions: [new DataFilterExtension({ filterSize: 1 })],
-                getFilterValue: (d) => {
-                  if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
-                  return (d.id * 0.6180339887) % 1;
-                },
+                extensions: [SAMPLING_FILTER],
+                getFilterValue: (d) =>
+                  samplingFilterValue(d, selectedIds, selectedBypassSampling),
                 filterRange: [0, samplingThreshold],
                 getFillColor: (d) => {
                   const rIdx = getRegionIndexForId?.(d.id);
@@ -483,10 +507,9 @@ export default function ImageLayers({
                   const rgb = clusterColor(l);
                   return [rgb[0], rgb[1], rgb[2], a];
                 },
-                getRadius: (d) => {
-                  const rIdx = getRegionIndexForId?.(d.id);
-                  const scale = typeof rIdx === "number" && rIdx >= 0 ? 1.2 : 1.0;
-                  return computedImageSize * 0.76 * scale;
+                getRadius: () => {
+                  const s = sizeStateRef.current.computedImageSize;
+                  return s * 0.76;
                 },
                 radiusUnits: "pixels",
                 pickable: false,
@@ -508,11 +531,11 @@ export default function ImageLayers({
       }
 
       if (!is3D && clusterOutlineOn && clusterLineWidth > 0 && outlineData.length > 0) {
-            all.push(
-              new PathLayer({
-                id: "cluster-outlines",
-                data: outlineData,
-                getPath: (d) => worldPath(d.path),
+        all.push(
+          new PathLayer({
+            id: "cluster-outlines",
+            data: outlineData,
+            getPath: (d) => worldPath(d.path),
             getColor: (d) => d.color,
             widthUnits: "pixels",
             getWidth: Math.max(0, clusterLineWidth),
@@ -527,7 +550,7 @@ export default function ImageLayers({
               getWidth: [clusterLineWidth],
               getPath: [pixelYFlipHeight, outlineData.length],
             },
-          })
+          }),
         );
       }
 
@@ -536,16 +559,11 @@ export default function ImageLayers({
         highlightedClusters,
         clusterHighlightLabelKey,
         getLabelForId,
-        computedImageSize,
-        markerZoom,
-        tilePx,
-        rawUsesOmeTiff,
-        clusterColorOn,
-        renderMode,
-        semanticLevel,
-        semanticSizeOn,
+        sizeStateRef,
+        useSquareOutline,
         is3D,
-        worldPos: (d) => [d.x, d.y, d.z ?? 0],
+        // Sprites are UMAP / non-OME — never apply spatial Y flip here.
+        worldPos: (d) => pointToWorld(d),
         samplingThreshold,
         selectedIds,
         selectedBypassSampling,
@@ -571,11 +589,9 @@ export default function ImageLayers({
           lineWidthUnits: "pixels",
           getLineWidth: dotOutlineForBrightBackground ? 1 : 0,
           getLineColor: () => [0, 0, 0, 210],
-          extensions: [new DataFilterExtension({ filterSize: 1 })],
-          getFilterValue: (d) => {
-            if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
-            return (d.id * 0.6180339887) % 1;
-          },
+          extensions: [SAMPLING_FILTER],
+          getFilterValue: (d) =>
+            samplingFilterValue(d, selectedIds, selectedBypassSampling),
           filterRange: [0, samplingThreshold],
           getFillColor: (d) => {
             const rIdx = getRegionIndexForId?.(d.id);
@@ -589,7 +605,7 @@ export default function ImageLayers({
 
             return [rgb[0], rgb[1], rgb[2], a];
           },
-          getRadius: () => computedImageSize * 0.72,
+          getRadius: () => sizeStateRef.current.computedImageSize * 0.72,
           radiusUnits: "pixels",
           pickable: true,
           autoHighlight: true,
@@ -618,11 +634,9 @@ export default function ImageLayers({
           id: "scatter",
           data: points ?? [],
           getPosition: (d) => worldPos(d),
-          extensions: [new DataFilterExtension({ filterSize: 1 })],
-          getFilterValue: (d) => {
-            if (selectedBypassSampling && selectedIds && selectedIds.has(d.id)) return 0;
-            return (d.id * 0.6180339887) % 1;
-          },
+          extensions: [SAMPLING_FILTER],
+          getFilterValue: (d) =>
+            samplingFilterValue(d, selectedIds, selectedBypassSampling),
           filterRange: [0, samplingThreshold],
           getFillColor: (d) => {
             const activeFilter = filteredIds && filteredIds.size > 0;
@@ -646,7 +660,7 @@ export default function ImageLayers({
           getLineWidth: omeSpatialScatterPickOnly ? 0 : dotOutlineForBrightBackground ? 1 : 0,
           getLineColor: () => [0, 0, 0, 220],
           getRadius: () =>
-            computedImageSize *
+            sizeStateRef.current.computedImageSize *
             0.75 *
             (omeSpatialScatterPickOnly ? 1.5 : 1),
           radiusScale: 1,
@@ -705,14 +719,8 @@ export default function ImageLayers({
       highlightedClusters,
       clusterHighlightLabelKey,
       getLabelForId,
-      computedImageSize,
-      markerZoom,
-      tilePx,
-      rawUsesOmeTiff,
-      clusterColorOn,
-      renderMode,
-      semanticLevel,
-      semanticSizeOn,
+      sizeStateRef,
+      useSquareOutline,
       is3D,
       worldPos,
       samplingThreshold,
@@ -734,13 +742,13 @@ export default function ImageLayers({
     hoverPickAll,
     effectivePickPoints,
     pixelYFlipHeight,
-    atlasURL,
     atlasByChannel,
     iconMappingsByChunk,
     channels,
     colors,
     alphas,
     windows,
+    omePixelRangeByChannelId,
     is3D,
     filteredIds,
     highlightedClusters,
@@ -749,7 +757,9 @@ export default function ImageLayers({
     clusterLineWidth,
     clusterOutlineOn,
     outlineData,
+    // Marker pixel size follows zoom; deck diffs same layer ids (no new WebGL context).
     computedImageSize,
+    useSquareOutline,
     getRegionIndexForId,
     regionColors,
     selectedPoints.length,
@@ -764,7 +774,6 @@ export default function ImageLayers({
     clusterHighlightLabelKey,
     clusterHighlightPoints,
     effectiveClusterHighlightPoints,
-    markerZoom,
     tilePx,
     rawUsesOmeTiff,
     semanticLevel,

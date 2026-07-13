@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./HoverPreview.css";
 import {
   projectItemsToScreen,
@@ -17,9 +17,16 @@ import {
   windowFromChannel,
 } from "../../utils/intensityWindow";
 import { cellPreviewURL } from "../../api/api";
-import HoverDeckPreview from "./HoverDeckPreview";
+import { loadImageCached } from "../../utils/loadImageCached";
 
 const PREVIEW_SIZE = 128;
+
+/** deck.gl pickObject radius (px from cursor) matching on-screen tile half-extent. */
+export function pickRadiusFromTileScreenPx(tileScreenPx) {
+  const d = Number(tileScreenPx);
+  if (!Number.isFinite(d) || d <= 0) return 4;
+  return Math.max(2, Math.ceil(d / 2));
+}
 
 export function resolveDisplayObject(object, displayCoordById) {
   if (!object) return null;
@@ -33,56 +40,6 @@ export function resolveDisplayObject(object, displayCoordById) {
     return { ...object, chunk_id: disp.chunk_id, local_index: disp.local_index };
   }
   return object;
-}
-
-function canUseDeckSpritePreview({
-  object,
-  displayCoordById,
-  meta,
-  renderMode,
-  suppressSpriteAtlases,
-  iconMappingsByChunk,
-  chunkUV,
-  atlasByChannel,
-  atlasURL,
-  channels,
-}) {
-  if (suppressSpriteAtlases || renderMode !== "sprites" || !meta || !object) return false;
-  const resolved = resolveDisplayObject(object, displayCoordById);
-  const chunkId = resolved?.chunk_id;
-  const localIndex = resolved?.local_index;
-  if (!Number.isFinite(chunkId) || !Number.isFinite(localIndex)) return false;
-  if (!chunkUV?.[chunkId] || !iconMappingsByChunk?.[chunkId]?.[`t_${localIndex}`]) {
-    return false;
-  }
-  const chList = Array.isArray(channels) && channels.length > 0 ? channels : [];
-  if (chList.length === 0) return false;
-  const byCh = atlasByChannel?.[chunkId] || {};
-  return chList.some((ch) => byCh?.[ch]) || Boolean(atlasURL?.[chunkId]);
-}
-
-const _previewImageCache = new Map();
-
-function loadImageCached(src) {
-  if (!src) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    const cached = _previewImageCache.get(src);
-    if (cached) {
-      if (cached.complete && cached.naturalWidth > 0) {
-        resolve(cached);
-      } else {
-        cached.addEventListener("load", () => resolve(cached), { once: true });
-        cached.addEventListener("error", () => resolve(null), { once: true });
-      }
-      return;
-    }
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = src;
-    _previewImageCache.set(src, img);
-  });
 }
 
 async function drawCellPreviewFromUrl(canvas, url, previewSize = 128) {
@@ -146,6 +103,7 @@ export async function drawCellPreviewToCanvas({
   displayCoordById = null,
   previewSize = 128,
   channelZarrIndexById = null,
+  omePixelRangeByChannelId = {},
 }) {
   if (!canvas || !object) return;
   const resolved = resolveDisplayObject(object, displayCoordById);
@@ -187,7 +145,11 @@ export async function drawCellPreviewToCanvas({
 
     const col = colors?.[ch] || [255, 255, 255];
     const alpha01 = Math.min(1, Math.max(0, alphas?.[ch] ?? 1));
-    const { winMin01, winMax01 } = windowFromChannel(ch, windows);
+    const { winMin01, winMax01 } = windowFromChannel(
+      ch,
+      windows,
+      omePixelRangeByChannelId,
+    );
 
     const sw = outW * ss;
     const sh = outH * ss;
@@ -221,7 +183,7 @@ export async function drawCellPreviewToCanvas({
   if (!usedAccum && mapping && atlasURL?.[chunkId]) {
     const merged = await loadImageCached(atlasURL[chunkId]);
     if (merged) {
-      const combo = combinedRawWindow(chList, windows);
+      const combo = combinedRawWindow(chList, windows, omePixelRangeByChannelId);
       const { winMin01, winMax01 } = rawWindowToNormalized01(combo.min, combo.max);
       const outImg = drawMergedAtlasTile(octx, merged, mapping, tile, winMin01, winMax01);
       if (outImg) {
@@ -296,9 +258,6 @@ export async function drawCellPreviewToCanvas({
 function HoverCellTooltip({
   info,
   containerRef,
-  meta,
-  renderMode,
-  suppressSpriteAtlases,
   iconMappingsByChunk,
   chunkUV,
   atlasByChannel,
@@ -307,59 +266,26 @@ function HoverCellTooltip({
   colors,
   alphas,
   windows,
-  clusterColorOn,
-  clusterOpacity,
-  clusterLineWidth,
-  clusterOutlineOn,
-  labelKey,
-  isUMAPView,
-  computedImageSize,
   cellTypeAnnotationOn = false,
   neighNamesAnnotationOn = false,
   rawAnnotationById = new Map(),
   filteredIds = null,
   displayCoordById = null,
   channelZarrIndexById = null,
+  omePixelRangeByChannelId = {},
 }) {
+  // Canvas 2D only — avoid a second DeckGL/WebGL context on hover (context-loss crashes).
   const canvasRef = useRef(null);
-  const resolved = resolveDisplayObject(info?.object, displayCoordById);
-
-  const useDeckPreview = useMemo(
-    () =>
-      canUseDeckSpritePreview({
-        object: info?.object,
-        displayCoordById,
-        meta,
-        renderMode,
-        suppressSpriteAtlases,
-        iconMappingsByChunk,
-        chunkUV,
-        atlasByChannel,
-        atlasURL,
-        channels,
-      }),
-    [
-      info?.object,
-      displayCoordById,
-      meta,
-      renderMode,
-      suppressSpriteAtlases,
-      iconMappingsByChunk,
-      chunkUV,
-      atlasByChannel,
-      atlasURL,
-      channels,
-    ],
-  );
 
   useEffect(() => {
-    if (useDeckPreview) return undefined;
     const canvas = canvasRef.current;
     if (!canvas || !info?.object) return undefined;
     let cancelled = false;
     (async () => {
+      // Draw off-screen first so a cancelled hover never paints a stale cell.
+      const tmp = document.createElement("canvas");
       await drawCellPreviewToCanvas({
-        canvas,
+        canvas: tmp,
         object: info.object,
         iconMappingsByChunk,
         chunkUV,
@@ -372,14 +298,21 @@ function HoverCellTooltip({
         displayCoordById,
         previewSize: PREVIEW_SIZE,
         channelZarrIndexById,
+        omePixelRangeByChannelId,
       });
       if (cancelled) return;
+      canvas.width = tmp.width;
+      canvas.height = tmp.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(tmp, 0, 0);
     })();
     return () => {
       cancelled = true;
     };
   }, [
-    useDeckPreview,
     info,
     iconMappingsByChunk,
     chunkUV,
@@ -391,6 +324,7 @@ function HoverCellTooltip({
     windows,
     displayCoordById,
     channelZarrIndexById,
+    omePixelRangeByChannelId,
   ]);
 
   if (!info || !info.object) return null;
@@ -424,30 +358,7 @@ function HoverCellTooltip({
       }}
     >
       <div className="hover-preview-canvas-wrapper">
-        {useDeckPreview && resolved ? (
-          <HoverDeckPreview
-            point={resolved}
-            previewSize={PREVIEW_SIZE}
-            meta={meta}
-            atlasURL={atlasURL}
-            atlasByChannel={atlasByChannel}
-            iconMappingsByChunk={iconMappingsByChunk}
-            chunkUV={chunkUV}
-            channels={channels}
-            colors={colors}
-            alphas={alphas}
-            windows={windows}
-            clusterColorOn={clusterColorOn}
-            clusterOpacity={clusterOpacity}
-            clusterLineWidth={clusterLineWidth}
-            clusterOutlineOn={clusterOutlineOn}
-            labelKey={labelKey}
-            isUMAPView={isUMAPView}
-            computedImageSize={computedImageSize}
-          />
-        ) : (
-          <canvas ref={canvasRef} className="hover-preview-canvas" />
-        )}
+        <canvas ref={canvasRef} className="hover-preview-canvas" />
       </div>
       {(showCellType || showNeighNames) && (
         <div className="hover-preview-annotation">
@@ -470,9 +381,6 @@ function HoverCellTooltip({
 export default function HoverPreview({
   deckRef,
   containerRef,
-  meta,
-  renderMode = "sprites",
-  suppressSpriteAtlases = false,
   iconMappingsByChunk,
   chunkUV,
   atlasByChannel,
@@ -481,11 +389,6 @@ export default function HoverPreview({
   colors,
   alphas,
   windows,
-  clusterColorOn = false,
-  clusterOpacity = 0.25,
-  clusterLineWidth = 1,
-  clusterOutlineOn = false,
-  labelKey = "label",
   computedImageSize = 16,
   hoverEnabled = true,
   selectedIds = new Set(),
@@ -495,10 +398,10 @@ export default function HoverPreview({
   filteredIds = null,
   displayCoordById = null,
   channelZarrIndexById = {},
+  omePixelRangeByChannelId = {},
   getWorldPosition = null,
-  pickRadius = 6,
+  pickRadius = null,
   hoverRingScale = 1,
-  isUMAPView = false,
   outlineSize = null,
   rawUsesOmeTiff = false,
   tilePx = 16,
@@ -508,18 +411,41 @@ export default function HoverPreview({
       ? getWorldPosition
       : (p) => [p.x, p.y, p.z ?? 0];
 
-  const effectivePickRadius = isUMAPView
-    ? Math.max(pickRadius, Math.ceil(Math.max(8, computedImageSize * 1.8)))
-    : pickRadius;
+  // Same on-screen tile size as the hover ring / zarr sprite (not an inflated UMAP radius).
+  const tileScreenPx = outlineSize ?? computedImageSize;
+  const effectivePickRadius =
+    Number.isFinite(pickRadius) && pickRadius > 0
+      ? pickRadius
+      : pickRadiusFromTileScreenPx(tileScreenPx);
 
   const [hoverInfo, setHoverInfo] = useState(null);
   const [outlineRect, setOutlineRect] = useState(null);
 
   useEffect(() => {
     const containerEl = containerRef.current;
-    if (!containerEl) return;
+    if (!containerEl) return undefined;
 
-    const handleMove = (e) => {
+    let raf = 0;
+    let pendingEvent = null;
+    const blockerCache = { rects: [], at: 0 };
+    const BLOCKER_TTL_MS = 250;
+
+    const refreshBlockerRects = () => {
+      const now = performance.now();
+      if (now - blockerCache.at <= BLOCKER_TTL_MS) return blockerCache.rects;
+      try {
+        const nodes = document.querySelectorAll(
+          ".cluster-preview-thumb, .cluster-annotation-title",
+        );
+        blockerCache.rects = Array.from(nodes, (el) => el.getBoundingClientRect());
+      } catch {
+        blockerCache.rects = [];
+      }
+      blockerCache.at = now;
+      return blockerCache.rects;
+    };
+
+    const runPick = (e) => {
       if (!hoverEnabled) {
         setHoverInfo(null);
         return;
@@ -535,24 +461,18 @@ export default function HoverPreview({
       }
       const xClient = e.clientX;
       const yClient = e.clientY;
-      try {
-        const blockers = document.querySelectorAll(
-          ".cluster-preview-thumb, .cluster-annotation-title",
-        );
-        for (const el of blockers) {
-          const rect = el.getBoundingClientRect();
-          if (
-            xClient >= rect.left &&
-            xClient <= rect.right &&
-            yClient >= rect.top &&
-            yClient <= rect.bottom
-          ) {
-            setHoverInfo(null);
-            return;
-          }
+      const blockers = refreshBlockerRects();
+      for (let i = 0; i < blockers.length; i++) {
+        const rect = blockers[i];
+        if (
+          xClient >= rect.left &&
+          xClient <= rect.right &&
+          yClient >= rect.top &&
+          yClient <= rect.bottom
+        ) {
+          setHoverInfo(null);
+          return;
         }
-      } catch {
-        /* ignore */
       }
       const deckInstance = deckRef.current?.deck;
       const canvas = deckInstance?.canvas;
@@ -562,7 +482,24 @@ export default function HoverPreview({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      const picked = deckInstance.pickObject({ x, y, radius: effectivePickRadius });
+      // Prefer live viewport span for OME (world tilePx → screen), else sprite pixel size.
+      let radius = effectivePickRadius;
+      if (rawUsesOmeTiff && Number.isFinite(tilePx) && tilePx > 0) {
+        const viewport = deckInstance.getViewports?.()?.[0];
+        if (viewport) {
+          const center =
+            typeof viewport.unproject === "function"
+              ? viewport.unproject([x, y])
+              : null;
+          const span =
+            center != null
+              ? tileWorldSpanToScreenPx(viewport, center, tilePx)
+              : null;
+          if (span != null) radius = pickRadiusFromTileScreenPx(span);
+        }
+      }
+
+      const picked = deckInstance.pickObject({ x, y, radius });
       if (picked?.object) {
         setHoverInfo({ ...picked, x: e.clientX, y: e.clientY });
       } else {
@@ -570,15 +507,43 @@ export default function HoverPreview({
       }
     };
 
-    const handleLeave = () => setHoverInfo(null);
+    const handleMove = (e) => {
+      pendingEvent = e;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const ev = pendingEvent;
+        pendingEvent = null;
+        if (ev) runPick(ev);
+      });
+    };
+
+    const handleLeave = () => {
+      pendingEvent = null;
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+      setHoverInfo(null);
+    };
 
     containerEl.addEventListener("mousemove", handleMove);
     containerEl.addEventListener("mouseleave", handleLeave);
     return () => {
+      pendingEvent = null;
+      if (raf) cancelAnimationFrame(raf);
       containerEl.removeEventListener("mousemove", handleMove);
       containerEl.removeEventListener("mouseleave", handleLeave);
     };
-  }, [deckRef, containerRef, selectedIds, hoverEnabled, effectivePickRadius]);
+  }, [
+    deckRef,
+    containerRef,
+    selectedIds,
+    hoverEnabled,
+    effectivePickRadius,
+    rawUsesOmeTiff,
+    tilePx,
+  ]);
 
   useEffect(() => {
     if (!hoverInfo?.object) {
@@ -643,9 +608,6 @@ export default function HoverPreview({
       <HoverCellTooltip
         info={hoverInfo}
         containerRef={containerRef}
-        meta={meta}
-        renderMode={renderMode}
-        suppressSpriteAtlases={suppressSpriteAtlases}
         iconMappingsByChunk={iconMappingsByChunk}
         chunkUV={chunkUV}
         atlasByChannel={atlasByChannel}
@@ -654,13 +616,7 @@ export default function HoverPreview({
         colors={colors}
         alphas={alphas}
         windows={windows}
-        clusterColorOn={clusterColorOn}
-        clusterOpacity={clusterOpacity}
-        clusterLineWidth={clusterLineWidth}
-        clusterOutlineOn={clusterOutlineOn}
-        labelKey={labelKey}
-        isUMAPView={isUMAPView}
-        computedImageSize={computedImageSize}
+        omePixelRangeByChannelId={omePixelRangeByChannelId}
         cellTypeAnnotationOn={cellTypeAnnotationOn}
         neighNamesAnnotationOn={neighNamesAnnotationOn}
         rawAnnotationById={rawAnnotationById}

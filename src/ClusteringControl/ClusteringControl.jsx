@@ -10,6 +10,8 @@ export default function ClusteringControl({
   setAnnotationOn = () => {},
   annotationModel = "MedGemma",
   setAnnotationModel = () => {},
+  reviewModeOn = false,
+  setReviewModeOn = () => {},
   previewOn = true,
   setPreviewOn = () => {},
   rawAnnotationColumns = { celltype: false, neigh_names: false },
@@ -125,6 +127,7 @@ export default function ClusteringControl({
                 }
               } else {
                 setAnnotationOn(false);
+                setReviewModeOn(false);
               }
               return next;
             })
@@ -193,6 +196,22 @@ export default function ClusteringControl({
               </div>
             </div>
           </div>
+          <div className="clu-row clu-review-row">
+            <div className="clu-label">Review</div>
+            <button
+              type="button"
+              className={`clu-btn clu-review-btn ${reviewModeOn ? "on" : ""}`}
+              onClick={() => setReviewModeOn(!reviewModeOn)}
+              title="Gray = pending review; cluster color = confirmed (accept or edited)"
+            >
+              Review labels
+            </button>
+          </div>
+          {reviewModeOn && (
+            <div className="clu-review-hint">
+              Gray labels are pending. Accept or edit to show cluster color. Unsure stays gray with ?.
+            </div>
+          )}
         </div>
       )}
       {hasRawAnnotationColumns && (

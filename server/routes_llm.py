@@ -509,7 +509,60 @@ def get_cluster_labels():
 
 
 def _empty_cluster_label_reviews() -> dict[str, object]:
-    return {"version": 1, "updated_at": None, "levels": {}}
+    return {"version": 2, "updated_at": None, "levels": {}}
+
+
+def _coerce_score(value):
+    """Clamp a 0–5 review score; return None when unset/invalid."""
+    if value is None:
+        return None
+    try:
+        score = int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+    return max(0, min(5, score))
+
+
+def _is_review_entry(obj: object) -> bool:
+    return isinstance(obj, dict) and "status" in obj
+
+
+def _models_map_for_cluster(raw: object) -> dict[str, object]:
+    """
+    Normalize one cluster slot to { modelName: reviewEntry }.
+    Legacy v1 stored a single review entry directly under the cluster id.
+    """
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    if _is_review_entry(raw):
+        model = raw.get("llm_model") or "_legacy"
+        return {str(model): raw}
+    out: dict[str, object] = {}
+    for key, val in raw.items():
+        if _is_review_entry(val):
+            out[str(key)] = val
+    return out
+
+
+def _normalize_cluster_label_reviews(data: dict[str, object]) -> dict[str, object]:
+    """Rewrite legacy flat cluster→entry maps into cluster→model→entry."""
+    levels = data.get("levels")
+    if not isinstance(levels, dict):
+        data["levels"] = {}
+        return data
+    changed = False
+    for level_key, level_map in list(levels.items()):
+        if not isinstance(level_map, dict):
+            levels[level_key] = {}
+            changed = True
+            continue
+        for cluster_key, raw in list(level_map.items()):
+            if _is_review_entry(raw):
+                level_map[cluster_key] = _models_map_for_cluster(raw)
+                changed = True
+    if changed or data.get("version") != 2:
+        data["version"] = 2
+    return data
 
 
 def _load_cluster_label_reviews() -> dict[str, object]:
@@ -528,15 +581,14 @@ def _load_cluster_label_reviews() -> dict[str, object]:
         return _empty_cluster_label_reviews()
     if "levels" not in data or not isinstance(data["levels"], dict):
         data["levels"] = {}
-    if "version" not in data:
-        data["version"] = 1
-    return data
+    return _normalize_cluster_label_reviews(data)
 
 
 def _save_cluster_label_reviews(data: dict[str, object]) -> None:
+    data = _normalize_cluster_label_reviews(data)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     if "version" not in data:
-        data["version"] = 1
+        data["version"] = 2
     with open(CLUSTER_LABEL_REVIEWS_JSON, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -552,8 +604,9 @@ def get_cluster_label_reviews():
 @router.patch("/llm/cluster_label_reviews")
 def patch_cluster_label_review(body: Dict[str, Any] | None = None):
     """
-    Upsert one cluster review entry.
-    Body: { "level": "4", "cluster_id": "7", "entry": { status, llm_title, ... } }
+    Upsert one cluster review entry for a specific LLM model.
+    Body: { "level": "4", "cluster_id": "7", "entry": { status, llm_title, llm_model, ... } }
+    Stored as levels[level][cluster_id][llm_model] = entry.
     """
     try:
         body = body or {}
@@ -571,6 +624,13 @@ def patch_cluster_label_review(body: Dict[str, Any] | None = None):
                 status_code=400,
                 detail="entry.status must be accepted, rejected, unsure, or corrected.",
             )
+        model_key = entry.get("llm_model")
+        if model_key is None or str(model_key).strip() == "":
+            raise HTTPException(
+                status_code=400,
+                detail="entry.llm_model is required (reviews are per model).",
+            )
+        model_key = str(model_key)
         level_key = str(level)
         cluster_key = str(cluster_id)
         data = _load_cluster_label_reviews()
@@ -582,14 +642,18 @@ def patch_cluster_label_review(body: Dict[str, Any] | None = None):
         if not isinstance(level_map, dict):
             level_map = {}
             levels[level_key] = level_map
-        level_map[cluster_key] = {
+        models = _models_map_for_cluster(level_map.get(cluster_key))
+        models[model_key] = {
             "status": status,
             "llm_title": entry.get("llm_title"),
-            "llm_model": entry.get("llm_model"),
+            "llm_model": model_key,
             "user_title": entry.get("user_title"),
+            "llm_accuracy": _coerce_score(entry.get("llm_accuracy")),
+            "confidence": _coerce_score(entry.get("confidence")),
             "reviewed_at": entry.get("reviewed_at")
             or datetime.now(timezone.utc).isoformat(),
         }
+        level_map[cluster_key] = models
         _save_cluster_label_reviews(data)
         return JSONResponse({"message": "ok", "data": data})
     except HTTPException:

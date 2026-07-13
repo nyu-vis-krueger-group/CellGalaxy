@@ -14,6 +14,9 @@ export default function useGlobalCellFocusAndRanking({
   /** (p) => [x,y,z] in Deck world space (incl. raw+OME y-flip) */
   mapWorldPosition = null,
   rawUsesOmeTiff = false,
+  tilePx = 16,
+  markerSizeAtBase = null,
+  markerBaseZoom = 8,
 }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -28,6 +31,9 @@ export default function useGlobalCellFocusAndRanking({
     const cellFocusZoom = cellFocusZoomForView({
       isUMAPView: isUmapViewer,
       rawUsesOmeTiff,
+      tilePx,
+      markerSizeAtBase,
+      markerBaseZoom,
     });
 
     const focusKey = `__focusCell_${viewerId}`;
@@ -132,6 +138,9 @@ export default function useGlobalCellFocusAndRanking({
     setSimilarityRankings,
     mapWorldPosition,
     rawUsesOmeTiff,
+    tilePx,
+    markerSizeAtBase,
+    markerBaseZoom,
   ]);
 }
 

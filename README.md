@@ -114,7 +114,7 @@ Before using the system, you need to prepare the following data files.
 | Zarr Image | Image tiles stored in Zarr format |
 | Raw Data | Spatial coordinates and embeddings for each tile |
 | Zooming Cluster | Multi-level hierarchical clustering |
-| Channel List | Channel names (optional `raw_index` when using OME-TIFF) |
+| Channel List | Channel names; with OME-TIFF use `channel_id`, `channel_name`, `zarr_index` |
 | Features | High-dimensional features |
 | Meta Data | Optional metadata |
 
@@ -127,7 +127,7 @@ Please upload files in the following order:
 2. `output.zarr.zip`
 3. `data_raw.csv`
 4. `cluster_multilevel_hierarchy.csv`
-5. `channel_list.csv` (optional `raw_index` for OME-TIFF — see [Channel List](#channel-list))
+5. `channel_list.csv` (with OME-TIFF: `channel_id`, `channel_name`, `zarr_index` — see [Channel List](#channel-list))
 6. `features.npy`
 7. `metadata.csv` (optional)
 
@@ -248,9 +248,28 @@ These two files are required by the visualization system.
 
 # Channel List
 
-CSV columns: **`channel_id`**, **`channel_name`**. Optional **`raw_index`** when using **OME-TIFF** if Zarr channel order ≠ OME channel order.
+CSV used to name channels and map them between **OME-TIFF** and **Zarr**.
 
-**`raw_index`:** that channel’s index **in the original OME-TIFF file**, **1-based** (first channel in the file = `1`). Not the UI `channel_id`. The app uses `ome_c = raw_index - 1` for rendering. Aliases: `raw`, `ome_index`, `ome_c`, `c` (same meaning).
+## With OME-TIFF
+
+Columns: **`channel_id`**, **`channel_name`**, **`zarr_index`**.
+
+| Column | Description |
+|------|-------------|
+| `channel_id` | Index of this channel **in the OME-TIFF** (0-based: first OME channel = `0`) |
+| `channel_name` | Display name |
+| `zarr_index` | Index of the **same** channel **in the Zarr** array (0-based). Leave empty if the channel exists only in OME-TIFF (no Zarr atlas) |
+
+```
+channel_id,channel_name,zarr_index
+0,Hoechst,0
+1,CD3,2
+2,CD4,
+```
+
+In this example, OME channel `1` (`CD3`) is Zarr channel `2`; OME channel `2` (`CD4`) is OME-only.
+
+## Without OME-TIFF (Zarr only)
 
 ```
 channel_id,channel_name
@@ -258,15 +277,9 @@ channel_id,channel_name
 1,CD4
 ```
 
-With OME mapping:
+Here `channel_id` is the Zarr channel index.
 
-```
-channel_id,channel_name,raw_index
-0,Hoechst,1
-1,CD3,10
-```
-
-Writes `raw_index` / `ome_c` into `channel_info.json`.
+Writes `channel_info.json` (including `ome_c` / `zarr_c` when OME mapping is used).
 
 ---
 

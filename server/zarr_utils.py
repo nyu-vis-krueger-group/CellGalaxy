@@ -227,7 +227,7 @@ def render_cell_preview_png(
     alphas = channel_alphas or {}
     wins = channel_windows or {}
 
-    tone_gain = 1.35  # sync with src/utils/intensityWindow.js TONE_GAIN
+    tone_gain = 1.0  # sync with src/utils/intensityWindow.js TONE_GAIN
     accum = np.zeros((int(H), int(W), 4), dtype=np.float32)
     for ch in channels:
         ci = int(ch)
