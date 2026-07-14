@@ -1190,15 +1190,17 @@ const Viewer = ({
   const effectivePickPoints =
     hoverPickAll && pointsRawPick?.length ? pointsRawPick : points;
 
-  // UMAP multi-cell region select → spatial shows only selected; single-cell pick keeps full context.
+  // UMAP multi-cell select → spatial shows only selected when OME provides full-field context.
+  // Zarr-only spatial has no backdrop — always render all tiles.
   const spatialVisualPoints = useMemo(() => {
     if (isUMAPView || !selectedIds?.size) return points;
+    if (!rawUsesOmeTiff) return points;
     const owner = getSelectionOwner();
     if (!isSelectionOwnerUmap(owner)) return points;
     if (selectedIds.size <= 1) return points;
     const inDisplay = points.filter((p) => selectedIds.has(p.id));
     return inDisplay.length > 0 ? inDisplay : points;
-  }, [isUMAPView, points, selectedIds]);
+  }, [isUMAPView, points, selectedIds, rawUsesOmeTiff]);
 
   const umapVisualPoints = useMemo(() => {
     if (!isUMAPView) return points;
