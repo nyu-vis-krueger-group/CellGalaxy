@@ -264,7 +264,7 @@ export default function AnalysisPopover({
       }
     };
     run();
-  }, [open, command, setSelectedIds, channels, channelZarrIndexById]);
+  }, [open, command, setSelectedIds, channels]);
 
   if (!open || mode === "none") return null;
   const points = useUMAP ? pointsUMAP : pointsRaw;
@@ -350,7 +350,6 @@ export default function AnalysisPopover({
             atlasByChannel={atlasByChannel}
             atlasURL={atlasURL}
             channels={channels}
-            channelZarrIndexById={channelZarrIndexById}
             colors={colors}
             alphas={alphas}
             windows={windows}

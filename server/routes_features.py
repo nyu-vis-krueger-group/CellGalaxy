@@ -7,7 +7,6 @@ from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from .config import DATA_DIR
-from .display_subset import load_display_indices
 
 router = APIRouter()
 
@@ -16,23 +15,17 @@ _FEAT_NORM: np.ndarray | None = None
 _FEAT_CENTERED_NORM: np.ndarray | None = None
 _FEAT_PATH = os.path.join(DATA_DIR, "features.npy")
 _CSV_PATH = os.path.join(DATA_DIR, "data.csv")
-_COORDS_JSON_PATH = os.path.join(DATA_DIR, "coords.json")
 _GLOBAL_HIST: Dict[str, object] | None = None
 _PCTL_CACHE: Dict[str, object] | None = None
 _GLOBAL_CENTER: np.ndarray | None = None
 _GLOBAL_DIFFS_SORTED: np.ndarray | None = None
 _UMAP2: np.ndarray | None = None
-# None = not loaded; False = no subset (all cells displayable); ndarray[bool] otherwise
-_DISPLAY_MASK: np.ndarray | bool | None = None
-_COORDS_BY_ID: Dict[int, Dict] | None = None
 
 
 def invalidate_data_csv_caches() -> None:
     """Drop in-memory caches tied to data.csv (call after CSV upload/delete)."""
-    global _UMAP2, _DISPLAY_MASK, _COORDS_BY_ID
+    global _UMAP2
     _UMAP2 = None
-    _DISPLAY_MASK = None
-    _COORDS_BY_ID = None
 
 
 def _ensure_features() -> Tuple[np.ndarray, np.ndarray]:
@@ -96,61 +89,18 @@ def _ensure_umap2() -> np.ndarray:
     return _UMAP2
 
 
-def _display_mask_for(n: int) -> np.ndarray | None:
-    """
-    Boolean mask of cells that have atlas thumbs in the frontend display subset.
-    Returns None when every cell is displayable (no subset).
-    """
-    global _DISPLAY_MASK
-    if _DISPLAY_MASK is False:
-        return None
-    if isinstance(_DISPLAY_MASK, np.ndarray):
-        if _DISPLAY_MASK.shape[0] == n:
-            return _DISPLAY_MASK
-        _DISPLAY_MASK = None
-    ind = load_display_indices()
-    if ind is None:
-        _DISPLAY_MASK = False
-        return None
-    mask = np.zeros(n, dtype=bool)
-    valid = ind[(ind >= 0) & (ind < n)]
-    if valid.size == 0 or valid.size >= n:
-        _DISPLAY_MASK = False
-        return None
-    mask[valid] = True
-    _DISPLAY_MASK = mask
-    return mask
-
-
-def _k_eff_neighbors(n: int, k: int, idx: int, mask: np.ndarray | None) -> int:
-    """Clamp k to the number of eligible neighbor candidates (0 if none)."""
-    if mask is None:
-        eligible = n - 1
-    else:
-        eligible = int(mask.sum()) - (1 if 0 <= idx < n and mask[idx] else 0)
-    if eligible <= 0:
-        return 0
-    return max(1, min(int(k), eligible))
-
-
 def _topk_cosine(idx: int, k: int, metric: str = "cosine") -> Tuple[np.ndarray, np.ndarray]:
-    """Return neighbor indices and similarities (exclude self; display-subset only when present)."""
+    """Return neighbor indices and similarities (exclude self)."""
     feats_n = _get_repr(metric)
     n = feats_n.shape[0]
     if not (0 <= idx < n):
         raise IndexError(f"Index out of range: {idx} (0..{n-1})")
-    mask = _display_mask_for(n)
-    k_eff = _k_eff_neighbors(n, k, idx, mask)
-    if k_eff <= 0:
-        return np.asarray([], dtype=np.int64), np.asarray([], dtype=np.float32)
+    k_eff = max(1, min(int(k), n - 1))
     q = feats_n[idx]
     sims = (feats_n @ q).astype(np.float32)  # cosine similarity with normalized vectors
     # numeric clip to [-1,1]
     np.clip(sims, -1.0, 1.0, out=sims)
     sims[idx] = -np.inf
-    if mask is not None:
-        sims = sims.copy()
-        sims[~mask] = -np.inf
     # partial top-k
     if k_eff < n - 1:
         part_idx = np.argpartition(-sims, k_eff)[:k_eff]
@@ -167,9 +117,6 @@ def _topk_umap_l2(idx: int, k: int) -> np.ndarray:
     Return indices of the k nearest neighbors using **Euclidean distance**
     in the 2D UMAP space (umap2_x, umap2_y), excluding self.
 
-    When a display subset exists, only cells with atlas thumbs are eligible so the
-    Similarity Gallery can render all k neighbors.
-
     This is used to make the selected neighbors match what the user sees
     as "nearby" on the UMAP projection, while metrics are still computed
     in the high-dimensional feature space.
@@ -178,16 +125,10 @@ def _topk_umap_l2(idx: int, k: int) -> np.ndarray:
     n = umap.shape[0]
     if not (0 <= idx < n):
         raise IndexError(f"Index out of range: {idx} (0..{n-1})")
-    mask = _display_mask_for(n)
-    k_eff = _k_eff_neighbors(n, k, idx, mask)
-    if k_eff <= 0:
-        return np.asarray([], dtype=np.int64)
+    k_eff = max(1, min(int(k), n - 1))
     q = umap[idx]
     dists = np.linalg.norm(umap - q, axis=1).astype(np.float32)
     dists[idx] = np.inf
-    if mask is not None:
-        dists = dists.copy()
-        dists[~mask] = np.inf
     if k_eff < n - 1:
         part_idx = np.argpartition(dists, k_eff)[:k_eff]
         order = np.argsort(dists[part_idx])
@@ -335,32 +276,6 @@ def _load_coords_df() -> pd.DataFrame | None:
         return None
 
 
-def _load_coords_by_id() -> Dict[int, Dict]:
-    """coords.json keyed by original cell id (includes display atlas chunk_id/local_index)."""
-    global _COORDS_BY_ID
-    if _COORDS_BY_ID is not None:
-        return _COORDS_BY_ID
-    out: Dict[int, Dict] = {}
-    if os.path.exists(_COORDS_JSON_PATH):
-        try:
-            import json
-
-            with open(_COORDS_JSON_PATH, "r", encoding="utf-8") as f:
-                rows = json.load(f)
-            if isinstance(rows, list):
-                for row in rows:
-                    if not isinstance(row, dict):
-                        continue
-                    cid = row.get("id")
-                    if cid is None:
-                        continue
-                    out[int(cid)] = row
-        except Exception:
-            out = {}
-    _COORDS_BY_ID = out
-    return out
-
-
 def _safe_int_label(value, fallback: int) -> int:
     """
     Robustly cast label-like values to int.
@@ -390,49 +305,31 @@ def _safe_int_label(value, fallback: int) -> int:
 
 
 def _coords_for_ids(ids: List[int]) -> List[Dict]:
-    """Return lightweight coord info for the given ids, preferring coords.json atlas fields."""
-    by_id = _load_coords_by_id()
+    """Return lightweight coord info for the given ids, if csv exists."""
     df = _load_coords_df()
     out: List[Dict] = []
-    n = len(df) if df is not None else 0
+    if df is None:
+        return [{"id": int(i)} for i in ids]
+    n = len(df)
     for i in ids:
-        iid = int(i)
-        hit = by_id.get(iid)
-        if hit is not None:
-            raw = hit.get("raw") or {}
-            umap2 = hit.get("umap2d") or hit.get("umap2") or {}
+        if 0 <= i < n:
+            row = df.iloc[int(i)]
+            base_label = row.get("label", row.get("clustering", int(i) % 11))
+            label_val = _safe_int_label(base_label, fallback=int(i) % 11)
+            chunk_id_val = _safe_int_label(row.get("chunk_id", int(i)), fallback=int(i))
+            local_index_val = _safe_int_label(row.get("local_index", int(i)), fallback=int(i))
             out.append(
                 {
-                    "id": iid,
-                    "raw": {
-                        "x": float(raw.get("x", 0) or 0),
-                        "y": float(raw.get("y", 0) or 0),
-                    },
-                    "umap2": {
-                        "x": float(umap2.get("x", 0) or 0),
-                        "y": float(umap2.get("y", 0) or 0),
-                    },
-                    "label": _safe_int_label(hit.get("label"), fallback=iid % 11),
-                    "chunk_id": _safe_int_label(hit.get("chunk_id"), fallback=iid),
-                    "local_index": _safe_int_label(hit.get("local_index"), fallback=iid),
-                }
-            )
-            continue
-        if df is not None and 0 <= iid < n:
-            row = df.iloc[iid]
-            base_label = row.get("label", row.get("clustering", iid % 11))
-            out.append(
-                {
-                    "id": iid,
+                    "id": int(i),
                     "raw": {"x": float(row.get("X_centroid", 0)), "y": float(row.get("Y_centroid", 0))},
                     "umap2": {"x": float(row.get("umap2_x", 0)), "y": float(row.get("umap2_y", 0))},
-                    "label": _safe_int_label(base_label, fallback=iid % 11),
-                    "chunk_id": _safe_int_label(row.get("chunk_id", iid), fallback=iid),
-                    "local_index": _safe_int_label(row.get("local_index", iid), fallback=iid),
+                    "label": label_val,
+                    "chunk_id": chunk_id_val,  # optional, best-effort
+                    "local_index": local_index_val,
                 }
             )
         else:
-            out.append({"id": iid})
+            out.append({"id": int(i)})
     return out
 
 

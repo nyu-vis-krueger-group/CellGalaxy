@@ -126,14 +126,8 @@ export default function LocalFeaturePanel({
   const mapById = useMemo(() => {
     const m = new Map();
     for (const p of points) m.set(p.id, p);
-    // T1 may include atlas-ready coords for neighbors not present in the current points array.
-    for (const c of data?.coords || []) {
-      if (!c || c.id == null || m.has(c.id)) continue;
-      if (c.chunk_id == null || c.local_index == null) continue;
-      m.set(c.id, c);
-    }
     return m;
-  }, [points, data]);
+  }, [points]);
 
   const queryObj = mapById.get(data?.query);
   const neighborObjs = useMemo(() => {
