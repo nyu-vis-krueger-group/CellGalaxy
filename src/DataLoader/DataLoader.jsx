@@ -77,7 +77,7 @@ export default function useDataLoader() {
   // Fill opacity 0..1
   const [clusterOpacity, setClusterOpacity] = useState(1.0);
   // Outline width (px)
-  const [clusterLineWidth, setClusterLineWidth] = useState(1);
+  const [clusterLineWidth, setClusterLineWidth] = useState(2);
   // LLM cluster text
   const [clusterAnnotationOn, setClusterAnnotationOn] = useState(false);
   const [clusterAnnotationModel, setClusterAnnotationModel] = useState("MedGemma");

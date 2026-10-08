@@ -3,7 +3,7 @@ import "../../FeatureDock/FeatureDock.css";
 import "./GroupFeaturePanel.css";
 import { fetchViolinGlobalKDE, fetchViolinSelectionKDE } from "../../api/api";
 import { useChannelNames } from "../../hooks/useChannelNames";
-import { kde1d, mapLogicalChannelsToZarr } from "../../utils/utils";
+import { kde1d, mapLogicalChannelsToZarr, zarrCToLogicalId } from "../../utils/utils";
 
 export default function GroupFeaturePanel({
   data,
@@ -181,16 +181,7 @@ export default function GroupFeaturePanel({
     ctx.font = "14px sans-serif";
     for (let i = 0; i < C; i++) {
       const cx = marginL + i * colW + colW * 0.5;
-      const zarrIdx = chs[i];
-      let logicalId = zarrIdx;
-      if (channelZarrIndexById && typeof channelZarrIndexById === "object") {
-        for (const [lid, zc] of Object.entries(channelZarrIndexById)) {
-          if (Number(zc) === Number(zarrIdx)) {
-            logicalId = Number(lid);
-            break;
-          }
-        }
-      }
+      const logicalId = zarrCToLogicalId(chs[i], channelZarrIndexById);
       const label = channelNames.get(logicalId) || `ch${logicalId}`;
       const col = colors?.[logicalId] || [230,230,235];
       ctx.fillStyle = `rgba(${col[0] ?? 230},${col[1] ?? 230},${col[2] ?? 235},0.95)`;
@@ -256,7 +247,7 @@ export default function GroupFeaturePanel({
       ctx.lineTo(cx, marginT + plotH);
       ctx.stroke();
     }
-  }, [violinData, channels]);
+  }, [violinData, channels, channelNames, channelZarrIndexById, colors]);
 
   // Similarity field (seriation x, sim y)
   const fieldRef = useRef(null);

@@ -1,5 +1,36 @@
 // Shared helpers for viewer / selection / projection.
 
+import { SIMILARITY_GALLERY_K } from "../constants/analysis";
+
+/** Keep the first `k` neighbors whose ids exist in any of the display point lists. */
+export function pickDisplayableNeighbors(
+  neighbors,
+  pointLists,
+  k = SIMILARITY_GALLERY_K,
+) {
+  const ids = new Set();
+  const lists = Array.isArray(pointLists) ? pointLists : [pointLists];
+  for (let l = 0; l < lists.length; l++) {
+    const pts = lists[l];
+    if (!Array.isArray(pts)) continue;
+    for (let i = 0; i < pts.length; i++) {
+      const id = pts[i]?.id;
+      if (id != null) ids.add(id);
+    }
+  }
+  const out = [];
+  const seen = new Set();
+  const src = Array.isArray(neighbors) ? neighbors : [];
+  for (let i = 0; i < src.length; i++) {
+    const n = src[i];
+    if (!n || n.id == null || !ids.has(n.id) || seen.has(n.id)) continue;
+    seen.add(n.id);
+    out.push(n);
+    if (out.length >= k) break;
+  }
+  return out;
+}
+
 /** Golden-ratio hash in [0,1) — shared by Viewer sampling + DataFilterExtension. */
 export function displaySampleHash(id) {
   return (Number(id) * 0.6180339887) % 1;
@@ -91,6 +122,17 @@ export function mapLogicalChannelsToZarr(logicalChannels, zarrIndexById) {
   return resolveZarrLogicalChannels(logicalChannels, zarrIndexById)
     .map((id) => logicalToZarrC(id, zarrIndexById))
     .filter((z) => z != null);
+}
+
+/** Zarr c index → logical channel id (channel_info.json). */
+export function zarrCToLogicalId(zarrC, zarrIndexById) {
+  const z = Number(zarrC);
+  if (!Number.isFinite(z)) return zarrC;
+  if (!hasZarrChannelMap(zarrIndexById)) return z;
+  for (const [lid, zc] of Object.entries(zarrIndexById)) {
+    if (Number(zc) === z) return Number(lid);
+  }
+  return z;
 }
 
 /** Ray-cast: point [px,py] inside polygon [[x,y],...]. */

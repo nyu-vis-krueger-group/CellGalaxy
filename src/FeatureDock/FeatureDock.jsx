@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "./FeatureDock.css";
 import { fetchT1, fetchT2 } from "../api/api";
-import { buildIconMappingsByChunk } from "../utils";
+import { buildIconMappingsByChunk, pickDisplayableNeighbors } from "../utils/utils";
+import { SIMILARITY_GALLERY_K, SIMILARITY_FETCH_K } from "../constants/analysis";
 import CellAnalysisPanel from "../FeaturePanel/LocalFeaturePanel/LocalFeaturePanel";
 import GroupAnalysisPanel from "../FeaturePanel/GroupFeaturePanel/GroupFeaturePanel";
 
@@ -29,10 +30,7 @@ export default function FeatureDock({
 
   const [mode, setMode] = useState("none"); // 'none' | 't1' | 't2'
   const [t1, setT1] = useState(null);
-  const [t1NeighborSpace, setT1NeighborSpace] = useState("umap");
   const [t2, setT2] = useState(null);
-  const activeQueryRef = useRef(null);
-
 
   useEffect(() => {
     if (!analysisCommand) return;
@@ -41,14 +39,17 @@ export default function FeatureDock({
         const q = Number(analysisCommand.q);
         setMode("t1");
         setT2(null);
-        setT1NeighborSpace("umap");
-        const res = await fetchT1(q, 30, undefined, "umap");
+        const res = await fetchT1(q, SIMILARITY_FETCH_K, undefined, "embedding");
         if (!res || res.error) return;
-        setT1(res);
-        activeQueryRef.current = q;
+        const neighbors = pickDisplayableNeighbors(
+          res.neighbors,
+          [pointsRaw, pointsUMAP],
+          SIMILARITY_GALLERY_K,
+        );
+        setT1({ ...res, neighbors, k: neighbors.length });
 
         try {
-          const neighborIds = (res.neighbors || []).map((n) => n.id);
+          const neighborIds = neighbors.map((n) => n.id);
           const all = new Set([q, ...neighborIds]);
           setSelectedIds(all);
         } catch {}
@@ -58,7 +59,6 @@ export default function FeatureDock({
         if (ids.length === 0) return;
         setMode("t2");
         setT1(null);
-        activeQueryRef.current = null;
         const res = await fetchT2(ids, undefined);
         if (!res || res.error) return;
         setT2(res);
@@ -84,19 +84,6 @@ export default function FeatureDock({
           windows={windows}
           points={useUMAP ? pointsUMAP : pointsRaw}
           viewerId={useUMAP ? "umap" : "raw"}
-          similarityNeighborSpace={t1NeighborSpace}
-          onSimilarityNeighborSpaceChange={async (next) => {
-            const q = activeQueryRef.current;
-            if (!Number.isFinite(q)) return;
-            setT1NeighborSpace(next);
-            const res = await fetchT1(q, 30, undefined, next);
-            if (!res || res.error) return;
-            setT1(res);
-            try {
-              const neighborIds = (res.neighbors || []).map((n) => n.id);
-              setSelectedIds(new Set([q, ...neighborIds]));
-            } catch {}
-          }}
         />
       )}
       {mode === "t2" && t2 && (

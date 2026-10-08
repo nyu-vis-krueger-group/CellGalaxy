@@ -404,8 +404,11 @@ const Viewer = ({
     return Math.min(1.0, budget / pool.length);
   }, [isUMAPView, semanticLevel, SAMPLING_BUDGETS, dedupedPoints, zoomLodFactor]);
 
-  // UMAP: selected cells must stay visible even if empty-tile / overlap / budget dropped them
-  // (e.g. select in spatial → focus in UMAP).
+  // cell id → rank (0 = query). Declared here so similarity pins can join visiblePoints.
+  const [similarityRankings, setSimilarityRankings] = useState(new Map());
+
+  // UMAP: selected / similarity cells stay visible even if empty-tile / overlap / budget
+  // dropped them. The general hide strategy is unchanged when those pin sets are empty.
   const visiblePoints = useMemo(() => {
     let base = [];
     if (dedupedPoints?.length) {
@@ -415,12 +418,17 @@ const Viewer = ({
           : dedupedPoints.filter((p) => passesDisplaySampling(p.id, samplingThreshold));
     }
 
-    if (isUMAPView && selectedIds?.size && points?.length) {
+    const pinSelected = isUMAPView && selectedIds?.size > 0;
+    const pinRanked = isUMAPView && similarityRankings?.size > 0;
+    if ((pinSelected || pinRanked) && points?.length) {
       const seen = new Set(base.map((p) => p.id));
       let merged = null;
       for (let i = 0; i < points.length; i++) {
         const p = points[i];
-        if (!selectedIds.has(p.id) || seen.has(p.id)) continue;
+        const pinned =
+          (pinSelected && selectedIds.has(p.id)) ||
+          (pinRanked && similarityRankings.has(p.id));
+        if (!pinned || seen.has(p.id)) continue;
         if (!merged) merged = base.slice();
         merged.push(p);
         seen.add(p.id);
@@ -428,7 +436,7 @@ const Viewer = ({
       if (merged) base = merged;
     }
     return base;
-  }, [dedupedPoints, isUMAPView, samplingThreshold, selectedIds, points]);
+  }, [dedupedPoints, isUMAPView, samplingThreshold, selectedIds, similarityRankings, points]);
   const selectablePoints = useMemo(
     () => (hasActiveChannels ? visiblePoints : []),
     [hasActiveChannels, visiblePoints],
@@ -624,8 +632,6 @@ const Viewer = ({
   const [annotationStatsOpen, setAnnotationStatsOpen] = useState(false);
   // Zoom-to-selection vs default center+zoom 8
   const [isZoomedToSelection, setIsZoomedToSelection] = useState(false);
-  // cell id → rank (0 = query)
-  const [similarityRankings, setSimilarityRankings] = useState(new Map());
   // Up to 2 region highlight colors
   const regionColors = defaultRegionColors;
   const getRegionIndexForId = useMemo(
@@ -1207,8 +1213,14 @@ const Viewer = ({
     return visiblePoints;
   }, [isUMAPView, points, visiblePoints]);
 
-  // Selected cells bypass GPU hash sampling so forced-in UMAP sprites (and spatial) stay on.
+  // Selected / similarity cells bypass GPU hash sampling so forced-in UMAP sprites stay on.
   const selectedBypassSampling = true;
+  const samplingPinIds = useMemo(() => {
+    if (!similarityRankings?.size) return selectedIds;
+    const next = new Set(selectedIds || []);
+    similarityRankings.forEach((_, id) => next.add(id));
+    return next;
+  }, [selectedIds, similarityRankings]);
 
   const imageLayerPoints = isUMAPView ? umapVisualPoints : spatialVisualPoints;
 
@@ -1269,7 +1281,7 @@ const Viewer = ({
     rawUsesOmeTiff,
     semanticLevel,
     samplingThreshold,
-    selectedIds,
+    selectedIds: samplingPinIds,
     selectedBypassSampling,
     transitionsEnabled: transitionsEnabled && !isUMAPView,
     dotOutlineForBrightBackground: rawUsesOmeTiff,

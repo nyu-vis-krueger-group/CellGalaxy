@@ -61,10 +61,11 @@
 }
 .neighbors-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px 12px;
   align-content: start;
   flex: 1 1 auto;
+  min-width: 0;
 }
 .thumb {
   display: flex;

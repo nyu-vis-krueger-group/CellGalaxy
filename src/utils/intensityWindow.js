@@ -173,9 +173,13 @@ export function resolveRawWindow(window, defaults = { min: 0, max: INTENSITY_FUL
   };
 }
 
-/** True when window is missing or still the 0–65535 placeholder (not a real auto/user window). */
+/**
+ * True when window is missing or still the 0–65535 placeholder (not a real auto/user window).
+ * An explicit user window of 0–65535 (`user: true`) is a real full-scale threshold.
+ */
 export function isFullRangePlaceholderWindow(window, eps = 1e-6) {
   if (!window || typeof window !== "object") return true;
+  if (window.user) return false;
   const lo = Number(window.min);
   const hi = Number(window.max);
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return true;

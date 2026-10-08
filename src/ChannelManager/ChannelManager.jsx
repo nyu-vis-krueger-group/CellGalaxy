@@ -121,6 +121,13 @@ export default function ChannelManager({
           cur &&
           Math.abs((cur.min ?? NaN) - lastAuto.min) < eps &&
           Math.abs((cur.max ?? NaN) - lastAuto.max) < eps;
+        if (cur?.user) {
+          lastAutoWindowRef.current[channelId] = {
+            min: ome.autoMin,
+            max: ome.autoMax,
+          };
+          continue;
+        }
         if (!cur || isDefaultWindow || matchesLastAuto || !lastAuto) {
           next[channelId] = { min: ome.autoMin, max: ome.autoMax };
           changed = true;
@@ -163,7 +170,7 @@ export default function ChannelManager({
     const v = Number(value);
     setWindows((prev) => {
       const cur = prev[channelId] || { min: 0, max: INTENSITY_FULL_RANGE };
-      const next = { ...cur, [type]: v };
+      const next = { ...cur, [type]: v, user: true };
       if (next.min > next.max) {
         if (type === 'min') next.max = next.min;
         else next.min = next.max;
@@ -195,6 +202,7 @@ export default function ChannelManager({
         className={`range-slider range-slider-${type}`}
         min={min}
         max={max}
+        step="any"
         value={currentValue}
         onChange={(e) => handleSliderChange(channelId, type, e.target.value)}
         onInput={(e) => handleSliderChange(channelId, type, e.target.value)}
@@ -249,7 +257,7 @@ export default function ChannelManager({
           const channel = channelInfo.channels?.find(ch => ch.id === channelId);
           if (!channel) return null;
 
-          const { dataMin, dataMax, autoMin, autoMax } = getChannelRanges(channel);
+          const { autoMin, autoMax } = getChannelRanges(channel);
 
           return (
             <div key={channelId} className="channel-item">
@@ -264,8 +272,8 @@ export default function ChannelManager({
 
               <div className="range-slider-container">
                 <div className="dual-range-slider">
-                  {renderSlider(channelId, 'min', autoMin, dataMin, dataMax)}
-                  {renderSlider(channelId, 'max', autoMax, dataMin, dataMax)}
+                  {renderSlider(channelId, 'min', autoMin, 0, INTENSITY_FULL_RANGE)}
+                  {renderSlider(channelId, 'max', autoMax, 0, INTENSITY_FULL_RANGE)}
                 </div>
               </div>
 
@@ -273,6 +281,7 @@ export default function ChannelManager({
                 className="auto-button"
                 onClick={() => {
                   const { autoMin: aMin, autoMax: aMax } = getChannelRanges(channel);
+                  lastAutoWindowRef.current[channelId] = { min: aMin, max: aMax };
                   setWindows((prev) => ({
                     ...prev,
                     [channelId]: { min: aMin, max: aMax },

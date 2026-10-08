@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from .config import DATA_DIR
+from .display_subset import load_display_indices
 
 router = APIRouter()
 
@@ -20,12 +21,47 @@ _PCTL_CACHE: Dict[str, object] | None = None
 _GLOBAL_CENTER: np.ndarray | None = None
 _GLOBAL_DIFFS_SORTED: np.ndarray | None = None
 _UMAP2: np.ndarray | None = None
+_ALLOWED_DISPLAY_IDS: np.ndarray | None = None
+_ALLOWED_DISPLAY_LOADED: bool = False
 
 
 def invalidate_data_csv_caches() -> None:
     """Drop in-memory caches tied to data.csv (call after CSV upload/delete)."""
-    global _UMAP2
+    global _UMAP2, _ALLOWED_DISPLAY_IDS, _ALLOWED_DISPLAY_LOADED
     _UMAP2 = None
+    _ALLOWED_DISPLAY_IDS = None
+    _ALLOWED_DISPLAY_LOADED = False
+
+
+def _allowed_display_ids(n: int) -> np.ndarray | None:
+    """
+    Original cell ids present in coords/atlas (display subset), or None if every
+    feature row is displayable. T1 neighbors must come from this set so the
+    gallery and UMAP/spatial highlights can actually render them.
+    """
+    global _ALLOWED_DISPLAY_IDS, _ALLOWED_DISPLAY_LOADED
+    if not _ALLOWED_DISPLAY_LOADED:
+        try:
+            _ALLOWED_DISPLAY_IDS = load_display_indices()
+        except Exception:
+            _ALLOWED_DISPLAY_IDS = None
+        _ALLOWED_DISPLAY_LOADED = True
+    ind = _ALLOWED_DISPLAY_IDS
+    if ind is None:
+        return None
+    allowed = ind[(ind >= 0) & (ind < int(n))]
+    if allowed.size <= 0 or allowed.size >= int(n):
+        return None
+    return allowed
+
+
+def _exclude_ids(values: np.ndarray, allowed: np.ndarray | None, fill: float) -> None:
+    """In-place: set values for ids outside the display allowlist to `fill`."""
+    if allowed is None:
+        return
+    hide = np.ones(values.shape[0], dtype=bool)
+    hide[allowed] = False
+    values[hide] = fill
 
 
 def _ensure_features() -> Tuple[np.ndarray, np.ndarray]:
@@ -90,16 +126,23 @@ def _ensure_umap2() -> np.ndarray:
 
 
 def _topk_cosine(idx: int, k: int, metric: str = "cosine") -> Tuple[np.ndarray, np.ndarray]:
-    """Return neighbor indices and similarities (exclude self)."""
+    """Return neighbor indices and similarities (exclude self).
+
+    Restricted to the display/atlas id set when a display subset is active, so
+    every returned neighbor can be shown in the gallery and both viewers.
+    """
     feats_n = _get_repr(metric)
     n = feats_n.shape[0]
     if not (0 <= idx < n):
         raise IndexError(f"Index out of range: {idx} (0..{n-1})")
-    k_eff = max(1, min(int(k), n - 1))
+    allowed = _allowed_display_ids(n)
+    n_pool = int(allowed.size) if allowed is not None else n
+    k_eff = max(1, min(int(k), max(1, n_pool - 1)))
     q = feats_n[idx]
     sims = (feats_n @ q).astype(np.float32)  # cosine similarity with normalized vectors
     # numeric clip to [-1,1]
     np.clip(sims, -1.0, 1.0, out=sims)
+    _exclude_ids(sims, allowed, -np.inf)
     sims[idx] = -np.inf
     # partial top-k
     if k_eff < n - 1:
@@ -125,9 +168,12 @@ def _topk_umap_l2(idx: int, k: int) -> np.ndarray:
     n = umap.shape[0]
     if not (0 <= idx < n):
         raise IndexError(f"Index out of range: {idx} (0..{n-1})")
-    k_eff = max(1, min(int(k), n - 1))
+    allowed = _allowed_display_ids(n)
+    n_pool = int(allowed.size) if allowed is not None else n
+    k_eff = max(1, min(int(k), max(1, n_pool - 1)))
     q = umap[idx]
     dists = np.linalg.norm(umap - q, axis=1).astype(np.float32)
+    _exclude_ids(dists, allowed, np.inf)
     dists[idx] = np.inf
     if k_eff < n - 1:
         part_idx = np.argpartition(dists, k_eff)[:k_eff]

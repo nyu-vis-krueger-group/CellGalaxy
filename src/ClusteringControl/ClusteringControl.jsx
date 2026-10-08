@@ -36,7 +36,7 @@ export default function ClusteringControl({
           onClick={() => {
             const next = !outlineOn;
             setOutlineOn(next);
-            if (next) setLineWidth(0.8);
+            if (next) setLineWidth(2);
           }}
           title="outline for each clustering"
         >

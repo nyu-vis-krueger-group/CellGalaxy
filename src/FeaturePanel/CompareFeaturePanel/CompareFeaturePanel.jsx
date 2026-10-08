@@ -3,6 +3,7 @@ import "../../FeatureDock/FeatureDock.css";
 import "./CompareFeaturePanel.css";
 import { drawCellPreviewToCanvas } from "../../Viewer/HoverPreview/HoverPreview";
 import { useChannelNames } from "../../hooks/useChannelNames";
+import { zarrCToLogicalId } from "../../utils/utils";
 
 const COLOR_REGION1 = "rgba(230,230,230,0.95)"; // Region 1 → light white
 const COLOR_REGION2 = "rgba(130,130,130,0.95)"; // Region 2 → dark gray
@@ -106,7 +107,7 @@ function rawKdeToLogSpaceOnLinearAxis(xs, ys) {
   return out;
 }
 
-function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
+function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, channelZarrIndexById, message) {
   if (!canvas) return;
   const chs = Array.isArray(kdeA?.channels)
     ? kdeA.channels
@@ -192,9 +193,9 @@ function drawViolinRow(canvas, kdeA, kdeB, channelNames, colors, message) {
   ctx.font = "14px sans-serif";
   for (let i = 0; i < C; i++) {
     const cx = marginL + i * colW + colW * 0.5;
-    const chIdx = chs[i];
-    const label = channelNames.get(chIdx) || `ch${chIdx}`;
-    const col = colors?.[chIdx] || [230, 230, 235];
+    const logicalId = zarrCToLogicalId(chs[i], channelZarrIndexById);
+    const label = channelNames.get(logicalId) || `ch${logicalId}`;
+    const col = colors?.[logicalId] || [230, 230, 235];
     ctx.fillStyle = `rgba(${col[0] ?? 230},${col[1] ?? 230},${col[2] ?? 235},0.95)`;
     ctx.fillText(label, cx, h - 10);
   }
@@ -278,6 +279,7 @@ export default function CompareFeaturePanel({
   atlasByChannel,
   atlasURL,
   channels,
+  channelZarrIndexById = {},
   colors,
   alphas,
   windows,
@@ -302,9 +304,10 @@ export default function CompareFeaturePanel({
       regionB?.sel_kde,
       channelNames,
       colors,
+      channelZarrIndexById,
       "No intensity data for the two regions"
     );
-  }, [regionA, regionB, channelNames, colors]);
+  }, [regionA, regionB, channelNames, colors, channelZarrIndexById]);
 
   if (!data) {
     return <div className="loading">No comparison data</div>;

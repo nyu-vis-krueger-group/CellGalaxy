@@ -96,33 +96,7 @@ export default function LocalFeaturePanel({
   windows,
   points = [],
   viewerId = "raw",
-  similarityNeighborSpace = "umap",
-  onSimilarityNeighborSpaceChange,
 }) {
-  const gallerySpace = similarityNeighborSpace === "embedding" ? "embedding" : "umap";
-  const effectiveNeighborSpace =
-    (data?.neighbor_space ?? gallerySpace) === "embedding" ? "embedding" : "umap";
-  const isEmbedding = effectiveNeighborSpace === "embedding";
-  const galleryTitle = isEmbedding
-    ? "Similarity Gallery (Embedding Space)"
-    : "Similarity Gallery (UMAP Space)";
-  const localMetricsTitle = isEmbedding
-    ? "Local Metrics (embedding neighbors, feature space)"
-    : "Local Metrics (UMAP neighbors, feature space)";
-  const similarityHistTitle = isEmbedding
-    ? "Similarity histogram · embedding kNN"
-    : "Similarity histogram · UMAP kNN";
-
-  const cycleGallerySpace = useCallback(
-    (delta) => {
-      if (!onSimilarityNeighborSpaceChange) return;
-      const order = ["umap", "embedding"];
-      const i = order.indexOf(gallerySpace);
-      const next = order[(i + delta + order.length) % order.length];
-      if (next !== gallerySpace) onSimilarityNeighborSpaceChange(next);
-    },
-    [gallerySpace, onSimilarityNeighborSpaceChange]
-  );
   const mapById = useMemo(() => {
     const m = new Map();
     for (const p of points) m.set(p.id, p);
@@ -141,9 +115,9 @@ export default function LocalFeaturePanel({
   const rankingIds = useMemo(
     () =>
       data
-        ? [data.query, ...(data.neighbors || []).map((n) => n.id)].filter((id) => id != null)
+        ? [data.query, ...neighborObjs.map((n) => n.id)].filter((id) => id != null)
         : [],
-    [data]
+    [data, neighborObjs]
   );
 
   const focusCellWithRankings = useCallback(
@@ -369,72 +343,48 @@ export default function LocalFeaturePanel({
   return (
     <div>
       <div className="feature-section">
-        <div className={onSimilarityNeighborSpaceChange ? "gallery-space-shell" : undefined}>
-          {onSimilarityNeighborSpaceChange ? (
-            <button
-              type="button"
-              className="gallery-space-arrow gallery-space-arrow-left"
-              aria-label="Previous: switch between UMAP and embedding neighbor space"
-              onClick={() => cycleGallerySpace(-1)}
-            >
-              ‹
-            </button>
-          ) : null}
-          <div className={onSimilarityNeighborSpaceChange ? "gallery-space-inner" : undefined}>
-            <div className="feature-title">{galleryTitle}</div>
-            <div className="gallery-t1">
-              <div className="gallery-query">
-                {queryObj && (
-                  <Thumb
-                    object={queryObj}
-                    iconMappingsByChunk={iconMappingsByChunk}
-                    chunkUV={chunkUV}
-                    atlasByChannel={atlasByChannel}
-                    channels={channels}
-                    colors={colors}
-                    alphas={alphas}
-                    windows={windows}
-                    size={96}
-                    label="query"
-                    onClick={focusCellWithRankings}
-                  />
-                )}
-              </div>
-              <div className="neighbors-grid">
-                {neighborObjs.slice(0, 8).map((n) => (
-                  <Thumb
-                    key={n.id}
-                    object={n.object}
-                    iconMappingsByChunk={iconMappingsByChunk}
-                    chunkUV={chunkUV}
-                    atlasByChannel={atlasByChannel}
-                    channels={channels}
-                    colors={colors}
-                    alphas={alphas}
-                    windows={windows}
-                    size={64}
-                    label={`sim ${cosineSimTo01(n.similarity).toFixed(2)}`}
-                    onClick={focusCellWithRankings}
-                  />
-                ))}
-              </div>
-            </div>
+        <div className="feature-title">Similarity Gallery (Embedding Space)</div>
+        <div className="gallery-t1">
+          <div className="gallery-query">
+            {queryObj && (
+              <Thumb
+                object={queryObj}
+                iconMappingsByChunk={iconMappingsByChunk}
+                chunkUV={chunkUV}
+                atlasByChannel={atlasByChannel}
+                channels={channels}
+                colors={colors}
+                alphas={alphas}
+                windows={windows}
+                size={96}
+                label="query"
+                onClick={focusCellWithRankings}
+              />
+            )}
           </div>
-          {onSimilarityNeighborSpaceChange ? (
-            <button
-              type="button"
-              className="gallery-space-arrow gallery-space-arrow-right"
-              aria-label="Next: switch between UMAP and embedding neighbor space"
-              onClick={() => cycleGallerySpace(1)}
-            >
-              ›
-            </button>
-          ) : null}
+          <div className="neighbors-grid">
+            {neighborObjs.slice(0, 8).map((n) => (
+              <Thumb
+                key={n.id}
+                object={n.object}
+                iconMappingsByChunk={iconMappingsByChunk}
+                chunkUV={chunkUV}
+                atlasByChannel={atlasByChannel}
+                channels={channels}
+                colors={colors}
+                alphas={alphas}
+                windows={windows}
+                size={64}
+                label={`sim ${cosineSimTo01(n.similarity).toFixed(2)}`}
+                onClick={focusCellWithRankings}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="feature-section">
-        <div className="feature-title">{localMetricsTitle}</div>
+        <div className="feature-title">Local Metrics (embedding neighbors, feature space)</div>
         <div className="metrics-wrap">
         <div className="metric-card">
           <div className="metric-row">
@@ -506,7 +456,7 @@ export default function LocalFeaturePanel({
       </div>
 
       <div className="feature-section">
-        <div className="feature-title">{similarityHistTitle}</div>
+        <div className="feature-title">Similarity histogram · embedding kNN</div>
         <div ref={wrapperRef} className="hist-wrapper">
         <canvas
             className="hist-canvas"
